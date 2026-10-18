@@ -313,14 +313,39 @@ fn wait_done(eng: &service::Engine, job: &str) {
     panic!("job não terminou");
 }
 
+/// Gera uma sessão no formato da v0.1.0 (sem os campos que vieram depois) a partir de uma
+/// varredura real da imagem, com o alvo informado.
+fn sessao_formato_v0_1_0(img: &std::path::Path, alvo: &str) -> tempfile::NamedTempFile {
+    let eng = service::Engine::new();
+    let job = eng
+        .start_scan(img.to_str().unwrap(), ScanOptions::default())
+        .unwrap();
+    wait_done(&eng, &job);
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    eng.save_session(&job, tmp.path().to_str().unwrap())
+        .unwrap();
+    let mut v: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(tmp.path()).unwrap()).unwrap();
+    let o = v.as_object_mut().unwrap();
+    o.remove("recoveries");
+    o.remove("started_unix");
+    o.insert("target".into(), alvo.into());
+    for f in o["found"].as_array_mut().unwrap() {
+        let f = f.as_object_mut().unwrap();
+        for k in ["created", "accessed", "taken", "camera", "px", "gps", "sig"] {
+            f.remove(k);
+        }
+    }
+    std::fs::write(tmp.path(), serde_json::to_vec(&v).unwrap()).unwrap();
+    tmp
+}
+
 /// Uma sessão gravada pela v0.1.0 continua abrindo nas versões novas.
 #[test]
 fn sessao_da_v0_1_0_abre_e_funciona() {
     let Some(dir) = fixtures() else { return };
     let img = dir.join("ntfs.img");
-    let raw = include_str!("data/sessao-v0.1.0.json").replace("@@ALVO@@", img.to_str().unwrap());
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp.path(), raw).unwrap();
+    let tmp = sessao_formato_v0_1_0(&img, img.to_str().unwrap());
     let eng = service::Engine::new();
     let job = eng.load_session(tmp.path().to_str().unwrap()).unwrap();
     wait_done(&eng, &job);
@@ -352,10 +377,7 @@ fn sessao_da_v0_1_0_abre_e_funciona() {
 fn sessao_abre_sem_a_origem_e_pode_ser_reconectada() {
     let Some(dir) = fixtures() else { return };
     let img = dir.join("ntfs.img");
-    let raw =
-        include_str!("data/sessao-v0.1.0.json").replace("@@ALVO@@", "/dev/disco-que-nao-existe");
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp.path(), raw).unwrap();
+    let tmp = sessao_formato_v0_1_0(&img, "/dev/disco-que-nao-existe");
     let eng = service::Engine::new();
     let job = eng.load_session(tmp.path().to_str().unwrap()).unwrap();
     let st = eng.status(&job).unwrap();
@@ -376,8 +398,13 @@ fn sessao_abre_sem_a_origem_e_pode_ser_reconectada() {
             .unwrap(),
         7
     );
-    // pré-visualização e recuperação avisam com clareza
+    // pré-visualização, retomada e recuperação avisam com clareza
     assert_eq!(eng.thumb(&job, 1, 128).err(), Some(503));
+    assert!(eng
+        .resume(&job)
+        .unwrap_err()
+        .to_string()
+        .contains("não está disponível"));
     let out = tempfile::tempdir().unwrap();
     let e = eng
         .start_recover(&job, None, None, out.path().to_str().unwrap())
