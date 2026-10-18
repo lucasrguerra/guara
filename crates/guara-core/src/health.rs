@@ -32,11 +32,10 @@ const IMAGE_ADVICE: &str = "Crie a imagem do disco primeiro (botão \"Criar imag
 
 /// Avalia o dispositivo `path`. Para arquivos comuns (imagens) devolve "sem avaliação".
 pub fn check(path: &str) -> Health {
-    let p = std::path::Path::new(path);
     #[cfg(unix)]
     let is_dev = {
         use std::os::unix::fs::FileTypeExt;
-        std::fs::metadata(p)
+        std::fs::metadata(path)
             .map(|m| m.file_type().is_block_device() || m.file_type().is_char_device())
             .unwrap_or(false)
     };
