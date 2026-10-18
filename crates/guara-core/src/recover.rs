@@ -72,10 +72,55 @@ pub fn check_destination(source_path: Option<&Path>, dest: &Path) -> Result<()> 
     Ok(())
 }
 
+/// Como organizar os arquivos recuperados dentro do destino.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RecoverLayout {
+    /// Pastas originais quando conhecidas; o resto separado por tipo (padrão).
+    #[default]
+    Folders,
+    /// Uma pasta por tipo (Fotos, Documentos, Vídeos...).
+    Type,
+    /// Pastas por ano e mês (data da foto, ou a de modificação).
+    Date,
+    /// Tudo direto na pasta de destino.
+    Flat,
+}
+
+impl RecoverLayout {
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "folders" | "pastas" => Self::Folders,
+            "type" | "tipo" => Self::Type,
+            "date" | "data" => Self::Date,
+            "flat" | "plano" => Self::Flat,
+            _ => return None,
+        })
+    }
+}
+
 pub fn recover(
     src: &dyn Source,
     files: &[&Found],
     dest: &Path,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    progress: &mut dyn FnMut(usize, usize, u64),
+) -> Result<RecoverReport> {
+    recover_with(
+        src,
+        files,
+        dest,
+        RecoverLayout::Folders,
+        cancelled,
+        progress,
+    )
+}
+
+pub fn recover_with(
+    src: &dyn Source,
+    files: &[&Found],
+    dest: &Path,
+    layout: RecoverLayout,
     cancelled: &(dyn Fn() -> bool + Sync),
     progress: &mut dyn FnMut(usize, usize, u64),
 ) -> Result<RecoverReport> {
@@ -91,7 +136,7 @@ pub fn recover(
             break;
         }
         progress(i, files.len(), report.total_bytes);
-        let rel = target_rel(f);
+        let rel = target_rel(f, layout);
         let mut path = dest.join(&rel);
         if let Some(parent) = path.parent() {
             if let Err(e) = crate::owner::create_dir_all_owned(parent) {
@@ -151,23 +196,73 @@ pub fn recover(
     Ok(report)
 }
 
-fn target_rel(f: &Found) -> PathBuf {
+fn target_rel(f: &Found, layout: RecoverLayout) -> PathBuf {
     let mut p = PathBuf::new();
-    match &f.dir {
-        Some(d) if !d.is_empty() => {
-            p.push("Recuperados");
-            for c in d.split('/') {
-                if !c.is_empty() {
-                    p.push(sanitize_name(c));
+    match layout {
+        RecoverLayout::Folders => match &f.dir {
+            Some(d) if !d.is_empty() => {
+                p.push("Recuperados");
+                for c in d.split('/') {
+                    if !c.is_empty() {
+                        p.push(sanitize_name(c));
+                    }
                 }
             }
-        }
-        _ => {
-            p.push(f.category.label_pt());
-        }
+            _ => p.push(f.category.label_pt()),
+        },
+        RecoverLayout::Type => p.push(f.category.label_pt()),
+        RecoverLayout::Date => match f.when() {
+            Some(t) => {
+                let (y, m, _) = crate::meta::ymd(t);
+                p.push(format!("{y:04}"));
+                p.push(format!("{y:04}-{m:02}"));
+            }
+            None => p.push("Sem data"),
+        },
+        RecoverLayout::Flat => {}
     }
     p.push(sanitize_name(&f.name));
     p
+}
+
+/// Espaço livre (bytes) no volume onde `path` está (ou estaria).
+pub fn free_space(path: &Path) -> Option<u64> {
+    let mut p = path;
+    while !p.exists() {
+        p = p.parent()?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let c = std::ffi::CString::new(p.as_os_str().as_bytes()).ok()?;
+        // SAFETY: `c` é uma string C válida e `st` é uma estrutura de saída local.
+        let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+            return None;
+        }
+        Some((st.f_bavail as u64).saturating_mul(st.f_frsize as u64))
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+        let wide: Vec<u16> = p
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut free = 0u64;
+        // SAFETY: `wide` termina em NUL e o ponteiro de saída é válido.
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                wide.as_ptr(),
+                &mut free,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        (ok != 0).then_some(free)
+    }
 }
 
 /// Escreve o conteúdo e devolve o SHA-256.

@@ -46,7 +46,8 @@ sudo guara scan /dev/sdb --quick         # só metadados (segundos)
 guara scan disco.img --category image,document --min-confidence medium
 guara scan disco.img --recover /mnt/outro-disco/Recuperados
 guara recover s.json /mnt/outro-disco/Recuperados --category image
-guara resume s.json                      # continua após Ctrl+C
+guara resume s.json                      # continua após Ctrl+C (religa o disco mesmo com outro nome)
+guara sessions                           # sessões salvas automaticamente
 sudo guara image /dev/sdb /mnt/outro-disco/sdb.img    # imagem com mapa de erros
 sudo guara hash /dev/sdb                 # MD5, SHA-1 e SHA-256 do dispositivo
 sudo guara search /dev/sdb "contrato" "cpf"            # texto em todo o disco (UTF-8 e UTF-16)
@@ -76,6 +77,7 @@ Pensados para quem precisa documentar o que fez:
 - **Hashes MD5, SHA-1 e SHA-256** de cada arquivo recuperado, da imagem forense e do dispositivo inteiro (`guara hash`).
 - **Metadados:** EXIF (câmera, lente, número de série, data, **GPS**), informações de PDF (autor, programa, datas), propriedades de documentos Office e OpenDocument (autor, última modificação por, empresa) e dados de vídeo MP4/MOV (data de gravação, duração, resolução).
 - **Linha do tempo:** datas de criação, modificação e acesso lidas do NTFS, FAT e exFAT.
+- **Sessões salvas sozinhas e disco que volta com outro nome:** a varredura é salva automaticamente, pausa se o disco for desconectado e o Guará reconhece o mesmo disco ao reconectar.
 - **Pesquisa de texto no disco inteiro** (`guara search`), inclusive espaço livre e fora de partições, em UTF-8 e UTF-16, mostrando posição, partição e contexto.
 - **Exportação CSV** (abre no Excel) e **relatório HTML** pronto para imprimir (`guara report`), com identificação do caso, origem, partições, resumo, hashes e lista dos arquivos.
 - **Detecção de duplicadas** por assinatura de conteúdo.

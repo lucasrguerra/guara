@@ -274,3 +274,34 @@ pub fn open_path(path: &Path) -> io::Result<Arc<dyn Source>> {
     }
     Ok(Arc::new(FileSource::open(path)?))
 }
+
+/// Identidade do conteúdo de um disco: SHA-256 do tamanho + primeiro e último MiB
+/// (tabela de partições, cabeçalhos e backup). Serve para reconhecer o mesmo disco
+/// quando ele volta com outro nome (`/dev/sda` virando `/dev/sdb`).
+pub fn fingerprint(src: &dyn Source) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    const MIB: u64 = 1024 * 1024;
+    let size = src.size();
+    let mut h = Sha256::new();
+    h.update(size.to_le_bytes());
+    let mut feed = |off: u64, len: u64| -> bool {
+        let mut buf = vec![0u8; len as usize];
+        let mut got = 0;
+        while got < buf.len() {
+            match src.read_at(off + got as u64, &mut buf[got..]) {
+                Ok(0) => break,
+                Ok(n) => got += n,
+                Err(_) => return false,
+            }
+        }
+        h.update(&buf[..got]);
+        true
+    };
+    if !feed(0, size.min(MIB)) {
+        return None;
+    }
+    if size > 2 * MIB && !feed(size - MIB, MIB) {
+        return None;
+    }
+    Some(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}

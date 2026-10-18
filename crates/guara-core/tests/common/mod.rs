@@ -31,6 +31,13 @@ impl Sink for Collect {
     }
 }
 
+/// Isola as configurações/sessões automáticas dos testes numa pasta temporária.
+pub fn init() {
+    static DIR: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+    let d = DIR.get_or_init(|| tempfile::tempdir().unwrap());
+    std::env::set_var("GUARA_CONFIG_DIR", d.path());
+}
+
 pub fn scan_path(path: &Path, opts: &ScanOptions) -> Collect {
     let src = source::open_path(path).unwrap();
     let mut sink = Collect::default();

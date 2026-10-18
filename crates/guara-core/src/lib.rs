@@ -15,6 +15,7 @@ pub mod image;
 pub mod meta;
 pub mod owner;
 pub mod partition;
+pub mod reconnect;
 pub mod recover;
 pub mod report;
 pub mod scan;

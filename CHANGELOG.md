@@ -2,6 +2,18 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [0.4.0] - 2026-10-18
+
+### Adicionado
+- **Reconexão do disco:** se o disco foi desconectado e voltou com outro nome (por exemplo `/dev/sda` virando `/dev/sdb`), o Guará o reconhece sozinho pelo tamanho e pela impressão digital do conteúdo (primeiro e último MiB) e religa a sessão. Se não conseguir, a tela mostra "Reconectar o disco" e "Escolher a origem…", com a lista dos discos conectados e o selo "mesmo disco". Uma origem com conteúdo diferente é recusada, a menos que você marque "usar mesmo assim" (útil para cópias).
+- **Desconexão no meio da varredura:** se as leituras falharem várias vezes seguidas, a varredura pausa sozinha com o ponto exato salvo e avisa para reconectar e continuar, em vez de seguir pulando blocos e terminar com buracos.
+- **Sessões salvas automaticamente** de tempos em tempos durante a varredura e ao terminar ou pausar, na pasta de configuração do usuário, e listadas em "Recentes" na barra lateral (`guara sessions` no terminal). Gravação atômica, sem risco de corromper a sessão se o programa fechar no meio.
+- **Organização ao recuperar:** pastas originais, por tipo, por data (ano e mês) ou tudo na mesma pasta (`--organize` no terminal).
+- **Verificação de espaço livre** no destino antes de copiar, com mensagem clara se não couber.
+
+### Corrigido
+- Em sessões pausadas não havia como escolher outra origem; só "Continuar", que falhava sem o disco.
+
 ## [0.3.2] - 2026-10-18
 
 ### Corrigido

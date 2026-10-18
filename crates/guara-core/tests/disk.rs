@@ -2,6 +2,7 @@
 
 mod common;
 use common::*;
+use guara_core::source::MemSource;
 use guara_core::*;
 use std::io::Write;
 
@@ -235,6 +236,7 @@ fn pausa_e_retoma_encontra_o_mesmo() {
 /// Streaming de pré-visualização: Range devolve exatamente os bytes do arquivo recuperado.
 #[test]
 fn file_slice_com_range_bate_com_o_arquivo_recuperado() {
+    init();
     use std::io::Read;
     let Some(dir) = fixtures() else { return };
     let path = dir.join("ntfs.img");
@@ -293,8 +295,8 @@ fn file_slice_com_range_bate_com_o_arquivo_recuperado() {
 
 #[test]
 fn configuracoes_de_tema_persistem() {
-    let dir = tempfile::tempdir().unwrap();
-    std::env::set_var("GUARA_CONFIG_DIR", dir.path());
+    init();
+    let _ = std::fs::remove_file(settings::config_dir().join("settings.json"));
     assert_eq!(settings::load().theme, "auto");
     settings::save(&settings::Settings {
         theme: "dark".into(),
@@ -316,6 +318,7 @@ fn wait_done(eng: &service::Engine, job: &str) {
 /// Gera uma sessão no formato da v0.1.0 (sem os campos que vieram depois) a partir de uma
 /// varredura real da imagem, com o alvo informado.
 fn sessao_formato_v0_1_0(img: &std::path::Path, alvo: &str) -> tempfile::NamedTempFile {
+    init();
     let eng = service::Engine::new();
     let job = eng
         .start_scan(img.to_str().unwrap(), ScanOptions::default())
@@ -329,6 +332,8 @@ fn sessao_formato_v0_1_0(img: &std::path::Path, alvo: &str) -> tempfile::NamedTe
     let o = v.as_object_mut().unwrap();
     o.remove("recoveries");
     o.remove("started_unix");
+    o.remove("fingerprint");
+    o.remove("source_path");
     o.insert("target".into(), alvo.into());
     for f in o["found"].as_array_mut().unwrap() {
         let f = f.as_object_mut().unwrap();
@@ -343,6 +348,7 @@ fn sessao_formato_v0_1_0(img: &std::path::Path, alvo: &str) -> tempfile::NamedTe
 /// Uma sessão gravada pela v0.1.0 continua abrindo nas versões novas.
 #[test]
 fn sessao_da_v0_1_0_abre_e_funciona() {
+    init();
     let Some(dir) = fixtures() else { return };
     let img = dir.join("ntfs.img");
     let tmp = sessao_formato_v0_1_0(&img, img.to_str().unwrap());
@@ -363,6 +369,7 @@ fn sessao_da_v0_1_0_abre_e_funciona() {
             None,
             Some(service::Query::default()),
             out.path().to_str().unwrap(),
+            recover::RecoverLayout::Folders,
         )
         .unwrap();
     wait_done(&eng, &rj);
@@ -375,9 +382,15 @@ fn sessao_da_v0_1_0_abre_e_funciona() {
 /// Origem indisponível não impede abrir a sessão; reapontar a origem religa tudo.
 #[test]
 fn sessao_abre_sem_a_origem_e_pode_ser_reconectada() {
+    init();
     let Some(dir) = fixtures() else { return };
     let img = dir.join("ntfs.img");
     let tmp = sessao_formato_v0_1_0(&img, "/dev/disco-que-nao-existe");
+    // sessão pausada (como as de uma varredura interrompida)
+    let mut v: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(tmp.path()).unwrap()).unwrap();
+    v["done"] = serde_json::json!(false);
+    std::fs::write(tmp.path(), serde_json::to_vec(&v).unwrap()).unwrap();
     let eng = service::Engine::new();
     let job = eng.load_session(tmp.path().to_str().unwrap()).unwrap();
     let st = eng.status(&job).unwrap();
@@ -407,16 +420,28 @@ fn sessao_abre_sem_a_origem_e_pode_ser_reconectada() {
         .contains("não está disponível"));
     let out = tempfile::tempdir().unwrap();
     let e = eng
-        .start_recover(&job, None, None, out.path().to_str().unwrap())
+        .start_recover(
+            &job,
+            None,
+            None,
+            out.path().to_str().unwrap(),
+            recover::RecoverLayout::Folders,
+        )
         .unwrap_err();
     assert!(e.to_string().contains("não está disponível"), "{e}");
     // reconecta
-    eng.relink(&job, img.to_str().unwrap()).unwrap();
+    eng.relink(&job, img.to_str().unwrap(), false).unwrap();
     let st = eng.status(&job).unwrap();
     assert_eq!(st["source"], true);
     assert!(st["warnings"].as_array().unwrap().is_empty());
     let rj = eng
-        .start_recover(&job, None, None, out.path().to_str().unwrap())
+        .start_recover(
+            &job,
+            None,
+            None,
+            out.path().to_str().unwrap(),
+            recover::RecoverLayout::Folders,
+        )
         .unwrap();
     wait_done(&eng, &rj);
     assert_eq!(hashes_in(out.path()).len(), 7);
@@ -427,4 +452,257 @@ fn sessao_abre_sem_a_origem_e_pode_ser_reconectada() {
         e.to_string().contains("não é uma sessão do Guará válida"),
         "{e}"
     );
+}
+
+// ------------------------------------------------------------------ desconexão e reconexão do disco
+
+#[test]
+fn reconexao_so_aceita_o_mesmo_disco_ou_um_clone() {
+    init();
+    let Some(dir) = fixtures() else { return };
+    let img = dir.join("ntfs.img");
+    let tmp = sessao_formato_v0_1_0(&img, img.to_str().unwrap());
+    let eng = service::Engine::new();
+    let job = eng.load_session(tmp.path().to_str().unwrap()).unwrap();
+    // sessão antiga não tem impressão digital: o relink aprende a do primeiro disco aceito
+    eng.relink(&job, img.to_str().unwrap(), false).unwrap();
+    let work = tempfile::tempdir().unwrap();
+    // clone idêntico (por exemplo uma imagem do disco): aceito
+    let clone = work.path().join("clone.img");
+    std::fs::copy(&img, &clone).unwrap();
+    eng.relink(&job, clone.to_str().unwrap(), false).unwrap();
+    // mesmo tamanho, mas outro conteúdo inicial: recusado, a menos que force
+    let outro = work.path().join("outro.img");
+    let mut bytes = std::fs::read(&img).unwrap();
+    bytes[0..16].copy_from_slice(b"OUTRO DISCO....!");
+    std::fs::write(&outro, &bytes).unwrap();
+    let e = eng
+        .relink(&job, outro.to_str().unwrap(), false)
+        .unwrap_err();
+    assert!(e.to_string().contains("conteúdo inicial"), "{e}");
+    eng.relink(&job, outro.to_str().unwrap(), true).unwrap();
+    // tamanho diferente: recusado
+    let menor = work.path().join("menor.img");
+    std::fs::write(&menor, &bytes[..bytes.len() / 2]).unwrap();
+    let e = eng
+        .relink(&job, menor.to_str().unwrap(), false)
+        .unwrap_err();
+    assert!(e.to_string().contains("bytes"), "{e}");
+}
+
+/// Fonte que "some" a partir de certo ponto, como um disco puxado da porta USB.
+struct Flaky {
+    inner: MemSource,
+    broken_from: u64,
+}
+
+impl source::Source for Flaky {
+    fn size(&self) -> u64 {
+        self.inner.size()
+    }
+    fn read_at(&self, off: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        if off + buf.len() as u64 > self.broken_from {
+            return Err(std::io::Error::other("dispositivo removido"));
+        }
+        self.inner.read_at(off, buf)
+    }
+}
+
+#[test]
+fn varredura_pausa_quando_o_disco_some_e_retoma_do_ponto_certo() {
+    use guara_core::scan::{self, Outcome};
+    let mib = 1024 * 1024usize;
+    let mut disk = vec![0u8; 64 * mib];
+    let png = |extra: usize| {
+        let mut v = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        for (ty, data) in [
+            (&b"IHDR"[..], vec![0, 0, 0, 8, 0, 0, 0, 8, 8, 2, 0, 0, 0]),
+            (&b"IDAT"[..], vec![5u8; extra]),
+            (&b"IEND"[..], vec![]),
+        ] {
+            v.extend((data.len() as u32).to_be_bytes());
+            v.extend(ty);
+            v.extend(&data);
+            v.extend([0, 0, 0, 0]);
+        }
+        v
+    };
+    let (a, b) = (png(3000), png(4000));
+    disk[2 * mib..2 * mib + a.len()].copy_from_slice(&a); // antes da falha
+    disk[50 * mib..50 * mib + b.len()].copy_from_slice(&b); // depois da falha
+    let flaky = Flaky {
+        inner: MemSource(disk.clone()),
+        broken_from: 16 * mib as u64,
+    };
+    let mut sink = Collect::default();
+    let opts = ScanOptions::default();
+    let out = scan::run(&flaky, &opts, None, &[], &|| false, &mut sink);
+    let Outcome::Interrupted(cp) = out else {
+        panic!("deveria ter parado por perda do dispositivo")
+    };
+    assert!(cp.io_lost, "deveria marcar perda de E/S");
+    assert_eq!(sink.found.len(), 1, "só o PNG anterior à falha");
+    // o ponto de retomada não pula os blocos que falharam
+    assert!(cp.ranges[0].next <= 16 * mib as u64 + 8 * mib as u64);
+    // disco volta: retoma e acha o resto, sem duplicar o primeiro
+    let healthy = MemSource(disk);
+    let before = sink.found.clone();
+    let out = scan::run(&healthy, &opts, Some(cp), &before, &|| false, &mut sink);
+    assert!(matches!(out, Outcome::Completed));
+    let mut offs: Vec<_> = sink.found.iter().filter_map(|f| f.first_offset()).collect();
+    offs.sort();
+    assert_eq!(offs, vec![2 * mib as u64, 50 * mib as u64]);
+}
+
+#[test]
+fn varredura_salva_sessao_sozinha_e_ela_reabre() {
+    init();
+    let Some(dir) = fixtures() else { return };
+    let img = dir.join("ntfs.img");
+    let eng = service::Engine::new();
+    let job = eng
+        .start_scan(img.to_str().unwrap(), ScanOptions::default())
+        .unwrap();
+    wait_done(&eng, &job);
+    // o salvamento final roda numa thread própria
+    let mut item = None;
+    for _ in 0..200 {
+        let list = eng.sessions_list();
+        item = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["target"] == img.to_str().unwrap() && v["status"] == "concluída")
+            .cloned();
+        if item.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    let item = item.expect("sessão automática listada");
+    assert_eq!(item["found"], 7);
+    let path = item["path"].as_str().unwrap().to_string();
+    assert!(std::path::Path::new(&path).exists());
+    // reabre como qualquer sessão
+    let job2 = eng.load_session(&path).unwrap();
+    let st = eng.status(&job2).unwrap();
+    assert_eq!(
+        (
+            st["status"].as_str().unwrap(),
+            st["found"].as_u64().unwrap(),
+            st["source"].as_bool().unwrap()
+        ),
+        ("done", 7, true)
+    );
+    // apagar
+    eng.session_delete(&path).unwrap();
+    assert!(!std::path::Path::new(&path).exists());
+    assert!(eng.session_delete("/etc/passwd").is_err());
+}
+
+// ------------------------------------------------------------------ organização e espaço
+
+#[test]
+fn recuperar_organiza_por_tipo_data_ou_tudo_junto() {
+    let Some(dir) = fixtures() else { return };
+    let img = dir.join("fat32.img");
+    let res = scan_path(
+        &img,
+        &ScanOptions {
+            mode: ScanMode::Quick,
+            ..Default::default()
+        },
+    );
+    let src = source::open_path(&img).unwrap();
+    let files: Vec<&Found> = res.found.iter().collect();
+    for (layout, esperado) in [
+        (
+            recover::RecoverLayout::Folders,
+            "Recuperados/Documentos/Trabalho/_elatorio.pdf",
+        ),
+        (recover::RecoverLayout::Type, "Documentos/_elatorio.pdf"),
+        (recover::RecoverLayout::Flat, "_elatorio.pdf"),
+    ] {
+        let out = tempfile::tempdir().unwrap();
+        recover::recover_with(
+            src.as_ref(),
+            &files,
+            out.path(),
+            layout,
+            &|| false,
+            &mut |_, _, _| {},
+        )
+        .unwrap();
+        let achou = std::fs::read_dir(out.path()).is_ok()
+            && walk_names(out.path()).iter().any(|p| {
+                p.ends_with(esperado) || p.ends_with(&esperado.replace("_elatorio", "relatorio"))
+            });
+        assert!(achou, "{layout:?}: {:?}", walk_names(out.path()));
+    }
+    // por data: usa a data de modificação (ano/mês)
+    let out = tempfile::tempdir().unwrap();
+    recover::recover_with(
+        src.as_ref(),
+        &files,
+        out.path(),
+        recover::RecoverLayout::Date,
+        &|| false,
+        &mut |_, _, _| {},
+    )
+    .unwrap();
+    let nomes = walk_names(out.path());
+    assert!(
+        nomes
+            .iter()
+            .any(|p| p.matches('/').count() >= 2 && p.chars().take(4).all(|c| c.is_ascii_digit())),
+        "{nomes:?}"
+    );
+}
+
+fn walk_names(root: &std::path::Path) -> Vec<String> {
+    let mut v = vec![];
+    fn go(d: &std::path::Path, root: &std::path::Path, v: &mut Vec<String>) {
+        for e in std::fs::read_dir(d).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                go(&p, root, v);
+            } else {
+                v.push(
+                    p.strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                );
+            }
+        }
+    }
+    go(root, root, &mut v);
+    v
+}
+
+#[test]
+fn espaco_insuficiente_no_destino_e_avisado_antes_de_copiar() {
+    init();
+    let Some(dir) = fixtures() else { return };
+    let img = dir.join("ntfs.img");
+    let tmp = sessao_formato_v0_1_0(&img, img.to_str().unwrap());
+    // sessão com um arquivo "enorme" (1 EB)
+    let mut v: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(tmp.path()).unwrap()).unwrap();
+    v["found"][0]["size"] = serde_json::json!(1u64 << 60);
+    std::fs::write(tmp.path(), serde_json::to_vec(&v).unwrap()).unwrap();
+    let eng = service::Engine::new();
+    let job = eng.load_session(tmp.path().to_str().unwrap()).unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let e = eng
+        .start_recover(
+            &job,
+            None,
+            None,
+            out.path().to_str().unwrap(),
+            recover::RecoverLayout::Folders,
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("Espaço insuficiente"), "{e}");
+    assert!(recover::free_space(out.path()).unwrap_or(0) > 0);
 }

@@ -108,8 +108,16 @@ function askForm({ title, text, fields, ok = 'OK' }) {
   return new Promise((resolve) => {
     const d = $('#dlg');
     d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2><p>${text || ''}</p>
-      ${fields.map((f) => `<label class="fld"><span>${esc(f.label)}</span>${f.multiline ? `<textarea class="input" name="${f.name}" rows="3" placeholder="${esc(f.placeholder || '')}">${esc(f.value || '')}</textarea>` : `<input class="input" name="${f.name}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}" autocomplete="off">`}</label>`).join('')}
+      ${fields.map((f) => `<label class="fld"><span>${esc(f.label)}</span>${
+        f.options ? `<select class="select" name="${f.name}">${f.options.map(([v, l]) => `<option value="${esc(v)}" ${v === f.value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
+        : f.multiline ? `<textarea class="input" name="${f.name}" rows="3" placeholder="${esc(f.placeholder || '')}">${esc(f.value || '')}</textarea>`
+        : `<span class="row" style="flex-wrap:nowrap"><input class="input" name="${f.name}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}" autocomplete="off">${f.pick && tauri?.dialog ? `<button type="button" class="btn" data-pick="${f.name}">Escolher…</button>` : ''}</span>`}</label>`).join('')}
       <menu><button class="btn" value="cancel">Cancelar</button><button class="btn primary" value="ok">${esc(ok)}</button></menu></form>`;
+    d.querySelectorAll('[data-pick]').forEach((b) => (b.onclick = async () => {
+      const f = fields.find((x) => x.name === b.dataset.pick);
+      const r = await tauri.dialog.open(f.pick);
+      if (r) d.querySelector(`[name="${f.name}"]`).value = Array.isArray(r) ? r[0] : r;
+    }));
     d.onclose = () => {
       if (d.returnValue !== 'ok') return resolve(null);
       const out = {};
@@ -180,6 +188,28 @@ function renderSide() {
     <li><button class="dev" data-j="${i}" aria-current="${S.job === s.job}"><span class="ico">${icon('default')}</span>
       <span><span class="t">${esc(s.label)}</span><span class="s">${esc(s.target)}</span></span></button></li>`).join('');
   sl.querySelectorAll('.dev').forEach((b) => (b.onclick = () => { openJob(S.sessions[+b.dataset.j]); setMenu(false); }));
+  const rl = $('#recentList');
+  rl.dataset.empty = 'Nada salvo ainda';
+  rl.innerHTML = (S.recent || []).map((r, i) => `
+    <li><button class="dev" data-r="${i}" title="${esc(r.path)}"><span class="ico">${icon('default')}</span>
+      <span><span class="t">${esc((r.target || '').split(/[\\/]/).pop() || 'Sessão')}</span><span class="s">${r.found.toLocaleString('pt-BR')} arquivos · ${esc(r.status)} · ${new Date(r.saved_at * 1000).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span></span></button></li>`).join('');
+  rl.querySelectorAll('.dev').forEach((b) => (b.onclick = () => openRecent(S.recent[+b.dataset.r])));
+}
+
+async function loadRecent() {
+  try { S.recent = await rpc('sessions_list'); } catch { S.recent = []; }
+  renderSide();
+}
+
+async function openRecent(r) {
+  setMenu(false);
+  try {
+    const { job } = await rpc('session_load', { path: r.path });
+    const st = await rpc('status', { job });
+    const s = { job, target: st.target, label: 'Sessão: ' + st.target.split(/[\\/]/).pop() };
+    S.sessions.unshift(s);
+    openJob(s);
+  } catch (e) { info({ title: 'Não foi possível abrir a sessão', html: `<p>${esc(e.message)}</p>` }); }
 }
 
 $('#openImageBtn').onclick = async () => {
@@ -415,6 +445,7 @@ async function tick() {
   // continua consultando enquanto a varredura roda ou as datas/EXIF ainda estão sendo lidas
   if (st.status !== 'running' && !st.enriching) {
     stopPoll();
+    loadRecent();
     if (st.status === 'error') toast(st.error);
   } else if (!S.poll) {
     S.poll = setInterval(tick, 700);
@@ -446,7 +477,7 @@ function paintStatus() {
   const eta = rate && running ? dur((p.total - p.done) / rate) : null;
   const enr = st.enriching ? `<span class="sub">Lendo datas e metadados das fotos… ${st.enriching.done.toLocaleString('pt-BR')}/${st.enriching.total.toLocaleString('pt-BR')}</span>` : '';
   const buttons = running ? '<button class="btn sm" data-act="pause">Pausar</button><button class="btn sm danger" data-act="stop">Parar</button>'
-    : st.status === 'paused' ? '<button class="btn sm primary" data-act="resume">Continuar</button>' : '';
+    : st.status === 'paused' ? `<button class="btn sm primary" data-act="${st.source === false ? 'reconnect' : 'resume'}">${st.source === false ? 'Reconectar o disco' : 'Continuar'}</button><button class="btn sm" data-act="relink">Escolher a origem…</button>` : '';
   const relink = st.source === false ? '<button class="btn sm primary" data-act="relink">Escolher a origem…</button>' : '';
   const tools = relink + (!running && st.found ? '<button class="btn sm" data-act="csv">Exportar CSV</button><button class="btn sm" data-act="report">Relatório</button><button class="btn sm" data-act="save">Salvar sessão…</button>' : '');
   if (running || st.status === 'paused') {
@@ -468,17 +499,58 @@ function paintStatus() {
     + (st.error ? `<div class="notice bad">${warnSvg}<div>${esc(st.error)}</div></div>` : ''));
 }
 
+async function chooseSource() {
+  let cands = [];
+  try { cands = await rpc('session_candidates', { job: S.job }); } catch { /* segue só com o campo manual */ }
+  const st = S.status || {};
+  const size = st.layout?.size;
+  const d = $('#dlg');
+  const badge = (c) => (c.same_content === true ? '<span class="pill ok">mesmo disco</span>'
+    : c.same_content === false ? '<span class="pill warn">tamanho igual, conteúdo diferente</span>'
+    : c.same_size ? '<span class="pill accent">mesmo tamanho (precisa de administrador para conferir)</span>' : '');
+  d.innerHTML = `<form method="dialog"><h2>Escolher a origem</h2>
+    <p>Esta sessão foi feita sobre <code>${esc(st.target || '')}</code>${size ? ` (${human(size)})` : ''}. Escolha o disco que voltou ou uma imagem dele.</p>
+    <div class="cand">${cands.map((c, i) => `<button type="button" class="dev" data-c="${i}"><span class="ico">${icon(c.device.kind)}</span><span><span class="t">${esc(c.device.name)}</span><span class="s">${esc(c.device.path)} · ${human(c.device.size)} ${badge(c)}</span></span></button>`).join('') || '<p class="sub">Nenhum disco encontrado. Informe o caminho abaixo.</p>'}</div>
+    <label class="fld"><span>Ou o caminho de um dispositivo ou imagem</span><input class="input" id="srcPath" name="path" placeholder="/dev/sdb ou /caminho/imagem.img" value="${esc(st.source_path || st.target || '')}"></label>
+    <label class="check"><input type="checkbox" name="force"><span>Usar mesmo assim, mesmo que o conteúdo inicial seja diferente (por exemplo, uma cópia editada)</span></label>
+    <menu><button class="btn" value="cancel">Cancelar</button><button class="btn primary" value="ok">Usar esta origem</button></menu></form>`;
+  d.querySelectorAll('.cand .dev').forEach((b) => (b.onclick = () => {
+    d.querySelectorAll('.cand .dev').forEach((x) => x.setAttribute('aria-current', 'false'));
+    b.setAttribute('aria-current', 'true');
+    $('#srcPath', d).value = cands[+b.dataset.c].device.path;
+  }));
+  d.onclose = async () => {
+    if (d.returnValue !== 'ok') return;
+    const path = $('#srcPath', d).value.trim();
+    const force = d.querySelector('[name=force]').checked;
+    if (!path) return;
+    try {
+      await rpc('session_relink', { job: S.job, path, force });
+      toast('Origem reconectada');
+      const cur = { job: S.job, target: st.target, label: S.sessions.find((x) => x.job === S.job)?.label || 'Sessão' };
+      openJob(cur);
+    } catch (err) { info({ title: 'Não foi possível usar essa origem', html: `<p>${esc(err.message)}</p>` }); }
+  };
+  d.showModal();
+}
+
 async function onProgressClick(e) {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (!act) return;
   if (act === 'pause') { await rpc('scan_pause', { job: S.job }); toast('Pausando…'); }
   else if (act === 'stop') await rpc('scan_stop', { job: S.job });
-  else if (act === 'resume') { await rpc('scan_resume', { job: S.job }); stopPoll(); S.poll = setInterval(tick, 500); tick(); }
-  else if (act === 'relink') {
-    const path = await ask({ title: 'Escolher a origem', text: `Esta sessão foi feita sobre <code>${esc(S.status?.target || '')}</code>. Informe o dispositivo ou a imagem do mesmo disco para pré-visualizar e recuperar.`, value: S.status?.target || '', ok: 'Usar esta origem' });
-    if (path) {
-      try { await rpc('session_relink', { job: S.job, path }); toast('Origem reconectada'); const cur = { job: S.job, target: S.status.target, label: S.sessions.find((x) => x.job === S.job)?.label || 'Sessão' }; openJob(cur); } catch (err) { info({ title: 'Não foi possível usar essa origem', html: `<p>${esc(err.message)}</p>` }); }
-    }
+  else if (act === 'resume') {
+    try { await rpc('scan_resume', { job: S.job }); stopPoll(); S.poll = setInterval(tick, 500); tick(); }
+    catch (err) { toast(err.message); chooseSource(); }
+  } else if (act === 'reconnect') {
+    try {
+      const r = await rpc('session_reconnect', { job: S.job });
+      toast(r.renamed ? `Disco encontrado como ${r.renamed}` : 'Disco reconectado');
+      const cur = { job: S.job, target: S.status.target, label: S.sessions.find((x) => x.job === S.job)?.label || 'Sessão' };
+      openJob(cur);
+    } catch { chooseSource(); }
+  }
+  else if (act === 'relink') { chooseSource();
   } else if (act === 'csv') {
     const path = await ask({ title: 'Exportar para CSV', text: 'Grava os arquivos da vista atual (com os filtros aplicados). O arquivo abre direto no Excel.', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-achados.csv', ok: 'Exportar' });
     if (path) { try { const r = await rpc('export_csv', { job: S.job, path, query: EX?.query() }); toast(`${r.rows.toLocaleString('pt-BR')} linhas gravadas`); } catch (err) { toast(err.message); } }
@@ -501,22 +573,25 @@ async function onProgressClick(e) {
 }
 
 async function recover(sel) {
-  const dest = await ask({
+  const f = await askForm({
     title: 'Recuperar para…',
     text: 'Escolha uma pasta em <b>outro disco</b>. O Guará nunca grava no disco de origem, para não sobrescrever o que ainda dá para salvar.',
-    value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'Guara-Recuperados',
     ok: 'Recuperar',
-    pick: { directory: true, multiple: false },
+    fields: [
+      { name: 'dest', label: 'Pasta de destino', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'Guara-Recuperados', pick: { directory: true, multiple: false } },
+      { name: 'layout', label: 'Organizar os arquivos', value: 'folders', options: [['folders', 'Pastas originais (e por tipo quando não há pasta)'], ['type', 'Por tipo (Fotos, Documentos, Vídeos...)'], ['date', 'Por data (ano e mês)'], ['flat', 'Tudo na mesma pasta']] },
+    ],
   });
-  if (!dest) return;
+  if (!f || !f.dest) return;
+  const dest = f.dest;
   try {
-    const { job } = await rpc('recover_start', { job: S.job, dest, ...sel });
+    const { job } = await rpc('recover_start', { job: S.job, dest, layout: f.layout, ...sel });
     watchAux(job, 'Recuperando arquivos', (st) => {
       const r = st.report || {};
       const ok = (r.recovered || []).length, bad = (r.failed || []).length;
       return `<p><b>${ok}</b> arquivo(s) salvos em <code>${esc(dest)}</code> (${human(r.total_bytes)}).</p>
         ${bad ? `<div class="notice">${warnSvg}<div>${bad} arquivo(s) não puderam ser gravados.</div></div>` : ''}
-        <p class="sub">O arquivo <code>guara-manifesto.json</code> lista o SHA-256 de cada arquivo para você conferir a integridade.</p>`;
+        <p class="sub">O arquivo <code>guara-manifesto.json</code> lista MD5, SHA-1 e SHA-256 de cada arquivo para você conferir a integridade.</p>`;
     });
   } catch (e) { info({ title: 'Não foi possível recuperar', html: `<p>${esc(e.message)}</p>` }); }
 }
@@ -563,5 +638,6 @@ async function openJobFromList(s) { openJob(s); }
     return;
   }
   await loadDevices();
+  await loadRecent();
   renderHome();
 })();

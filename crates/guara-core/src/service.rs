@@ -64,6 +64,12 @@ pub struct Job {
     cancel: AtomicBool,
     stop_requested: AtomicBool,
     src: Mutex<Option<Arc<dyn Source>>>,
+    /// Caminho atualmente usado para ler a origem (pode mudar se o disco voltar com outro nome).
+    src_path: Mutex<String>,
+    /// Impressão digital do disco (reconhecer o mesmo disco depois de reconectar).
+    fingerprint: Mutex<Option<String>>,
+    /// Arquivo de sessão salvo automaticamente.
+    session_file: Mutex<Option<PathBuf>>,
     st: Mutex<State>,
 }
 
@@ -78,11 +84,14 @@ impl Job {
         Arc::new(Job {
             id,
             kind,
-            target,
+            target: target.clone(),
             opts,
             cancel: AtomicBool::new(false),
             stop_requested: AtomicBool::new(false),
             src: Mutex::new(src),
+            src_path: Mutex::new(target.clone()),
+            fingerprint: Mutex::new(None),
+            session_file: Mutex::new(None),
             st: Mutex::new(State {
                 status: Status::Running,
                 progress: Progress::default(),
@@ -197,7 +206,10 @@ impl Engine {
 
     pub fn start_scan(&self, path: &str, opts: ScanOptions) -> Result<String> {
         let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
+        let fp = crate::source::fingerprint(src.as_ref());
         let job = self.register(JobKind::Scan, path.to_string(), opts, Some(src));
+        *job.fingerprint.lock().unwrap() = fp;
+        *job.session_file.lock().unwrap() = Some(new_session_path(path));
         spawn_scan(job.clone(), None);
         Ok(job.id.clone())
     }
@@ -217,17 +229,35 @@ impl Engine {
 
     pub fn resume(&self, id: &str) -> Result<()> {
         let j = self.job(id)?;
-        if j.source().is_none() {
-            return Err(no_source());
-        }
-        let cp = {
-            let mut s = j.st.lock().unwrap();
+        let io_lost = {
+            let s = j.st.lock().unwrap();
             if s.status != Status::Paused {
                 return Err(Error::msg("a varredura não está pausada"));
             }
-            s.status = Status::Running;
-            s.checkpoint.take()
+            s.checkpoint.as_ref().is_some_and(|c| c.io_lost)
         };
+        // Sem origem, ou depois de uma desconexão: reabre o disco (mesmo com outro nome).
+        if j.source().is_none() || io_lost {
+            self.reconnect(&j).map_err(|e| {
+                Error::msg(format!(
+                    "A origem desta sessão não está disponível ({e}). Reconecte o disco ou escolha a origem para continuar."
+                ))
+            })?;
+        }
+        let cp = {
+            let mut s = j.st.lock().unwrap();
+            s.status = Status::Running;
+            s.warnings
+                .retain(|w| !w.starts_with("A leitura do dispositivo"));
+            let mut cp = s.checkpoint.take();
+            if let Some(c) = cp.as_mut() {
+                c.io_lost = false;
+            }
+            cp
+        };
+        if j.session_file.lock().unwrap().is_none() {
+            *j.session_file.lock().unwrap() = Some(new_session_path(&j.target));
+        }
         j.cancel.store(false, Ordering::Relaxed);
         j.stop_requested.store(false, Ordering::Relaxed);
         spawn_scan(j, cp);
@@ -261,6 +291,8 @@ impl Engine {
             "report": s.report,
             "elapsed": elapsed,
             "source": j.source().is_some(),
+            "source_path": j.src_path.lock().unwrap().clone(),
+            "session_file": j.session_file.lock().unwrap().as_ref().map(|p| p.to_string_lossy().to_string()),
             "hits": s.hits.len(),
             "enriching": s.enrich.map(|(d, t)| json!({ "done": d, "total": t })),
         }))
@@ -337,6 +369,7 @@ impl Engine {
         ids: Option<Vec<u64>>,
         filter: Option<Query>,
         dest: &str,
+        layout: recover::RecoverLayout,
     ) -> Result<String> {
         let sj = self.job(scan_id)?;
         let src = sj.source().ok_or_else(no_source)?;
@@ -355,6 +388,16 @@ impl Engine {
             return Err(Error::msg("nenhum arquivo selecionado"));
         }
         let dest_path = PathBuf::from(dest);
+        let total: u64 = files.iter().map(|f| f.size).sum();
+        if let Some(free) = recover::free_space(&dest_path) {
+            if total.saturating_add(64 * 1024 * 1024) > free {
+                return Err(Error::msg(format!(
+                    "Espaço insuficiente no destino: os arquivos somam {} e há {} livres. Escolha outro disco ou recupere menos arquivos.",
+                    human_bytes(total),
+                    human_bytes(free)
+                )));
+            }
+        }
         recover::check_destination(Some(Path::new(&sj.target)), &dest_path)?;
         let job = self.register(
             JobKind::Recover,
@@ -375,7 +418,14 @@ impl Engine {
                 };
             };
             let refs: Vec<&Found> = files.iter().collect();
-            let res = recover::recover(src.as_ref(), &refs, &dest_path, &cancelled, &mut prog);
+            let res = recover::recover_with(
+                src.as_ref(),
+                &refs,
+                &dest_path,
+                layout,
+                &cancelled,
+                &mut prog,
+            );
             let mut s = j2.st.lock().unwrap();
             match res {
                 Ok(rep) => {
@@ -597,21 +647,7 @@ impl Engine {
 
     pub fn save_session(&self, id: &str, path: &str) -> Result<()> {
         let j = self.job(id)?;
-        let s = j.st.lock().unwrap();
-        let data = SessionFile {
-            version: 1,
-            target: j.target.clone(),
-            options: j.opts.clone(),
-            found: s.found.clone(),
-            checkpoint: s.checkpoint.clone(),
-            layout: s.layout.clone(),
-            warnings: s.warnings.clone(),
-            done: s.status == Status::Done,
-            recoveries: s.recoveries.clone(),
-            started_unix: s.started_unix,
-        };
-        crate::owner::write_owned(Path::new(path), serde_json::to_vec(&data)?)?;
-        Ok(())
+        write_session(&j, Path::new(path))
     }
 
     pub fn load_session(&self, path: &str) -> Result<String> {
@@ -629,18 +665,17 @@ impl Engine {
                 "O arquivo {path} não é uma sessão do Guará válida (ou foi criado por uma versão incompatível): {e}"
             ))
         })?;
-        // A sessão abre mesmo sem a origem: dá para navegar, exportar e gerar relatório.
-        // Pré-visualização e recuperação voltam quando a origem for reconectada.
-        let (src, missing) = match open_path(Path::new(&data.target)) {
-            Ok(s) => (Some(s), None),
-            Err(e) => (None, Some(open_error(&data.target, e).to_string())),
-        };
         let job = self.register(
             JobKind::Scan,
             data.target.clone(),
             data.options.clone(),
-            src,
+            None,
         );
+        *job.fingerprint.lock().unwrap() = data.fingerprint.clone();
+        *job.src_path.lock().unwrap() = data
+            .source_path
+            .clone()
+            .unwrap_or_else(|| data.target.clone());
         {
             let mut s = job.st.lock().unwrap();
             for (i, f) in data.found.iter().enumerate() {
@@ -658,42 +693,178 @@ impl Engine {
                 Status::Paused
             };
         }
-        if let Some(m) = missing {
-            job.st.lock().unwrap().warnings.push(format!(
-                "A origem {} não está disponível agora ({m}). Você pode navegar, exportar e gerar relatório; para pré-visualizar e recuperar, reconecte o disco ou escolha a origem.",
+        // A sessão sempre abre. Tenta religar o disco (inclusive se ele voltou com outro nome);
+        // sem a origem ainda dá para navegar, exportar e gerar relatório.
+        match self.reconnect(&job) {
+            Ok(Some(nome)) => job.st.lock().unwrap().warnings.push(format!(
+                "O disco foi reconhecido de novo como {nome} (o nome mudou desde a varredura)."
+            )),
+            Ok(None) => {}
+            Err(e) => job.st.lock().unwrap().warnings.push(format!(
+                "A origem {} não está disponível agora ({e}). Você pode navegar, exportar e gerar relatório; para pré-visualizar e recuperar, reconecte o disco ou escolha a origem.",
                 data.target
-            ));
+            )),
         }
+        // continua salvando automaticamente no mesmo arquivo se a varredura for retomada
+        *job.session_file.lock().unwrap() = Some(PathBuf::from(path));
         if data.done {
             spawn_enrich(job.clone());
         }
         Ok(job.id.clone())
     }
 
-    /// Aponta uma sessão carregada para a origem (disco ou imagem) atual.
-    pub fn relink(&self, id: &str, path: &str) -> Result<()> {
-        let j = self.job(id)?;
-        let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
-        {
-            let s = j.st.lock().unwrap();
-            if let Some(l) = &s.layout {
-                if l.size != 0 && l.size != src.size() {
-                    return Err(Error::msg(format!(
-                        "Essa origem tem {} bytes, mas a sessão foi feita sobre um disco de {} bytes. Escolha o mesmo disco ou uma imagem dele.",
-                        src.size(),
-                        l.size
-                    )));
+    /// Reabre a origem da sessão: tenta o caminho atual e o original e, se o disco voltou com
+    /// outro nome, procura entre os dispositivos conectados o que tem o mesmo conteúdo.
+    /// `Ok(Some(caminho))` quando achou o disco num caminho diferente do esperado.
+    fn reconnect(&self, j: &Arc<Job>) -> Result<Option<String>> {
+        let fp = j.fingerprint.lock().unwrap().clone();
+        let size =
+            j.st.lock()
+                .unwrap()
+                .layout
+                .as_ref()
+                .map(|l| l.size)
+                .unwrap_or(0);
+        let current = j.src_path.lock().unwrap().clone();
+        let mut tried = vec![current.clone()];
+        if j.target != current {
+            tried.push(j.target.clone());
+        }
+        let mut last_err = None;
+        for path in &tried {
+            match open_path(Path::new(path)) {
+                Ok(src) if crate::reconnect::matches(src.as_ref(), size, fp.as_deref()) => {
+                    *j.src.lock().unwrap() = Some(src);
+                    *j.src_path.lock().unwrap() = path.clone();
+                    return Ok(None);
                 }
+                Ok(_) => last_err = Some(format!("{path} agora é outro disco")),
+                Err(e) => last_err = Some(open_error(path, e).to_string()),
             }
         }
+        if let Some((path, src)) =
+            crate::reconnect::find_matching_source(size, fp.as_deref(), &tried)
+        {
+            *j.src.lock().unwrap() = Some(src);
+            *j.src_path.lock().unwrap() = path.clone();
+            return Ok(Some(path));
+        }
+        Err(Error::msg(
+            last_err.unwrap_or_else(|| "disco não encontrado".into()),
+        ))
+    }
+
+    /// Aponta uma sessão carregada para a origem (disco ou imagem) atual.
+    /// Recusa uma origem que não seja o mesmo disco, a menos que `force`.
+    pub fn relink(&self, id: &str, path: &str, force: bool) -> Result<()> {
+        let j = self.job(id)?;
+        let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
+        let fp = j.fingerprint.lock().unwrap().clone();
+        let size =
+            j.st.lock()
+                .unwrap()
+                .layout
+                .as_ref()
+                .map(|l| l.size)
+                .unwrap_or(0);
+        if size != 0 && src.size() != size && !force {
+            return Err(Error::msg(format!(
+                "Essa origem tem {} bytes, mas a sessão foi feita sobre um disco de {} bytes. Escolha o mesmo disco ou uma imagem dele.",
+                src.size(),
+                size
+            )));
+        }
+        if !force && fp.is_some() && !crate::reconnect::matches(src.as_ref(), 0, fp.as_deref()) {
+            return Err(Error::msg(
+                "O conteúdo inicial dessa origem é diferente do disco da sessão (outra tabela de partições ou outro disco). Se tem certeza, use a opção de usar assim mesmo.",
+            ));
+        }
+        if fp.is_none() {
+            *j.fingerprint.lock().unwrap() = crate::source::fingerprint(src.as_ref());
+        }
         *j.src.lock().unwrap() = Some(src);
+        *j.src_path.lock().unwrap() = path.to_string();
         j.st.lock()
             .unwrap()
             .warnings
-            .retain(|w| !w.starts_with("A origem "));
+            .retain(|w| !w.starts_with("A origem ") && !w.starts_with("O disco foi reconhecido"));
         if j.st.lock().unwrap().status == Status::Done {
             spawn_enrich(j);
         }
+        Ok(())
+    }
+
+    /// Discos conectados que podem ser a origem desta sessão (mesmo tamanho primeiro).
+    pub fn candidates(&self, id: &str) -> Result<Value> {
+        let j = self.job(id)?;
+        let fp = j.fingerprint.lock().unwrap().clone();
+        let size =
+            j.st.lock()
+                .unwrap()
+                .layout
+                .as_ref()
+                .map(|l| l.size)
+                .unwrap_or(0);
+        let mut out: Vec<Value> = vec![];
+        for d in device::list_devices() {
+            let same_size = size != 0 && d.size == size;
+            let same_content = if same_size && d.readable {
+                open_path(Path::new(&d.path))
+                    .ok()
+                    .map(|s| crate::reconnect::matches(s.as_ref(), size, fp.as_deref()))
+            } else {
+                None
+            };
+            out.push(json!({ "device": d, "same_size": same_size, "same_content": same_content }));
+        }
+        out.sort_by_key(|v| {
+            std::cmp::Reverse((
+                v["same_content"].as_bool() == Some(true),
+                v["same_size"].as_bool() == Some(true),
+            ))
+        });
+        Ok(json!(out))
+    }
+
+    // ---------------------------------------------------------------- sessões automáticas
+
+    /// Sessões salvas automaticamente (mais recentes primeiro).
+    pub fn sessions_list(&self) -> Value {
+        let dir = sessions_dir();
+        let mut items: Vec<Value> = vec![];
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if let Some(base) = name.strip_suffix(".meta.json") {
+                    let sess = dir.join(format!("{base}.json"));
+                    if !sess.exists() {
+                        continue;
+                    }
+                    if let Ok(mut v) = std::fs::read(e.path())
+                        .map_err(|_| ())
+                        .and_then(|b| serde_json::from_slice::<Value>(&b).map_err(|_| ()))
+                    {
+                        v["path"] = json!(sess.to_string_lossy());
+                        items.push(v);
+                    }
+                }
+            }
+        }
+        items.sort_by_key(|v| std::cmp::Reverse(v["saved_at"].as_i64().unwrap_or(0)));
+        items.truncate(30);
+        json!(items)
+    }
+
+    /// Apaga uma sessão automática (e a miniatura de metadados).
+    pub fn session_delete(&self, path: &str) -> Result<()> {
+        let p = Path::new(path);
+        if p.parent() != Some(sessions_dir().as_path()) {
+            return Err(Error::msg(
+                "só sessões automáticas podem ser apagadas por aqui",
+            ));
+        }
+        let _ = std::fs::remove_file(p.with_extension("meta.json"));
+        std::fs::remove_file(p)?;
         Ok(())
     }
 
@@ -815,7 +986,12 @@ impl Engine {
                     .filter(|v| !v.is_null())
                     .map(serde_json::from_value)
                     .transpose()?;
-                json!({ "job": self.start_recover(&s("job")?, ids, filter, &s("dest")?)? })
+                let layout = p
+                    .get("layout")
+                    .and_then(|v| v.as_str())
+                    .and_then(recover::RecoverLayout::parse)
+                    .unwrap_or_default();
+                json!({ "job": self.start_recover(&s("job")?, ids, filter, &s("dest")?, layout)? })
             }
             "image_start" => json!({ "job": self.start_image(&s("path")?, &s("dest")?)? }),
             "session_save" => {
@@ -823,7 +999,18 @@ impl Engine {
                 json!({})
             }
             "session_relink" => {
-                self.relink(&s("job")?, &s("path")?)?;
+                let force = p.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+                self.relink(&s("job")?, &s("path")?, force)?;
+                json!({})
+            }
+            "session_reconnect" => {
+                let j = self.job(&s("job")?)?;
+                json!({ "renamed": self.reconnect(&j)? })
+            }
+            "session_candidates" => self.candidates(&s("job")?)?,
+            "sessions_list" => self.sessions_list(),
+            "session_delete" => {
+                self.session_delete(&s("path")?)?;
                 json!({})
             }
             "session_load" => json!({ "job": self.load_session(&s("path")?)? }),
@@ -855,6 +1042,10 @@ struct SessionFile {
     recoveries: Vec<recover::RecoverReport>,
     #[serde(default)]
     started_unix: Option<i64>,
+    #[serde(default)]
+    fingerprint: Option<String>,
+    #[serde(default)]
+    source_path: Option<String>,
 }
 
 use crate::explorer::cat_key;
@@ -883,6 +1074,9 @@ fn open_error(path: &str, e: std::io::Error) -> Error {
 }
 
 fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
+    // Salva a sessão sozinho enquanto a varredura roda (e ao terminar/pausar).
+    let saver = job.clone();
+    std::thread::spawn(move || autosave_loop(saver));
     std::thread::spawn(move || {
         let Some(src) = job.source() else {
             let mut s = job.st.lock().unwrap();
@@ -912,6 +1106,9 @@ fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
                     s.status = Status::Stopped;
                 } else {
                     s.status = Status::Paused;
+                    if cp.io_lost {
+                        s.warnings.push("A leitura do dispositivo falhou repetidamente: ele provavelmente foi desconectado. A varredura foi pausada sem perder nada. Reconecte o disco e clique em Continuar.".into());
+                    }
                     s.checkpoint = Some(cp);
                 }
             }
@@ -1165,5 +1362,118 @@ impl Engine {
             total,
             partial,
         })
+    }
+}
+
+// ---------------------------------------------------------------- sessões automáticas
+
+fn sessions_dir() -> PathBuf {
+    crate::settings::config_dir().join("sessoes")
+}
+
+fn new_session_path(target: &str) -> PathBuf {
+    let name: String = Path::new(target)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "disco".into())
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    sessions_dir().join(format!("{name}-{t}.json"))
+}
+
+fn snapshot(j: &Job) -> SessionFile {
+    let s = j.st.lock().unwrap();
+    SessionFile {
+        version: 1,
+        target: j.target.clone(),
+        options: j.opts.clone(),
+        found: s.found.clone(),
+        checkpoint: s.checkpoint.clone(),
+        layout: s.layout.clone(),
+        warnings: s.warnings.clone(),
+        done: s.status == Status::Done,
+        recoveries: s.recoveries.clone(),
+        started_unix: s.started_unix,
+        fingerprint: j.fingerprint.lock().unwrap().clone(),
+        source_path: Some(j.src_path.lock().unwrap().clone()),
+    }
+}
+
+/// Grava a sessão de forma atômica (arquivo temporário + renomear), com o dono certo.
+fn write_session(j: &Job, path: &Path) -> Result<()> {
+    let data = snapshot(j);
+    let tmp = path.with_extension("json.tmp");
+    crate::owner::write_owned(&tmp, serde_json::to_vec(&data)?)?;
+    std::fs::rename(&tmp, path)?;
+    crate::owner::give_to_user(path);
+    // metadados pequenos para listar as sessões recentes sem ler o arquivo inteiro
+    let status = if data.done {
+        "concluída"
+    } else if data.checkpoint.is_some() {
+        "pausada"
+    } else {
+        "incompleta"
+    };
+    let meta = json!({
+        "target": data.target, "found": data.found.len(), "status": status,
+        "saved_at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0),
+        "bytes": std::fs::metadata(path).map(|m| m.len()).unwrap_or(0),
+    });
+    let _ = crate::owner::write_owned(
+        &path.with_extension("meta.json"),
+        serde_json::to_vec(&meta)?,
+    );
+    Ok(())
+}
+
+/// Salva de tempos em tempos (o intervalo cresce se a sessão for grande) e no fim.
+fn autosave_loop(job: Arc<Job>) {
+    let mut last = Instant::now();
+    let mut interval = std::time::Duration::from_secs(45);
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let running = job.st.lock().unwrap().status == Status::Running;
+        if running && last.elapsed() < interval {
+            continue;
+        }
+        let Some(path) = job.session_file.lock().unwrap().clone() else {
+            return;
+        };
+        let t0 = Instant::now();
+        if write_session(&job, &path).is_err() {
+            return;
+        }
+        // nunca gasta mais de ~10% do tempo salvando
+        interval = (t0.elapsed() * 10).max(std::time::Duration::from_secs(45));
+        last = Instant::now();
+        if !running {
+            return;
+        }
+    }
+}
+
+fn human_bytes(n: u64) -> String {
+    const U: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut v = n as f64;
+    let mut i = 0;
+    while v >= 1024.0 && i < 4 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{n} B")
+    } else {
+        format!("{v:.1} {}", U[i])
     }
 }

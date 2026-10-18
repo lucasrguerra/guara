@@ -25,23 +25,33 @@ pub fn carve_range(
     cfg: &CarveCfg,
     cancelled: &(dyn Fn() -> bool + Sync),
     ev: &mut dyn CarveEvents,
-) -> bool {
+) -> CarveEnd {
     let end = end.min(src.size());
     let mut pos = (*next).max(start);
     // Alinha ao setor.
     pos = pos.div_ceil(SECTOR) * SECTOR;
     let mut buf = vec![0u8; CHUNK + LOOKAHEAD];
     let mut skip_until = 0u64;
+    let mut fails = 0u32;
     while pos < end {
         if cancelled() {
             *next = pos;
-            return false;
+            return CarveEnd::Cancelled;
         }
         let want = ((end - pos) as usize).min(CHUNK + LOOKAHEAD);
         let got = match read_full(src, pos, &mut buf[..want]) {
-            Ok(n) => n,
+            Ok(n) => {
+                fails = 0;
+                n
+            }
             Err(_) => {
-                // Setor ruim: pula um bloco inteiro e segue (a imagem forense trata isso melhor).
+                // Várias falhas seguidas = dispositivo sumiu: para com o ponto de retomada salvo.
+                fails += 1;
+                if fails >= 4 {
+                    *next = pos - (fails as u64 - 1) * CHUNK as u64;
+                    return CarveEnd::IoLost;
+                }
+                // Setor ruim isolado: pula um bloco inteiro e segue (a imagem forense trata isso melhor).
                 pos += CHUNK as u64;
                 ev.advance(CHUNK as u64);
                 *next = pos;
@@ -84,7 +94,16 @@ pub fn carve_range(
         *next = pos;
     }
     *next = end;
-    true
+    CarveEnd::Done
+}
+
+/// Como o carving de um intervalo terminou.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CarveEnd {
+    Done,
+    Cancelled,
+    /// Várias leituras seguidas falharam: o dispositivo provavelmente foi desconectado.
+    IoLost,
 }
 
 /// Receptor de eventos do carving.

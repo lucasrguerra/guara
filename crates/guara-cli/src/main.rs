@@ -94,6 +94,8 @@ enum Cmd {
     },
     /// Calcula MD5, SHA-1 e SHA-256 do dispositivo ou imagem (verificação de integridade)
     Hash { path: String },
+    /// Lista as sessões salvas automaticamente
+    Sessions,
     /// Abre a interface gráfica no navegador (modo local)
     Ui {
         #[arg(long, default_value_t = 0)]
@@ -114,6 +116,9 @@ struct FilterArgs {
     /// Só nomes/caminhos que contenham este texto
     #[arg(long)]
     name: Option<String>,
+    /// Como organizar o que for recuperado: folders (pastas originais), type, date ou flat
+    #[arg(long, default_value = "folders")]
+    organize: String,
 }
 
 #[derive(clap::Args, Clone)]
@@ -230,6 +235,7 @@ fn run(cli: Cli) -> Result<(), String> {
                     category: vec![],
                     min_confidence: "low".into(),
                     name: None,
+                    organize: "folders".into(),
                 },
                 None,
             )
@@ -367,6 +373,23 @@ fn run(cli: Cli) -> Result<(), String> {
             );
             Ok(())
         }
+        Cmd::Sessions => {
+            let list = eng.rpc("sessions_list", json!({})).map_err(s)?;
+            let items = list.as_array().cloned().unwrap_or_default();
+            if items.is_empty() {
+                println!("Nenhuma sessão salva automaticamente ainda.");
+            }
+            for i in items {
+                println!(
+                    "{:<10} {:>8} arquivos  {:<22} {}",
+                    i["status"].as_str().unwrap_or(""),
+                    i["found"],
+                    i["target"].as_str().unwrap_or(""),
+                    i["path"].as_str().unwrap_or("")
+                );
+            }
+            Ok(())
+        }
         Cmd::Ui { port, no_open } => serve::run(port, !no_open),
     }
 }
@@ -483,7 +506,13 @@ fn recover_job(
         }
         ids = Some(all);
     }
-    let rj = eng.start_recover(scan_job, ids, Some(q), dest).map_err(s)?;
+    let layout = guara_core::recover::RecoverLayout::parse(&filter.organize).ok_or(format!(
+        "organização inválida: {} (use folders, type, date ou flat)",
+        filter.organize
+    ))?;
+    let rj = eng
+        .start_recover(scan_job, ids, Some(q), dest, layout)
+        .map_err(s)?;
     let st = wait(eng, &rj, None)?;
     eprintln!();
     if st["status"] == "error" {

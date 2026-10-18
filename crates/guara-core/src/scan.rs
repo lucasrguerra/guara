@@ -1,7 +1,7 @@
 //! Orquestra a varredura: layout → metadados dos sistemas de arquivos →
 //! carving no espaço livre/desconhecido → fusão sem duplicatas.
 
-use crate::carve::{carve_range, CarveCfg, CarveEvents, HitAction};
+use crate::carve::{carve_range, CarveCfg, CarveEnd, CarveEvents, HitAction};
 use crate::fs::{self, merge_extents, overlaps, Ctx};
 use crate::partition;
 use crate::signatures::category_for_ext;
@@ -42,6 +42,9 @@ pub struct Checkpoint {
     pub ranges: Vec<RangeState>,
     pub next_id: u64,
     pub layout: Option<DiskLayout>,
+    /// A varredura parou porque o dispositivo parou de responder (desconectado?).
+    #[serde(default)]
+    pub io_lost: bool,
 }
 
 pub enum Outcome {
@@ -189,9 +192,10 @@ pub fn run(
         if next >= end {
             continue;
         }
-        let finished = carve_range(src, start, end, &mut next, &cfg, cancelled, &mut handler);
+        let end_state = carve_range(src, start, end, &mut next, &cfg, cancelled, &mut handler);
         cp.ranges[ri].next = next;
-        if !finished {
+        if end_state != CarveEnd::Done {
+            cp.io_lost = end_state == CarveEnd::IoLost;
             cp.next_id = next_id.load(std::sync::atomic::Ordering::Relaxed);
             return Outcome::Interrupted(cp);
         }
