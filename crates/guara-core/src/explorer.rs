@@ -180,7 +180,14 @@ pub fn facets(found: &[Found]) -> Value {
     let mut conf = [0usize; 3];
     let mut seen_sig = std::collections::HashSet::new();
     let mut dups = 0usize;
+    let (mut small, mut mp1) = (0usize, 0usize);
     for f in found {
+        if f.size < 30 * 1024 {
+            small += 1;
+        }
+        if f.px.is_some_and(|(w, h)| w as u64 * h as u64 >= 1_000_000) {
+            mp1 += 1;
+        }
         if let Some(g) = f.sig {
             if !seen_sig.insert((g, f.size)) {
                 dups += 1;
@@ -242,6 +249,8 @@ pub fn facets(found: &[Found]) -> Value {
         "root": root,
         "gps": gps,
         "duplicates": dups,
+        "small": small,
+        "mp1": mp1,
     })
 }
 

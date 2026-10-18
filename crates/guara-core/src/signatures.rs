@@ -219,8 +219,10 @@ fn jpeg(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
 // ---------------------------------------------------------------- PNG
 
 fn png(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
+    let total = src.size().saturating_sub(off);
     let mut p = 8u64;
     let mut first = true;
+    let mut saw_idat = false;
     for _ in 0..200_000 {
         let c = read_vec(src, off + p, 8).ok()?;
         if c.len() < 8 {
@@ -228,13 +230,20 @@ fn png(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
         }
         let len = u32::from_be_bytes([c[0], c[1], c[2], c[3]]) as u64;
         let ty = &c[4..8];
-        if !ty.iter().all(|b| b.is_ascii_alphabetic()) || len > 0x7FFF_FFFF {
+        // Bloco válido: 4 letras, 3ª maiúscula (bit reservado), tamanho plausível e dentro do
+        // disco. Texto ASCII solto parece "tamanho" de ~1,9 GB e não pode virar um PNG gigante.
+        let valid = ty.iter().all(|b| b.is_ascii_alphabetic())
+            && ty[2].is_ascii_uppercase()
+            && len <= 128 * 1024 * 1024
+            && p + 12 + len <= total;
+        if !valid {
             break;
         }
         if first && ty != b"IHDR" {
             return None;
         }
         first = false;
+        saw_idat |= ty == b"IDAT";
         p += 12 + len;
         if p > max {
             break;
@@ -247,11 +256,12 @@ fn png(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
             });
         }
     }
-    if first {
+    // Sem IEND: só vale como imagem truncada se já tem dados e é de tamanho razoável.
+    if first || !saw_idat || p > 64 * 1024 * 1024 {
         return None;
     }
     Some(Hit {
-        len: p.min(max).min(src.size().saturating_sub(off)),
+        len: p,
         ext: "png",
         confidence: Confidence::Low,
     })

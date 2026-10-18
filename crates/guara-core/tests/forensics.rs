@@ -473,6 +473,7 @@ fn facetas_filtros_e_duplicadas() {
         mk(3, "c.jpg", Some("Viagens"), Some(jul23), None, Some(7)), // duplicada de a.jpg
         mk(4, "d.jpg", None, None, None, None),
     ];
+    let q = |json: &str| -> Query { serde_json::from_str(json).unwrap() };
     let f = explorer::facets(&found);
     assert_eq!(f["total"], 4);
     assert_eq!(f["years"][0]["year"], 2024);
@@ -481,6 +482,8 @@ fn facetas_filtros_e_duplicadas() {
     assert_eq!(f["undated"], 1);
     assert_eq!(f["carved"], 1);
     assert_eq!(f["duplicates"], 1);
+    assert_eq!(f["small"], 4); // todos têm 10 bytes
+    assert_eq!(q(r#"{"min_size":30720}"#).select(&found).len(), 0);
     assert_eq!(f["cameras"][0]["name"], "Canon");
     let dcim = f["folders"]
         .as_array()
@@ -490,7 +493,6 @@ fn facetas_filtros_e_duplicadas() {
         .unwrap();
     assert_eq!(dcim["count"], 2);
 
-    let q = |json: &str| -> Query { serde_json::from_str(json).unwrap() };
     assert_eq!(q(r#"{"year":2023}"#).select(&found).len(), 2);
     assert_eq!(q(r#"{"year":2023,"month":7}"#).select(&found).len(), 2);
     assert_eq!(q(r#"{"year":2023,"month":8}"#).select(&found).len(), 0);
@@ -504,4 +506,50 @@ fn facetas_filtros_e_duplicadas() {
     explorer::sort_items(&mut items, Some("date"));
     assert_eq!(items[0].id, 2); // mais recente primeiro
     assert_eq!(items.last().unwrap().id, 4); // sem data por último
+}
+
+// ------------------------------------------------------------------ carving
+
+fn png_chunk(ty: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    let mut c = (data.len() as u32).to_be_bytes().to_vec();
+    c.extend(ty);
+    c.extend(data);
+    c.extend([0, 0, 0, 0]);
+    c
+}
+
+/// Regressão: texto ASCII depois de um PNG truncado vira "tamanho" de ~1,9 GB;
+/// o carving não pode inventar um PNG gigante.
+#[test]
+fn png_truncado_seguido_de_texto_nao_vira_arquivo_gigante() {
+    let mut d = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    d.extend(png_chunk(b"IHDR", &[0, 0, 0, 8, 0, 0, 0, 8, 8, 2, 0, 0, 0]));
+    d.extend(png_chunk(b"IDAT", &vec![7u8; 5000]));
+    let real_end = d.len();
+    d.extend(b"ualiBase64 texto qualquer que segue no disco, como parte de outro arquivo html ");
+    d.resize(4 * 1024 * 1024, 0x41);
+    let src = MemSource(d.clone());
+    let hit =
+        signatures::detect(&src, 0, &d[..64], 8 << 30).expect("PNG truncado ainda é reconhecido");
+    assert_eq!(
+        hit.len as usize, real_end,
+        "deve parar no fim do último bloco válido"
+    );
+    assert_eq!(hit.confidence, Confidence::Low);
+
+    // sem nenhum dado de imagem (só cabeçalho) não é arquivo
+    let mut d2 = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    d2.extend(png_chunk(b"IHDR", &[0, 0, 0, 8, 0, 0, 0, 8, 8, 2, 0, 0, 0]));
+    d2.resize(1 << 20, b'e');
+    assert!(signatures::detect(&MemSource(d2.clone()), 0, &d2[..64], 8 << 30).is_none());
+
+    // PNG completo continua com confiança alta e tamanho exato
+    let mut ok = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    ok.extend(png_chunk(b"IHDR", &[0, 0, 0, 8, 0, 0, 0, 8, 8, 2, 0, 0, 0]));
+    ok.extend(png_chunk(b"IDAT", &[1; 100]));
+    ok.extend(png_chunk(b"IEND", &[]));
+    let n = ok.len();
+    ok.resize(1 << 20, 0);
+    let h = signatures::detect(&MemSource(ok.clone()), 0, &ok[..64], 8 << 30).unwrap();
+    assert_eq!((h.len as usize, h.confidence), (n, Confidence::High));
 }

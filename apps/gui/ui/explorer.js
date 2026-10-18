@@ -32,7 +32,7 @@ const I = {
 export function createExplorer(deps) {
   const { host, job, rpc, esc, human, fileUrl, thumbUrl, onRecover, toast } = deps;
   const E = {
-    filters: { category: null, year: null, month: null, undated: false, folder: null, camera: null, origin: null, minConf: null, gps: false, dedupe: false, query: '' },
+    filters: { category: null, year: null, month: null, undated: false, folder: null, camera: null, origin: null, minConf: null, gps: false, dedupe: false, bigOnly: false, mp1: false, query: '' },
     sort: 'date',
     view: 'grid',
     tile: 150,
@@ -95,6 +95,8 @@ export function createExplorer(deps) {
     if (f.minConf) q.min_confidence = f.minConf;
     if (f.gps) q.has_gps = true;
     if (f.dedupe) q.dedupe = true;
+    if (f.bigOnly) q.min_size = 30 * 1024;
+    if (f.mp1) q.min_mp = 1;
     if (f.query) q.query = f.query;
     return q;
   };
@@ -424,6 +426,8 @@ export function createExplorer(deps) {
     const cams = f.cameras.map((c) => node(esc(c.name), c.count, `data-f="camera" data-v="${esc(c.name)}"`, F.camera === c.name)).join('');
     const conf = ['high', 'medium', 'low'].map((k) => node(`Confiança ${CONF[k][0]}`, f.confidence[k], `data-f="minConf" data-v="${k}"`, F.minConf === k)).join('');
     const extra = (f.gps ? node('Com localização (GPS)', f.gps, 'data-f="gps" data-v="1"', F.gps) : '')
+      + (f.small && f.small < f.total ? node('Ocultar arquivos pequenos (menos de 30 KB)', f.total - f.small, 'data-f="bigOnly" data-v="1"', F.bigOnly) : '')
+      + (f.mp1 ? node('Mais de 1 megapixel', f.mp1, 'data-f="mp1" data-v="1"', F.mp1) : '')
       + (f.duplicates ? node('Ocultar duplicadas', f.duplicates, 'data-f="dedupe" data-v="1"', F.dedupe) : '');
 
     const html = `<div class="xp-sec">${node('Tudo', f.total, 'data-f="all"', !anyFilter())}</div>`
@@ -450,6 +454,8 @@ export function createExplorer(deps) {
     else if (f === 'undated') { F.undated = !F.undated; F.year = F.month = null; }
     else if (f === 'gps') F.gps = !F.gps;
     else if (f === 'dedupe') F.dedupe = !F.dedupe;
+    else if (f === 'bigOnly') F.bigOnly = !F.bigOnly;
+    else if (f === 'mp1') F.mp1 = !F.mp1;
     else F[f] = F[f] === v ? null : v;
     if (f === 'folder' && F.folder && !F.folder.startsWith('@')) E.expanded.add('d' + F.folder);
     nav._h = null;
@@ -458,7 +464,7 @@ export function createExplorer(deps) {
   });
 
   function clearFilters(refresh = true) {
-    E.filters = { category: null, year: null, month: null, undated: false, folder: null, camera: null, origin: null, minConf: null, gps: false, dedupe: false, query: '' };
+    E.filters = { category: null, year: null, month: null, undated: false, folder: null, camera: null, origin: null, minConf: null, gps: false, dedupe: false, bigOnly: false, mp1: false, query: '' };
     $('#xpQ').value = '';
     if (refresh) changed(); else changed();
   }
@@ -493,6 +499,8 @@ export function createExplorer(deps) {
     if (F.minConf) add(`Confiança ${CONF[F.minConf][0]}`, 'minConf');
     if (F.gps) add('Com GPS', 'gps');
     if (F.dedupe) add('Sem duplicadas', 'dedupe');
+    if (F.bigOnly) add('Sem arquivos pequenos', 'bigOnly');
+    if (F.mp1) add('Mais de 1 MP', 'mp1');
     if (F.query) add(`“${esc(F.query)}”`, 'query');
     $('#xpChips').innerHTML = chips.length ? chips.join('') + '<button class="btn sm" data-x="all">Limpar filtros</button>' : '';
   }
@@ -500,7 +508,7 @@ export function createExplorer(deps) {
     const k = e.target.closest('[data-x]')?.dataset.x;
     if (!k) return;
     if (k === 'all') return clearFilters();
-    E.filters[k] = k === 'query' ? '' : k === 'undated' || k === 'gps' || k === 'dedupe' ? false : null;
+    E.filters[k] = k === 'query' ? '' : k === 'undated' || k === 'gps' || k === 'dedupe' || k === 'bigOnly' || k === 'mp1' ? false : null;
     if (k === 'year') E.filters.month = null;
     if (k === 'query') $('#xpQ').value = '';
     nav._h = null;

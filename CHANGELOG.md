@@ -4,10 +4,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); 
 
 ## [0.3.1] - 2026-10-18
 
+### Adicionado
+- Filtros "Ocultar arquivos pequenos (menos de 30 KB)" e "Mais de 1 megapixel" no explorador, para separar fotos de ícones e miniaturas quando há milhares de imagens.
+
 ### Corrigido
 - Abrir uma sessão salva falhava por inteiro quando a origem (por exemplo `/dev/sdb`) não estava acessível, e a mensagem de erro era vaga. Agora a sessão sempre abre: dá para navegar, exportar e gerar relatório, e o botão "Escolher a origem…" reconecta o disco ou uma imagem para voltar a pré-visualizar e recuperar.
 - Mensagens claras quando o arquivo de sessão não pode ser lido (por exemplo, criado como administrador em `/root`) ou não é uma sessão válida.
 - Teste automático garante que sessões gravadas pela v0.1.0 continuam abrindo.
+- Carving de PNG: texto ASCII logo após um PNG truncado era lido como um bloco de ~1,9 GB e gerava "fotos" gigantes de confiança baixa. Agora o bloco precisa ser plausível (tipo válido, tamanho razoável, dentro do disco) e o arquivo termina no último bloco válido.
+- Retomar uma varredura de sessão sem a origem disponível agora avisa na hora, em vez de falhar depois.
 - Rodando como administrador (sudo/pkexec), as pastas sugeridas passam a ser as do usuário que abriu o Guará e tudo que ele grava (sessões, CSV, relatórios, imagens e arquivos recuperados, com as pastas criadas) fica com o dono e as permissões desse usuário, e não do root.
 
 ## [0.3.0] - 2026-10-18

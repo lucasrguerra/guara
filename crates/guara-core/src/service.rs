@@ -217,6 +217,9 @@ impl Engine {
 
     pub fn resume(&self, id: &str) -> Result<()> {
         let j = self.job(id)?;
+        if j.source().is_none() {
+            return Err(no_source());
+        }
         let cp = {
             let mut s = j.st.lock().unwrap();
             if s.status != Status::Paused {
