@@ -1,9 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Guara",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "dev.guara.app",
-  "build": { "frontendDist": "../ui" },
+  "build": {
+    "frontendDist": "../ui"
+  },
   "app": {
     "withGlobalTauri": true,
     "windows": [
@@ -16,7 +18,9 @@
         "resizable": true
       }
     ],
-    "security": { "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" }
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob: guara: http://guara.localhost; media-src 'self' blob: guara: http://guara.localhost; connect-src 'self' ipc: http://ipc.localhost guara: http://guara.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; frame-src 'none'; object-src 'none'"
+    }
   },
   "bundle": {
     "active": true,
@@ -24,6 +28,12 @@
     "category": "Utility",
     "shortDescription": "Recuperação de arquivos",
     "longDescription": "Guará recupera arquivos apagados e partições perdidas de HD, SSD e pendrive, sempre em modo somente leitura na origem.",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

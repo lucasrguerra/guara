@@ -278,37 +278,18 @@ impl Engine {
         Ok(json!({ "total": total, "items": page }))
     }
 
-    pub fn preview(&self, id: &str, file: u64) -> Result<Value> {
+    /// Achado + origem para leitura posicional (streaming de pré-visualização).
+    pub fn open_file(&self, id: &str, file: u64) -> Result<(Found, Arc<dyn Source>)> {
         let j = self.job(id)?;
-        let (f, src) = {
-            let s = j.st.lock().unwrap();
-            let i = *s
-                .index
-                .get(&file)
-                .ok_or_else(|| Error::msg("arquivo não encontrado"))?;
-            (
-                s.found[i].clone(),
-                j.src.clone().ok_or_else(|| Error::msg("sem origem"))?,
-            )
-        };
-        let mime = match f.ext.as_str() {
-            "jpg" | "jpeg" => "image/jpeg",
-            "png" => "image/png",
-            "gif" => "image/gif",
-            "webp" => "image/webp",
-            "bmp" => "image/bmp",
-            _ => return Ok(json!({ "mime": null })),
-        };
-        if f.size > 8 * 1024 * 1024 {
-            return Ok(json!({ "mime": null, "reason": "grande demais para pré-visualizar" }));
-        }
-        let tmp =
-            std::env::temp_dir().join(format!("guara-preview-{}-{}", std::process::id(), f.id));
-        let r = recover::write_file(src.as_ref(), &f, &tmp);
-        let bytes = std::fs::read(&tmp);
-        let _ = std::fs::remove_file(&tmp);
-        r?;
-        Ok(json!({ "mime": mime, "base64": base64(&bytes?) }))
+        let s = j.st.lock().unwrap();
+        let i = *s
+            .index
+            .get(&file)
+            .ok_or_else(|| Error::msg("arquivo não encontrado"))?;
+        Ok((
+            s.found[i].clone(),
+            j.src.clone().ok_or_else(|| Error::msg("sem origem"))?,
+        ))
     }
 
     // ---------------------------------------------------------------- recuperação
@@ -534,12 +515,12 @@ impl Engine {
                     .unwrap_or_default();
                 self.results(&s("job")?, &q)?
             }
-            "preview" => self.preview(
-                &s("job")?,
-                p.get("id")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| Error::msg("id ausente"))?,
-            )?,
+            "settings_get" => json!(crate::settings::load()),
+            "settings_set" => {
+                let st: crate::settings::Settings = serde_json::from_value(p.clone())?;
+                crate::settings::save(&st)?;
+                json!({})
+            }
             "recover_start" => {
                 let ids: Option<Vec<u64>> = p
                     .get("ids")
@@ -696,4 +677,176 @@ pub fn base64(data: &[u8]) -> String {
         });
     }
     out
+}
+
+/// Tipo MIME para servir a pré-visualização. Formatos que poderiam executar
+/// script (HTML/SVG/XML) saem como texto puro.
+pub fn mime_for(ext: &str) -> &'static str {
+    match ext.to_ascii_lowercase().as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "avif" => "image/avif",
+        "ico" => "image/x-icon",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
+        "webm" => "video/webm",
+        "mkv" => "video/x-matroska",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "ogg" | "opus" => "audio/ogg",
+        "m4a" => "audio/mp4",
+        "aac" => "audio/aac",
+        "flac" => "audio/flac",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Trecho de um arquivo achado, pronto para responder a uma requisição HTTP
+/// (com suporte a `Range`) tanto no modo `guara ui` quanto no app Tauri.
+pub struct FileSlice {
+    found: Found,
+    src: Arc<dyn Source>,
+    pub start: u64,
+    /// Inclusivo.
+    pub end: u64,
+    pub total: u64,
+    pub partial: bool,
+}
+
+impl FileSlice {
+    pub fn len(&self) -> u64 {
+        if self.total == 0 {
+            0
+        } else {
+            self.end - self.start + 1
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub fn status(&self) -> u16 {
+        if self.partial {
+            206
+        } else {
+            200
+        }
+    }
+    pub fn headers(&self) -> Vec<(&'static str, String)> {
+        let mut h = vec![
+            ("Content-Type", mime_for(&self.found.ext).to_string()),
+            ("Accept-Ranges", "bytes".into()),
+            ("Cache-Control", "no-store".into()),
+            ("X-Content-Type-Options", "nosniff".into()),
+            // Conteúdo recuperado é não confiável: nunca executa script nem carrega nada.
+            (
+                "Content-Security-Policy",
+                "sandbox; default-src 'none'".into(),
+            ),
+            ("Access-Control-Allow-Origin", "*".into()),
+            ("Content-Disposition", "inline".into()),
+        ];
+        if self.partial {
+            h.push((
+                "Content-Range",
+                format!("bytes {}-{}/{}", self.start, self.end, self.total),
+            ));
+        }
+        h
+    }
+    /// Lê o trecho inteiro em memória (limitado a `cap` bytes).
+    pub fn read_all(&self, cap: u64) -> std::io::Result<Vec<u8>> {
+        let n = self.len().min(cap) as usize;
+        let mut out = vec![0u8; n];
+        let mut got = 0;
+        while got < n {
+            let r = crate::recover::read_found_at(
+                self.src.as_ref(),
+                &self.found,
+                self.start + got as u64,
+                &mut out[got..],
+            )?;
+            if r == 0 {
+                break;
+            }
+            got += r;
+        }
+        out.truncate(got);
+        Ok(out)
+    }
+    pub fn reader(self) -> FileSliceReader {
+        FileSliceReader {
+            pos: self.start,
+            slice: self,
+        }
+    }
+}
+
+pub struct FileSliceReader {
+    slice: FileSlice,
+    pos: u64,
+}
+
+impl std::io::Read for FileSliceReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.pos > self.slice.end || self.slice.total == 0 {
+            return Ok(0);
+        }
+        let left = (self.slice.end - self.pos + 1) as usize;
+        let n = buf.len().min(left).min(1 << 20);
+        let r = crate::recover::read_found_at(
+            self.slice.src.as_ref(),
+            &self.slice.found,
+            self.pos,
+            &mut buf[..n],
+        )?;
+        self.pos += r as u64;
+        Ok(r)
+    }
+}
+
+impl Engine {
+    /// Resolve `/file/<job>/<id>` + cabeçalho Range. `Err(status)` em caso de falha.
+    pub fn file_slice(
+        &self,
+        job: &str,
+        id: u64,
+        range: Option<&str>,
+    ) -> std::result::Result<FileSlice, u16> {
+        let (found, src) = self.open_file(job, id).map_err(|_| 404u16)?;
+        let total = found.size;
+        let (mut start, mut end, mut partial) = (0u64, total.saturating_sub(1), false);
+        if let Some(spec) = range.and_then(|r| r.strip_prefix("bytes=")) {
+            let spec = spec.split(',').next().unwrap_or("");
+            if let Some((a, b)) = spec.split_once('-') {
+                let parsed = match (a.trim().parse::<u64>(), b.trim().parse::<u64>()) {
+                    (Ok(a), Ok(b)) => Some((a, b.min(total.saturating_sub(1)))),
+                    (Ok(a), Err(_)) if b.trim().is_empty() => Some((a, total.saturating_sub(1))),
+                    (Err(_), Ok(n)) if a.trim().is_empty() && n > 0 => {
+                        Some((total.saturating_sub(n), total.saturating_sub(1)))
+                    }
+                    _ => None,
+                };
+                if let Some((a, b)) = parsed {
+                    if a >= total || a > b {
+                        return Err(416);
+                    }
+                    start = a;
+                    end = b;
+                    partial = true;
+                }
+            }
+        }
+        Ok(FileSlice {
+            found,
+            src,
+            start,
+            end,
+            total,
+            partial,
+        })
+    }
 }

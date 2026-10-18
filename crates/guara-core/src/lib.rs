@@ -12,6 +12,7 @@ pub mod partition;
 pub mod recover;
 pub mod scan;
 pub mod service;
+pub mod settings;
 pub mod signatures;
 pub mod source;
 pub mod types;

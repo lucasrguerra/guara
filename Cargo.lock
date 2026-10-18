@@ -248,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "guara-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "ctrlc",
@@ -260,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "guara-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "serde",

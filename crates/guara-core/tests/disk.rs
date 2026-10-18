@@ -231,3 +231,74 @@ fn pausa_e_retoma_encontra_o_mesmo() {
     b.sort();
     assert_eq!(a, b);
 }
+
+/// Streaming de pré-visualização: Range devolve exatamente os bytes do arquivo recuperado.
+#[test]
+fn file_slice_com_range_bate_com_o_arquivo_recuperado() {
+    use std::io::Read;
+    let Some(dir) = fixtures() else { return };
+    let path = dir.join("ntfs.img");
+    let eng = service::Engine::new();
+    let job = eng
+        .start_scan(
+            path.to_str().unwrap(),
+            ScanOptions {
+                mode: ScanMode::Quick,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    loop {
+        let st = eng.status(&job).unwrap();
+        if st["status"] != "running" {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let res = eng
+        .results(
+            &job,
+            &service::Query {
+                query: Some("relatorio.pdf".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let id = res["items"][0]["id"].as_u64().unwrap();
+    let size = res["items"][0]["size"].as_u64().unwrap();
+    let want = expected(&dir, "ntfs")
+        .into_iter()
+        .find(|(_, p)| p.ends_with("relatorio.pdf"))
+        .unwrap()
+        .0;
+
+    let full = eng.file_slice(&job, id, None).unwrap();
+    assert_eq!((full.status(), full.len()), (200, size));
+    let mut all = vec![];
+    full.reader().read_to_end(&mut all).unwrap();
+    assert_eq!(sha256(&all), want);
+
+    let part = eng.file_slice(&job, id, Some("bytes=100-199")).unwrap();
+    assert_eq!((part.status(), part.len()), (206, 100));
+    assert_eq!(part.read_all(1 << 20).unwrap(), all[100..200]);
+    let tail = eng.file_slice(&job, id, Some("bytes=-50")).unwrap();
+    assert_eq!(tail.read_all(1 << 20).unwrap(), all[all.len() - 50..]);
+    assert_eq!(
+        eng.file_slice(&job, id, Some(&format!("bytes={size}-")))
+            .err(),
+        Some(416)
+    );
+    assert_eq!(eng.file_slice(&job, 999_999, None).err(), Some(404));
+}
+
+#[test]
+fn configuracoes_de_tema_persistem() {
+    let dir = tempfile::tempdir().unwrap();
+    std::env::set_var("GUARA_CONFIG_DIR", dir.path());
+    assert_eq!(settings::load().theme, "auto");
+    settings::save(&settings::Settings {
+        theme: "dark".into(),
+    })
+    .unwrap();
+    assert_eq!(settings::load().theme, "dark");
+}

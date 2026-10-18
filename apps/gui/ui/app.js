@@ -1,6 +1,8 @@
 // Guará — interface. Fala com o núcleo por `rpc(método, parâmetros)`:
 //  • app Tauri: invoke('rpc')   • modo `guara ui`: POST /rpc/<método> com token.
 
+import { renderPreview, kindOf, KIND_LABEL } from './preview.js';
+
 const tauri = window.__TAURI__;
 const params = new URLSearchParams(location.search);
 let token = params.get('token');
@@ -20,6 +22,32 @@ async function rpc(method, p = {}) {
   if (!r.ok) throw new Error(body.error || `erro ${r.status}`);
   return body;
 }
+
+const isWin = /Windows/i.test(navigator.userAgent);
+const fileBase = tauri ? (isWin ? 'http://guara.localhost' : 'guara://localhost') : '';
+const fileUrl = (job, id) => `${fileBase}/file/${job}/${id}` + (tauri ? '' : `?t=${encodeURIComponent(token || '')}`);
+
+// Atualiza o HTML só quando mudou (evita piscar e perder o foco/hover).
+function setHTML(el, html) {
+  if (!el || el._h === html) return false;
+  el._h = html;
+  el.innerHTML = html;
+  return true;
+}
+
+// ------------------------------------------------------------------ tema
+function applyTheme(t) {
+  const root = document.documentElement;
+  if (t === 'light' || t === 'dark') root.dataset.theme = t; else delete root.dataset.theme;
+  document.querySelectorAll('[data-theme-pick]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themePick === (t || 'auto'))));
+}
+try { applyTheme(localStorage.getItem('guara-theme') || 'auto'); } catch { applyTheme('auto'); }
+document.querySelectorAll('[data-theme-pick]').forEach((b) => (b.onclick = async () => {
+  const t = b.dataset.themePick;
+  applyTheme(t);
+  try { localStorage.setItem('guara-theme', t); } catch { /* sem armazenamento */ }
+  try { await rpc('settings_set', { theme: t }); } catch { /* segue só com o armazenamento local */ }
+}));
 
 // ------------------------------------------------------------------ utilidades
 const $ = (s, el = document) => el.querySelector(s);
@@ -173,7 +201,7 @@ function renderHome() {
   S.device = null; S.job = null;
   renderSide();
   main.innerHTML = `<div class="page">
-    <section class="hero"><h1>Encontre o que você achou que tinha perdido.</h1>
+    <section class="hero"><img class="hero-logo" src="guara-logo.svg" alt="Guará"><h1>Encontre o que você achou que tinha perdido.</h1>
     <p>Escolha um disco, SSD ou pendrive ao lado. O Guará lê tudo — arquivos apagados, partições perdidas e espaço não particionado — sem escrever nada no disco de origem.</p></section>
     <div class="cards">
       <div class="card"><h3>Uma varredura, tudo junto</h3><p>Metadados do sistema de arquivos e busca por assinatura na mesma passada, sem duplicatas.</p></div>
@@ -348,10 +376,13 @@ function renderScan() {
     <div class="split"><div class="table" id="table"></div><aside class="preview" id="preview" aria-live="polite"></aside></div>
   </div><div id="barHost"></div>`;
   $('#backBtn').onclick = () => (S.device ? openDevice(S.device) : renderHome());
+  $('#progressArea').onclick = onProgressClick;
+  $('#chips').onclick = (e) => { const c = e.target.closest('.chip'); if (c) { S.filters.category = c.dataset.c || null; resetSel(); tick(); } };
   let t;
   $('#q').oninput = (e) => { clearTimeout(t); t = setTimeout(() => { S.filters.query = e.target.value; resetSel(); tick(); }, 250); };
   $('#conf').onchange = (e) => { S.filters.minConfidence = e.target.value || null; resetSel(); tick(); };
   $('#sort').onchange = (e) => { S.filters.sort = e.target.value; tick(); };
+  wireTable();
   paintPreview();
 }
 const resetSel = () => { S.selected = new Set(); S.allFiltered = false; };
@@ -366,10 +397,10 @@ function paintStatus() {
   $('#scanSub').innerHTML = `<span class="mono">${esc(st.target)}</span>`;
   const rate = p.total && st.elapsed > 1 && p.done ? p.done / st.elapsed : 0;
   const eta = rate && running ? dur((p.total - p.done) / rate) : null;
-  $('#progressArea').innerHTML = `<div class="progress-card">
+  setHTML($('#progressArea'), `<div class="progress-card">
     <div class="row spread"><div><b>${esc(p.phase || (running ? 'Iniciando' : ''))}</b>${pct != null ? ` <span class="sub">· ${pct}%</span>` : ''}</div>
-      <div class="row">${running ? '<button class="btn sm" id="pauseBtn">Pausar</button><button class="btn sm danger" id="stopBtn">Parar</button>' : st.status === 'paused' ? '<button class="btn sm primary" id="resumeBtn">Continuar</button>' : ''}
-      ${!running && st.found ? '<button class="btn sm" id="saveBtn">Salvar sessão…</button>' : ''}</div></div>
+      <div class="row">${running ? '<button class="btn sm" data-act="pause">Pausar</button><button class="btn sm danger" data-act="stop">Parar</button>' : st.status === 'paused' ? '<button class="btn sm primary" data-act="resume">Continuar</button>' : ''}
+      ${!running && st.found ? '<button class="btn sm" data-act="save">Salvar sessão…</button>' : ''}</div></div>
     <div class="bar ${running && pct == null ? 'indet' : ''}"><i style="width:${pct ?? (running ? 35 : 100)}%"></i></div>
     <div class="stats">
       <div class="stat"><b>${st.found.toLocaleString('pt-BR')}</b><span>arquivos encontrados</span></div>
@@ -377,23 +408,37 @@ function paintStatus() {
       <div class="stat"><b style="color:var(--ok)">${st.confidence.high}</b><span>confiança alta</span></div>
       <div class="stat"><b style="color:var(--warn)">${st.confidence.medium}</b><span>média</span></div>
       <div class="stat"><b style="color:var(--bad)">${st.confidence.low}</b><span>baixa</span></div>
-    </div></div>`;
-  $('#pauseBtn')?.addEventListener('click', async () => { await rpc('scan_pause', { job: S.job }); toast('Pausando…'); });
-  $('#stopBtn')?.addEventListener('click', async () => { await rpc('scan_stop', { job: S.job }); });
-  $('#resumeBtn')?.addEventListener('click', async () => { await rpc('scan_resume', { job: S.job }); stopPoll(); S.poll = setInterval(tick, 500); tick(); });
-  $('#saveBtn')?.addEventListener('click', async () => {
-    const path = await ask({ title: 'Salvar sessão', text: 'Guarda os resultados para recuperar depois, sem varrer de novo.', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-sessao.json', ok: 'Salvar' });
-    if (path) { try { await rpc('session_save', { job: S.job, path }); toast('Sessão salva'); } catch (e) { toast(e.message); } }
-  });
-  $('#warnArea').innerHTML = (st.warnings || []).map((w) => `<div class="notice">${warnSvg}<div>${esc(w)}</div></div>`).join('')
-    + (st.error ? `<div class="notice bad">${warnSvg}<div>${esc(st.error)}</div></div>` : '');
+    </div></div>`);
+  setHTML($('#warnArea'), (st.warnings || []).map((w) => `<div class="notice">${warnSvg}<div>${esc(w)}</div></div>`).join('')
+    + (st.error ? `<div class="notice bad">${warnSvg}<div>${esc(st.error)}</div></div>` : ''));
   // chips
   const total = st.found;
-  $('#chips').innerHTML = [`<button class="chip" data-c="" aria-pressed="${!S.filters.category}">Tudo<small>${total}</small></button>`]
-    .concat(CATS.filter(([k]) => st.categories[k]).map(([k, n]) => `<button class="chip" data-c="${k}" aria-pressed="${S.filters.category === k}">${n}<small>${st.categories[k]}</small></button>`)).join('');
-  $('#chips').querySelectorAll('.chip').forEach((c) => (c.onclick = () => { S.filters.category = c.dataset.c || null; resetSel(); tick(); }));
+  setHTML($('#chips'), [`<button class="chip" data-c="" aria-pressed="${!S.filters.category}">Tudo<small>${total}</small></button>`]
+    .concat(CATS.filter(([k]) => st.categories[k]).map(([k, n]) => `<button class="chip" data-c="${k}" aria-pressed="${S.filters.category === k}">${n}<small>${st.categories[k]}</small></button>`)).join(''));
   const sel = $('#conf'); if (sel && sel.value !== (S.filters.minConfidence || '')) sel.value = S.filters.minConfidence || '';
   paintBar();
+}
+
+async function onProgressClick(e) {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (!act) return;
+  if (act === 'pause') { await rpc('scan_pause', { job: S.job }); toast('Pausando…'); }
+  else if (act === 'stop') await rpc('scan_stop', { job: S.job });
+  else if (act === 'resume') { await rpc('scan_resume', { job: S.job }); stopPoll(); S.poll = setInterval(tick, 500); tick(); }
+  else if (act === 'save') {
+    const path = await ask({ title: 'Salvar sessão', text: 'Guarda os resultados para recuperar depois, sem varrer de novo.', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-sessao.json', ok: 'Salvar' });
+    if (path) { try { await rpc('session_save', { job: S.job, path }); toast('Sessão salva'); } catch (err) { toast(err.message); } }
+  }
+}
+
+function rowHtml(i) {
+  const [cl, cc] = CONF[i.confidence];
+  const on = S.allFiltered || S.selected.has(i.id);
+  return `<div class="tr" role="row" data-id="${i.id}" aria-selected="${on || S.current?.id === i.id}" tabindex="0">
+    <input type="checkbox" ${on ? 'checked' : ''} aria-label="Selecionar ${esc(i.name)}">
+    <div class="nm"><b>${esc(i.name)}</b><small>${esc(i.dir || (i.origin === 'carved' ? 'Encontrado por assinatura' : '—'))}</small></div>
+    <div class="num">${human(i.size)}</div><div class="num" style="text-align:left">${i.origin === 'carved' ? 'assinatura' : esc(i.origin)}</div>
+    <div class="num"><span class="pill ${cc}">${cl}</span></div></div>`;
 }
 
 function paintList() {
@@ -401,61 +446,112 @@ function paintList() {
   if (!el) return;
   const st = S.status;
   if (!S.items.length) {
-    el.innerHTML = `<div class="empty"><h3>${st && st.status === 'running' ? 'Procurando…' : 'Nada por aqui'}</h3><p>${st && st.status === 'running' ? 'Os arquivos aparecem aqui assim que são encontrados.' : (S.filters.category || S.filters.query || S.filters.minConfidence) ? 'Nenhum arquivo combina com os filtros.' : 'Não encontramos arquivos recuperáveis neste disco.'}</p></div>`;
+    setHTML(el, `<div class="empty"><h3>${st && st.status === 'running' ? 'Procurando…' : 'Nada por aqui'}</h3><p>${st && st.status === 'running' ? 'Os arquivos aparecem aqui assim que são encontrados.' : (S.filters.category || S.filters.query || S.filters.minConfidence) ? 'Nenhum arquivo combina com os filtros.' : 'Não encontramos arquivos recuperáveis neste disco.'}</p></div>`);
+    paintBar();
     return;
   }
   const allSel = S.items.every((i) => S.selected.has(i.id)) || S.allFiltered;
-  el.innerHTML = `<div class="thead"><input type="checkbox" id="selAll" aria-label="Selecionar todos" ${allSel ? 'checked' : ''}><span>Nome</span><span style="text-align:right">Tamanho</span><span>Origem</span><span style="text-align:right">Confiança</span></div>`
-    + S.items.map((i) => {
-      const [cl, cc] = CONF[i.confidence];
-      const on = S.allFiltered || S.selected.has(i.id);
-      return `<div class="tr" role="row" data-id="${i.id}" aria-selected="${on || S.current?.id === i.id}" tabindex="0">
-        <input type="checkbox" ${on ? 'checked' : ''} aria-label="Selecionar ${esc(i.name)}">
-        <div class="nm"><b>${esc(i.name)}</b><small>${esc(i.dir || (i.origin === 'carved' ? 'Encontrado por assinatura' : '—'))}</small></div>
-        <div class="num">${human(i.size)}</div><div class="num" style="text-align:left">${i.origin === 'carved' ? 'assinatura' : esc(i.origin)}</div>
-        <div class="num"><span class="pill ${cc}">${cl}</span></div></div>`;
-    }).join('')
-    + (S.items.length < S.total ? `<div class="more"><button class="btn" id="moreBtn">Mostrar mais (${(S.total - S.items.length).toLocaleString('pt-BR')})</button></div>` : '');
-  $('#selAll').onchange = (e) => {
-    if (e.target.checked) S.items.forEach((i) => S.selected.add(i.id)); else resetSel();
-    paintList(); paintBar();
-  };
-  el.querySelectorAll('.tr').forEach((row) => {
-    const id = +row.dataset.id;
-    const cb = $('input', row);
-    cb.onclick = (e) => { e.stopPropagation(); if (S.allFiltered) { S.allFiltered = false; S.items.forEach((i) => S.selected.add(i.id)); } cb.checked ? S.selected.add(id) : S.selected.delete(id); paintBar(); row.setAttribute('aria-selected', cb.checked); };
-    row.onclick = () => focusItem(S.items.find((i) => i.id === id));
-    row.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); focusItem(S.items.find((i) => i.id === id)); } };
-  });
-  $('#moreBtn')?.addEventListener('click', () => loadResults(false));
+  setHTML(el, `<div class="thead"><input type="checkbox" id="selAll" aria-label="Selecionar todos" ${allSel ? 'checked' : ''}><span>Nome</span><span style="text-align:right">Tamanho</span><span>Origem</span><span style="text-align:right">Confiança</span></div>`
+    + S.items.map(rowHtml).join('')
+    + (S.items.length < S.total ? `<div class="more"><button class="btn" id="moreBtn">Mostrar mais (${(S.total - S.items.length).toLocaleString('pt-BR')})</button></div>` : ''));
   paintBar();
 }
 
-async function focusItem(item) {
+// Eventos da tabela por delegação (o HTML é recriado, o listener não).
+function wireTable() {
+  const el = $('#table');
+  el.addEventListener('click', (e) => {
+    if (e.target.id === 'moreBtn') return loadResults(false);
+    const row = e.target.closest('.tr');
+    if (e.target.id === 'selAll') {
+      if (e.target.checked) S.items.forEach((i) => S.selected.add(i.id)); else resetSel();
+      el._h = null; paintList();
+      return;
+    }
+    if (!row) return;
+    const id = +row.dataset.id;
+    if (e.target.matches('input[type=checkbox]')) {
+      if (S.allFiltered) { S.allFiltered = false; S.items.forEach((i) => S.selected.add(i.id)); }
+      e.target.checked ? S.selected.add(id) : S.selected.delete(id);
+      row.setAttribute('aria-selected', e.target.checked);
+      el._h = null;
+      paintBar();
+      return;
+    }
+    focusItem(S.items.find((i) => i.id === id));
+  });
+  el.addEventListener('dblclick', (e) => { if (e.target.closest('.tr')) openLightbox(); });
+}
+
+let stopPv = null;
+function focusItem(item, { scroll = false } = {}) {
+  if (!item) return;
   S.current = item;
-  document.querySelectorAll('.tr').forEach((r) => r.setAttribute('aria-selected', (+r.dataset.id === item.id) || S.selected.has(+r.dataset.id) || S.allFiltered));
+  document.querySelectorAll('.tr').forEach((r) => {
+    const on = +r.dataset.id === item.id || S.selected.has(+r.dataset.id) || S.allFiltered;
+    r.setAttribute('aria-selected', on);
+    if (scroll && +r.dataset.id === item.id) r.scrollIntoView({ block: 'nearest' });
+  });
   paintPreview();
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(item.ext) && item.size < 8 * 1024 * 1024) {
-    try {
-      const p = await rpc('preview', { job: S.job, id: item.id });
-      if (S.current?.id === item.id && p.mime) $('.thumb', $('#preview')).innerHTML = `<img alt="Pré-visualização de ${esc(item.name)}" src="data:${p.mime};base64,${p.base64}">`;
-    } catch { /* sem prévia */ }
-  }
+}
+
+function detailsHtml(i) {
+  const [cl, cc] = CONF[i.confidence];
+  return `<dl class="kv"><dt>Nome</dt><dd>${esc(i.name)}</dd><dt>Pasta</dt><dd>${esc(i.dir || '—')}</dd><dt>Tamanho</dt><dd>${human(i.size)}</dd>
+    <dt>Modificado</dt><dd>${date(i.modified)}</dd><dt>Origem</dt><dd>${i.origin === 'carved' ? 'Assinatura de formato' : esc(i.origin.toUpperCase())}</dd>
+    <dt>Confiança</dt><dd><span class="pill ${cc}">${cl}</span></dd>${i.note ? `<dt>Aviso</dt><dd>${esc(i.note)}</dd>` : ''}</dl>`;
 }
 
 function paintPreview() {
   const el = $('#preview');
   if (!el) return;
+  stopPv?.(); stopPv = null;
   const i = S.current;
-  if (!i) { el.innerHTML = `<div class="thumb">Selecione um arquivo para ver os detalhes</div>`; return; }
-  const [cl, cc] = CONF[i.confidence];
-  el.innerHTML = `<div class="thumb">${esc(i.ext ? i.ext.toUpperCase() : 'ARQUIVO')}</div>
-    <dl class="kv"><dt>Nome</dt><dd>${esc(i.name)}</dd><dt>Pasta</dt><dd>${esc(i.dir || '—')}</dd><dt>Tamanho</dt><dd>${human(i.size)}</dd>
-    <dt>Modificado</dt><dd>${date(i.modified)}</dd><dt>Origem</dt><dd>${i.origin === 'carved' ? 'Assinatura de formato' : esc(i.origin.toUpperCase())}</dd>
-    <dt>Confiança</dt><dd><span class="pill ${cc}">${cl}</span></dd>${i.note ? `<dt>Aviso</dt><dd>${esc(i.note)}</dd>` : ''}</dl>
-    <div class="row"><button class="btn primary sm" id="recOne">Recuperar este arquivo</button></div>`;
+  if (!i) { el.innerHTML = '<div class="viewer"><div class="pv-note">Selecione um arquivo para pré-visualizar</div></div>'; return; }
+  el.innerHTML = `<div class="viewer" id="pvHost"></div><div class="sub" style="font-size:12.5px">${esc(KIND_LABEL[kindOf(i)])}</div>${detailsHtml(i)}
+    <div class="row"><button class="btn sm" id="pvFull">Tela cheia</button><button class="btn primary sm" id="recOne">Recuperar este arquivo</button></div>`;
+  stopPv = renderPreview($('#pvHost'), i, { url: fileUrl(S.job, i.id) });
+  $('#pvFull').onclick = openLightbox;
   $('#recOne').onclick = () => recover({ ids: [i.id] });
 }
+
+// ------------------------------------------------------------------ tela cheia
+let stopLb = null;
+function openLightbox() {
+  const i = S.current;
+  if (!i) return;
+  const d = $('#lightbox');
+  const idx = S.items.findIndex((x) => x.id === i.id);
+  d.innerHTML = `<div class="lb-head"><button class="icon-btn" id="lbPrev" aria-label="Anterior" ${idx <= 0 ? 'disabled' : ''}>‹</button><button class="icon-btn" id="lbNext" aria-label="Próximo" ${idx >= S.items.length - 1 ? 'disabled' : ''}>›</button>
+      <div class="ttl"><b>${esc(i.name)}</b><small>${esc(KIND_LABEL[kindOf(i)])} · ${human(i.size)} · confiança ${CONF[i.confidence][0]}</small></div>
+      <button class="icon-btn" id="lbClose" aria-label="Fechar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
+    <div class="lb-body"><div class="viewer large" id="lbHost"></div></div>
+    <div class="lb-foot"><span class="sub">${i.note ? esc(i.note) : '← → para navegar · Esc para fechar'}</span><button class="btn primary sm" id="lbRec">Recuperar este arquivo</button></div>`;
+  stopLb?.();
+  stopLb = renderPreview($('#lbHost', d), i, { url: fileUrl(S.job, i.id), large: true });
+  const go = (n) => { const t = S.items[idx + n]; if (t) { focusItem(t, { scroll: true }); openLightbox(); } };
+  $('#lbPrev', d).onclick = () => go(-1);
+  $('#lbNext', d).onclick = () => go(1);
+  $('#lbClose', d).onclick = () => d.close();
+  $('#lbRec', d).onclick = () => { d.close(); recover({ ids: [i.id] }); };
+  d.onclose = () => { stopLb?.(); stopLb = null; };
+  d.onkeydown = (e) => { if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1); };
+  if (!d.open) d.showModal();
+}
+
+// Teclado: ↑/↓ percorre a lista; Espaço/Enter abre a tela cheia.
+document.addEventListener('keydown', (e) => {
+  if (!S.job || document.querySelector('dialog[open]') || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName) && document.activeElement.type !== 'checkbox') return;
+  const idx = S.items.findIndex((x) => x.id === S.current?.id);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const t = S.items[Math.min(S.items.length - 1, Math.max(0, idx + (e.key === 'ArrowDown' ? 1 : -1)))];
+    focusItem(t, { scroll: true });
+  } else if ((e.key === ' ' || e.key === 'Enter') && S.current && !e.target.closest?.('button')) {
+    e.preventDefault();
+    openLightbox();
+  }
+});
 
 function selCount() { return S.allFiltered ? S.total : S.selected.size; }
 
@@ -465,14 +561,24 @@ function paintBar() {
   const st = S.status;
   const n = selCount();
   const canAll = st && st.found > 0 && st.status !== 'error';
-  if (!n && !canAll) { host.innerHTML = ''; return; }
+  if (!n && !canAll) { host.innerHTML = ''; host._h = null; return; }
   const moreOffer = !S.allFiltered && S.selected.size > 0 && S.selected.size < S.total && S.items.length === S.selected.size
-    ? `<button class="btn sm" id="selFiltered">Selecionar todos os ${S.total.toLocaleString('pt-BR')}</button>` : '';
-  host.innerHTML = `<div class="actionbar"><span class="info">${n ? `${n.toLocaleString('pt-BR')} selecionado(s)` : `${S.total.toLocaleString('pt-BR')} arquivo(s) na lista`}</span>${moreOffer}
-    ${n ? '<button class="btn primary" id="recSel">Recuperar selecionados</button>' : '<button class="btn primary" id="recAll">Recuperar todos da lista</button>'}</div>`;
-  $('#selFiltered')?.addEventListener('click', () => { S.allFiltered = true; paintList(); });
-  $('#recSel')?.addEventListener('click', () => recover(S.allFiltered ? { filter: currentFilter() } : { ids: [...S.selected] }));
-  $('#recAll')?.addEventListener('click', () => recover({ filter: currentFilter() }));
+    ? '<button class="btn sm" data-bar="all">Selecionar todos os ' + S.total.toLocaleString('pt-BR') + '</button>' : '';
+  const inner = `<span class="info">${n ? `${n.toLocaleString('pt-BR')} selecionado(s)` : `${S.total.toLocaleString('pt-BR')} arquivo(s) na lista`}</span>${moreOffer}
+    ${n ? '<button class="btn primary" data-bar="sel">Recuperar selecionados</button>' : '<button class="btn primary" data-bar="rec">Recuperar todos da lista</button>'}`;
+  let bar = host.firstElementChild;
+  if (!bar) {
+    // A barra é criada uma vez (com animação de entrada) e depois só tem o texto atualizado.
+    host.innerHTML = '<div class="actionbar enter"></div>';
+    bar = host.firstElementChild;
+    bar.onclick = (e) => {
+      const act = e.target.closest('[data-bar]')?.dataset.bar;
+      if (act === 'all') { S.allFiltered = true; $('#table')._h = null; paintList(); }
+      else if (act === 'sel') recover(S.allFiltered ? { filter: currentFilter() } : { ids: [...S.selected] });
+      else if (act === 'rec') recover({ filter: currentFilter() });
+    };
+  }
+  setHTML(bar, inner);
 }
 
 function currentFilter() {
@@ -540,6 +646,8 @@ async function openJobFromList(s) { openJob(s); }
     const v = await rpc('version');
     $('#versionTag').textContent = `v${v.version}`;
     S.defaults = await rpc('defaults');
+    try { const st = await rpc('settings_get'); if (st?.theme) { applyTheme(st.theme); try { localStorage.setItem('guara-theme', st.theme); } catch { /* */ } } } catch { /* usa o local */ }
+    tauri?.event?.listen?.('elevate-failed', (e) => { toast(String(e.payload || 'Não foi possível reiniciar como administrador')); });
   } catch (e) {
     main.innerHTML = `<div class="page"><div class="notice bad">${warnSvg}<div>Não foi possível falar com o núcleo do Guará: ${esc(e.message)}. Se abriu esta página manualmente, use o endereço completo exibido pelo comando <code>guara ui</code> (ele inclui o token).</div></div></div>`;
     return;

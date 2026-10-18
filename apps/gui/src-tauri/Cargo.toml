@@ -3,7 +3,7 @@
 [package]
 name = "guara-gui"
 description = "Guará: interface gráfica de recuperação de arquivos"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/lucasrguerra/guara"
@@ -19,6 +19,9 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde_json = "1"
 guara-core = { path = "../../../crates/guara-core" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [profile.release]
 lto = "thin"

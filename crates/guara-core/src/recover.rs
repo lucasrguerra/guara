@@ -210,3 +210,42 @@ pub fn write_file(src: &dyn Source, f: &Found, path: &Path) -> Result<String> {
         .map(|b| format!("{b:02x}"))
         .collect())
 }
+
+/// Lê `buf.len()` bytes do conteúdo lógico de um achado a partir de `offset`
+/// (usado para streaming/pré-visualização sem gravar em disco).
+pub fn read_found_at(
+    src: &dyn Source,
+    f: &Found,
+    offset: u64,
+    buf: &mut [u8],
+) -> std::io::Result<usize> {
+    if offset >= f.size || buf.is_empty() {
+        return Ok(0);
+    }
+    let want = buf.len().min((f.size - offset) as usize);
+    match &f.data {
+        DataLoc::Resident { bytes } => {
+            let o = offset as usize;
+            let n = want.min(bytes.len().saturating_sub(o));
+            buf[..n].copy_from_slice(&bytes[o..o + n]);
+            Ok(n)
+        }
+        DataLoc::Extents { extents } => {
+            let mut pos = 0u64;
+            for e in extents {
+                let elen = e.len.min(f.size.saturating_sub(pos));
+                if offset < pos + elen {
+                    let within = offset - pos;
+                    let n = want.min((elen - within) as usize);
+                    if e.sparse {
+                        buf[..n].fill(0);
+                        return Ok(n);
+                    }
+                    return src.read_at(e.offset + within, &mut buf[..n]);
+                }
+                pos += elen;
+            }
+            Ok(0)
+        }
+    }
+}

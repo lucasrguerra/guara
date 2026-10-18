@@ -1,4 +1,4 @@
-<p align="center"><img src="apps/gui/ui/guara.svg" width="96" alt="Guará"></p>
+<p align="center"><img src="apps/gui/ui/guara-logo.svg" width="360" alt="Guará"></p>
 <h1 align="center">Guará</h1>
 <p align="center">Recuperação de arquivos livre e gratuita para HD, SSD e pendrive.<br>Terminal e interface gráfica · Windows, Linux e macOS · somente leitura na origem.</p>
 
@@ -55,7 +55,9 @@ guara ui                                 # interface no navegador (127.0.0.1 + t
 
 ## Interface gráfica
 
-App desktop (Tauri) com barra lateral de dispositivos, mapa do disco, resultados ao vivo, filtros por tipo, busca, pré-visualização de imagens, confiança por arquivo, pausar/continuar e salvar sessão. Tema claro/escuro automático e layout responsivo. O mesmo front-end roda em `guara ui`.
+App desktop (Tauri) com barra lateral de dispositivos, mapa do disco, resultados ao vivo, filtros por tipo, busca, confiança por arquivo, pausar/continuar e salvar sessão. Tema **Auto / Claro / Escuro** à sua escolha (lembrado também ao reiniciar como administrador) e layout responsivo. O mesmo front-end roda em `guara ui`.
+
+**Pré-visualização antes de recuperar** (lida direto do disco, sem gravar nada): imagens (com zoom), **vídeo (MP4/MOV/WebM)** e áudio com player, **PDF** (página a página), texto, documentos Word/Excel/PowerPoint/OpenDocument (texto extraído), conteúdo de ZIP e visão hexadecimal para o resto. Use ↑/↓ para percorrer a lista, Espaço/Enter ou duplo clique para abrir em tela cheia. Quando um arquivo não abre, o aviso ajuda a julgar se ele está danificado. A reprodução de vídeo depende dos codecs do seu sistema (no Linux, instale os plugins `gstreamer1.0-libav` e `gstreamer1.0-plugins-good`).
 
 ## Limites conhecidos (v0.1)
 

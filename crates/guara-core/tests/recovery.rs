@@ -86,3 +86,58 @@ fn varredura_rapida_nao_faz_carving() {
         7
     );
 }
+
+/// Regressão: mkfs.vfat -F 32 em mídia pequena (< 65525 clusters) é FAT32 pelo BPB.
+#[test]
+fn fat32_pequeno_com_poucos_clusters_e_reconhecido() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let img = dir.path().join("p.img");
+    let ok = Command::new("truncate")
+        .args(["-s", "32M"])
+        .arg(&img)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+        && Command::new("mkfs.vfat")
+            .args(["-F", "32"])
+            .arg(&img)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+    let file = dir.path().join("arquivo.txt");
+    std::fs::write(&file, b"conteudo de teste\n".repeat(500)).unwrap();
+    let ok = ok
+        && Command::new("mcopy")
+            .arg("-i")
+            .arg(&img)
+            .arg(&file)
+            .arg("::/")
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        && Command::new("mdel")
+            .arg("-i")
+            .arg(&img)
+            .arg("::/arquivo.txt")
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+    if !ok {
+        eprintln!("SKIP: mtools/dosfstools ausentes");
+        return;
+    }
+    let res = scan_path(
+        &img,
+        &ScanOptions {
+            mode: ScanMode::Quick,
+            ..Default::default()
+        },
+    );
+    let layout = res.layout.unwrap();
+    assert_eq!(layout.partitions[0].fs, FsKind::Fat32);
+    assert_eq!(res.found.len(), 1);
+    let out = tempfile::tempdir().unwrap();
+    recover_all(&img, &res.found, out.path());
+    assert!(hashes_in(out.path()).contains_key(&sha256(&b"conteudo de teste\n".repeat(500))));
+}

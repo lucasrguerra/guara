@@ -92,17 +92,16 @@ fn detect_fat(b: &[u8]) -> Option<(FsKind, Option<u64>)> {
     let root_secs = (root_entries * 32).div_ceil(bps);
     let data = total.saturating_sub(reserved + nfats * fatsz + root_secs);
     let clusters = data / spc;
-    let kind = if clusters < 4085 {
-        FsKind::Fat12
-    } else if clusters < 65525 {
-        FsKind::Fat16
-    } else {
+    // O layout do BPB manda: raiz fixa zerada + FAT de 32 bits = FAT32, mesmo com poucos
+    // clusters (mkfs.vfat -F 32 em mídias pequenas gera isso e o Linux monta).
+    let is32 = root_entries == 0 && fat16 == 0 && fat32 != 0;
+    let kind = if is32 {
         FsKind::Fat32
+    } else if clusters < 4085 {
+        FsKind::Fat12
+    } else {
+        FsKind::Fat16
     };
-    // Coerência: FAT32 tem root_entries == 0 e fat16 == 0.
-    if (kind == FsKind::Fat32) != (root_entries == 0 && fat16 == 0) {
-        return None;
-    }
     Some((kind, Some(total * bps)))
 }
 
