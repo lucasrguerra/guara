@@ -47,6 +47,8 @@ pub struct NewFound<'a> {
     pub origin: Origin,
     pub data: DataLoc,
     pub modified: Option<i64>,
+    pub created: Option<i64>,
+    pub accessed: Option<i64>,
     pub base: Confidence,
     pub note: Option<&'a str>,
 }
@@ -98,6 +100,13 @@ pub fn make_found(ctx: &Ctx, n: NewFound) -> Found {
         confidence: conf,
         data: n.data,
         modified: n.modified,
+        created: n.created,
+        accessed: n.accessed,
+        taken: None,
+        camera: None,
+        px: None,
+        gps: false,
+        sig: None,
         note,
     }
 }

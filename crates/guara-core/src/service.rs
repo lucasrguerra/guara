@@ -33,6 +33,8 @@ pub enum JobKind {
     Scan,
     Recover,
     Image,
+    Search,
+    Hash,
 }
 
 struct State {
@@ -47,6 +49,11 @@ struct State {
     report: Option<Value>,
     started: Instant,
     finished_in: Option<f64>,
+    /// Leitura de datas EXIF/dimensões em andamento: (feitos, total).
+    enrich: Option<(u64, u64)>,
+    recoveries: Vec<recover::RecoverReport>,
+    started_unix: Option<i64>,
+    hits: Vec<Value>,
 }
 
 pub struct Job {
@@ -88,6 +95,13 @@ impl Job {
                 report: None,
                 started: Instant::now(),
                 finished_in: None,
+                enrich: None,
+                recoveries: vec![],
+                started_unix: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs() as i64),
+                hits: vec![],
             }),
         })
     }
@@ -128,6 +142,8 @@ impl Sink for JobSink {
 pub struct Engine {
     jobs: Mutex<HashMap<String, Arc<Job>>>,
     counter: AtomicU64,
+    thumbs: Mutex<crate::explorer::ThumbCache>,
+    gate: crate::explorer::Gate,
 }
 
 impl Default for Engine {
@@ -141,6 +157,13 @@ impl Engine {
         Self {
             jobs: Mutex::new(HashMap::new()),
             counter: AtomicU64::new(1),
+            thumbs: Mutex::new(crate::explorer::ThumbCache::new()),
+            gate: crate::explorer::Gate::new(
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(2)
+                    .min(6),
+            ),
         }
     }
 
@@ -231,51 +254,61 @@ impl Engine {
             "error": s.error,
             "report": s.report,
             "elapsed": elapsed,
+            "hits": s.hits.len(),
+            "enriching": s.enrich.map(|(d, t)| json!({ "done": d, "total": t })),
         }))
     }
 
     pub fn results(&self, id: &str, q: &Query) -> Result<Value> {
         let j = self.job(id)?;
         let s = j.st.lock().unwrap();
-        let needle = q
-            .query
-            .as_deref()
-            .map(|x| x.to_lowercase())
-            .filter(|x| !x.is_empty());
-        let mut items: Vec<&Found> = s
-            .found
-            .iter()
-            .filter(|f| q.category.map(|c| f.category == c).unwrap_or(true))
-            .filter(|f| q.min_confidence.map(|c| f.confidence >= c).unwrap_or(true))
-            .filter(|f| {
-                needle
-                    .as_ref()
-                    .map(|n| f.full_path().to_lowercase().contains(n.as_str()))
-                    .unwrap_or(true)
-            })
-            .collect();
-        match q.sort.as_deref() {
-            Some("name") => items.sort_by_key(|f| f.name.to_lowercase()),
-            Some("size") => items.sort_by_key(|f| std::cmp::Reverse(f.size)),
-            Some("confidence") => {
-                items.sort_by(|a, b| b.confidence.cmp(&a.confidence).then(b.size.cmp(&a.size)))
-            }
-            _ => {}
-        }
+        let mut items: Vec<&Found> = q.select(&s.found);
+        crate::explorer::sort_items(&mut items, q.sort.as_deref());
         let total = items.len();
         let page: Vec<Value> = items
             .into_iter()
             .skip(q.offset)
-            .take(q.limit.clamp(1, 2000))
-            .map(|f| {
-                json!({
-                    "id": f.id, "name": f.name, "dir": f.dir, "ext": f.ext, "category": f.category,
-                    "size": f.size, "origin": f.origin, "confidence": f.confidence,
-                    "modified": f.modified, "note": f.note,
-                })
-            })
+            .take(q.limit.clamp(1, 5000))
+            .map(crate::explorer::item_json)
             .collect();
         Ok(json!({ "total": total, "items": page }))
+    }
+
+    /// Contagens para a navegação lateral (tipos, datas, pastas, câmeras).
+    pub fn facets(&self, id: &str) -> Result<Value> {
+        let j = self.job(id)?;
+        let s = j.st.lock().unwrap();
+        Ok(crate::explorer::facets(&s.found))
+    }
+
+    /// Metadados detalhados (EXIF, PDF, Office, vídeo…) de um arquivo.
+    pub fn metadata(&self, id: &str, file: u64) -> Result<crate::meta::Meta> {
+        let (f, src) = self.open_file(id, file)?;
+        Ok(crate::meta::extract(src.as_ref(), &f))
+    }
+
+    /// Miniatura JPEG (cache em memória; decodificações limitadas em paralelo).
+    pub fn thumb(&self, job: &str, id: u64, size: u32) -> std::result::Result<Arc<Vec<u8>>, u16> {
+        let size = size.clamp(48, 640);
+        let key = (job.to_string(), id, size);
+        if let Some(v) = self.thumbs.lock().unwrap().get(&key) {
+            return if v.is_empty() { Err(422) } else { Ok(v) };
+        }
+        let (f, src) = self.open_file(job, id).map_err(|_| 404u16)?;
+        if f.category != Category::Image {
+            return Err(415);
+        }
+        let _permit = self.gate.acquire();
+        if let Some(v) = self.thumbs.lock().unwrap().get(&key) {
+            return if v.is_empty() { Err(422) } else { Ok(v) };
+        }
+        let out = Arc::new(crate::thumb::thumbnail(src.as_ref(), &f, size).unwrap_or_default());
+        self.thumbs.lock().unwrap().put(key, out.clone());
+        if out.is_empty() {
+            Err(422)
+        } else {
+            Ok(out)
+        }
     }
 
     /// Achado + origem para leitura posicional (streaming de pré-visualização).
@@ -310,25 +343,7 @@ impl Engine {
                     .iter()
                     .filter_map(|i| s.index.get(i).map(|&k| s.found[k].clone()))
                     .collect(),
-                (None, Some(q)) => {
-                    let needle = q
-                        .query
-                        .as_deref()
-                        .map(|x| x.to_lowercase())
-                        .filter(|x| !x.is_empty());
-                    s.found
-                        .iter()
-                        .filter(|f| q.category.map(|c| f.category == c).unwrap_or(true))
-                        .filter(|f| q.min_confidence.map(|c| f.confidence >= c).unwrap_or(true))
-                        .filter(|f| {
-                            needle
-                                .as_ref()
-                                .map(|n| f.full_path().to_lowercase().contains(n.as_str()))
-                                .unwrap_or(true)
-                        })
-                        .cloned()
-                        .collect()
-                }
+                (None, Some(q)) => q.select(&s.found).into_iter().cloned().collect(),
                 (None, None) => s.found.clone(),
             }
         };
@@ -344,6 +359,7 @@ impl Engine {
             None,
         );
         let j2 = job.clone();
+        let parent = sj.clone();
         std::thread::spawn(move || {
             let cancelled = || j2.cancelled();
             let mut prog = |done: usize, total: usize, bytes: u64| {
@@ -360,6 +376,7 @@ impl Engine {
             match res {
                 Ok(rep) => {
                     s.report = serde_json::to_value(&rep).ok();
+                    parent.st.lock().unwrap().recoveries.push(rep.clone());
                     s.status = if rep.cancelled {
                         Status::Stopped
                     } else {
@@ -422,6 +439,156 @@ impl Engine {
         Ok(job.id.clone())
     }
 
+    // ---------------------------------------------------------------- exportação e relatório
+
+    /// CSV dos achados que atendem ao filtro (ou todos). Devolve quantas linhas gravou.
+    pub fn export_csv(&self, id: &str, path: &str, q: Option<&Query>) -> Result<usize> {
+        let j = self.job(id)?;
+        let s = j.st.lock().unwrap();
+        let items: Vec<&Found> = match q {
+            Some(q) => q.select(&s.found),
+            None => s.found.iter().collect(),
+        };
+        std::fs::write(path, crate::report::csv(&items))?;
+        Ok(items.len())
+    }
+
+    /// Relatório HTML de recuperação (identificação do caso, origem, achados, hashes).
+    pub fn export_report(
+        &self,
+        id: &str,
+        path: &str,
+        case: crate::report::CaseInfo,
+        hashes: Option<crate::hashing::Hashes>,
+    ) -> Result<()> {
+        let j = self.job(id)?;
+        let s = j.st.lock().unwrap();
+        let elapsed = s
+            .finished_in
+            .unwrap_or_else(|| s.started.elapsed().as_secs_f64());
+        let html = crate::report::html(&crate::report::ReportInput {
+            case: &case,
+            target: &j.target,
+            options: &j.opts,
+            layout: s.layout.as_ref(),
+            found: &s.found,
+            warnings: &s.warnings,
+            started_unix: s.started_unix,
+            elapsed,
+            recoveries: &s.recoveries,
+            source_hashes: hashes.as_ref(),
+        });
+        std::fs::write(path, html)?;
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------- busca de texto e hash da origem
+
+    pub fn start_search(&self, path: &str, opts: crate::search::SearchOpts) -> Result<String> {
+        if opts.terms.iter().all(|t| t.trim().is_empty()) {
+            return Err(Error::msg("informe pelo menos um termo"));
+        }
+        let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
+        let job = self.register(
+            JobKind::Search,
+            path.to_string(),
+            ScanOptions::default(),
+            Some(src.clone()),
+        );
+        let j2 = job.clone();
+        std::thread::spawn(move || {
+            let layout = crate::partition::analyze(src.as_ref(), false);
+            let cancelled = || j2.cancelled();
+            let mut prog = |d: u64, t: u64| {
+                j2.st.lock().unwrap().progress = Progress {
+                    phase: "Procurando texto no disco".into(),
+                    done: d,
+                    total: t,
+                };
+            };
+            let mut on_hit = |h: crate::search::Hit| {
+                let part = layout
+                    .partitions
+                    .iter()
+                    .find(|p| h.offset >= p.start && h.offset < p.start + p.len)
+                    .map(|p| p.index + 1);
+                let mut s = j2.st.lock().unwrap();
+                s.hits.push(json!({
+                    "offset": h.offset, "term": h.term, "encoding": h.encoding,
+                    "context": h.context, "partition": part,
+                }));
+                true
+            };
+            crate::search::search(src.as_ref(), &opts, &cancelled, &mut prog, &mut on_hit);
+            let mut s = j2.st.lock().unwrap();
+            s.status = if j2.stop_requested.load(Ordering::Relaxed) {
+                Status::Stopped
+            } else {
+                Status::Done
+            };
+            s.finished_in = Some(s.started.elapsed().as_secs_f64());
+        });
+        Ok(job.id.clone())
+    }
+
+    pub fn search_results(&self, id: &str, offset: usize, limit: usize) -> Result<Value> {
+        let j = self.job(id)?;
+        let s = j.st.lock().unwrap();
+        Ok(json!({
+            "total": s.hits.len(),
+            "items": s.hits.iter().skip(offset).take(limit.clamp(1, 2000)).cloned().collect::<Vec<_>>(),
+        }))
+    }
+
+    /// Calcula MD5/SHA-1/SHA-256 da origem inteira (verificação de integridade).
+    pub fn start_hash(&self, path: &str) -> Result<String> {
+        let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
+        let job = self.register(
+            JobKind::Hash,
+            path.to_string(),
+            ScanOptions::default(),
+            None,
+        );
+        let j2 = job.clone();
+        std::thread::spawn(move || {
+            let size = src.size();
+            let mut h = crate::hashing::MultiHasher::new();
+            let mut buf = vec![0u8; 4 << 20];
+            let mut pos = 0u64;
+            let mut err = None;
+            while pos < size && !j2.cancelled() {
+                let want = ((size - pos) as usize).min(buf.len());
+                match crate::source::read_exact_at(src.as_ref(), pos, &mut buf[..want]) {
+                    Ok(()) => {
+                        h.update(&buf[..want]);
+                        pos += want as u64;
+                    }
+                    Err(e) => {
+                        err = Some(format!("falha de leitura em {pos}: {e}. Para discos com defeito use a imagem forense."));
+                        break;
+                    }
+                }
+                j2.st.lock().unwrap().progress = Progress {
+                    phase: "Calculando hashes da origem".into(),
+                    done: pos,
+                    total: size,
+                };
+            }
+            let mut s = j2.st.lock().unwrap();
+            if let Some(e) = err {
+                s.error = Some(e);
+                s.status = Status::Error;
+            } else if pos < size {
+                s.status = Status::Stopped;
+            } else {
+                s.report = serde_json::to_value(h.finalize()).ok();
+                s.status = Status::Done;
+            }
+            s.finished_in = Some(s.started.elapsed().as_secs_f64());
+        });
+        Ok(job.id.clone())
+    }
+
     // ---------------------------------------------------------------- sessões
 
     pub fn save_session(&self, id: &str, path: &str) -> Result<()> {
@@ -436,6 +603,8 @@ impl Engine {
             layout: s.layout.clone(),
             warnings: s.warnings.clone(),
             done: s.status == Status::Done,
+            recoveries: s.recoveries.clone(),
+            started_unix: s.started_unix,
         };
         std::fs::write(path, serde_json::to_vec(&data)?)?;
         Ok(())
@@ -458,12 +627,17 @@ impl Engine {
             s.found = data.found;
             s.layout = data.layout;
             s.warnings = data.warnings;
+            s.recoveries = data.recoveries;
+            s.started_unix = data.started_unix.or(s.started_unix);
             s.checkpoint = data.checkpoint;
             s.status = if data.done {
                 Status::Done
             } else {
                 Status::Paused
             };
+        }
+        if data.done {
+            spawn_enrich(job.clone());
         }
         Ok(job.id.clone())
     }
@@ -506,6 +680,49 @@ impl Engine {
                 json!({})
             }
             "status" => self.status(&s("job")?)?,
+            "facets" => self.facets(&s("job")?)?,
+            "export_csv" => {
+                let q: Option<Query> = p
+                    .get("query")
+                    .cloned()
+                    .filter(|v| !v.is_null())
+                    .map(serde_json::from_value)
+                    .transpose()?;
+                json!({ "rows": self.export_csv(&s("job")?, &s("path")?, q.as_ref())? })
+            }
+            "export_report" => {
+                let case: crate::report::CaseInfo = p
+                    .get("case")
+                    .cloned()
+                    .filter(|v| !v.is_null())
+                    .map(serde_json::from_value)
+                    .transpose()?
+                    .unwrap_or_default();
+                let hashes: Option<crate::hashing::Hashes> = p
+                    .get("hashes")
+                    .cloned()
+                    .filter(|v| !v.is_null())
+                    .map(serde_json::from_value)
+                    .transpose()?;
+                self.export_report(&s("job")?, &s("path")?, case, hashes)?;
+                json!({})
+            }
+            "search_start" => {
+                let opts: crate::search::SearchOpts = serde_json::from_value(p.clone())?;
+                json!({ "job": self.start_search(&s("path")?, opts)? })
+            }
+            "search_results" => self.search_results(
+                &s("job")?,
+                p.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+                p.get("limit").and_then(|v| v.as_u64()).unwrap_or(200) as usize,
+            )?,
+            "hash_start" => json!({ "job": self.start_hash(&s("path")?)? }),
+            "metadata" => json!(self.metadata(
+                &s("job")?,
+                p.get("id")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| Error::msg("id ausente"))?
+            )?),
             "results" => {
                 let q: Query = p
                     .get("query")
@@ -556,38 +773,7 @@ impl Engine {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Query {
-    #[serde(default)]
-    pub category: Option<Category>,
-    #[serde(default)]
-    pub min_confidence: Option<Confidence>,
-    #[serde(default)]
-    pub query: Option<String>,
-    #[serde(default)]
-    pub sort: Option<String>,
-    #[serde(default)]
-    pub offset: usize,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-}
-
-fn default_limit() -> usize {
-    200
-}
-
-impl Default for Query {
-    fn default() -> Self {
-        Self {
-            category: None,
-            min_confidence: None,
-            query: None,
-            sort: None,
-            offset: 0,
-            limit: 200,
-        }
-    }
-}
+pub use crate::explorer::Query;
 
 #[derive(Serialize, Deserialize)]
 struct SessionFile {
@@ -599,19 +785,13 @@ struct SessionFile {
     layout: Option<DiskLayout>,
     warnings: Vec<String>,
     done: bool,
+    #[serde(default)]
+    recoveries: Vec<recover::RecoverReport>,
+    #[serde(default)]
+    started_unix: Option<i64>,
 }
 
-fn cat_key(c: Category) -> &'static str {
-    match c {
-        Category::Image => "image",
-        Category::Document => "document",
-        Category::Video => "video",
-        Category::Audio => "audio",
-        Category::Archive => "archive",
-        Category::Database => "database",
-        Category::Other => "other",
-    }
-}
+use crate::explorer::cat_key;
 
 fn open_error(path: &str, e: std::io::Error) -> Error {
     if e.kind() == std::io::ErrorKind::PermissionDenied {
@@ -653,6 +833,55 @@ fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
             }
         }
         s.finished_in = Some(s.started.elapsed().as_secs_f64());
+        let done = s.status == Status::Done;
+        drop(s);
+        if done {
+            spawn_enrich(job);
+        }
+    });
+}
+
+/// Lê EXIF/dimensões das imagens achadas (em segundo plano) para permitir
+/// navegar por data, câmera e resolução.
+fn spawn_enrich(job: Arc<Job>) {
+    std::thread::spawn(move || {
+        let Some(src) = job.src.clone() else { return };
+        let todo: Vec<(u64, Found)> = {
+            let s = job.st.lock().unwrap();
+            s.found
+                .iter()
+                .filter(|f| {
+                    f.sig.is_none()
+                        || (f.category == Category::Image && f.px.is_none() && f.taken.is_none())
+                })
+                .map(|f| (f.id, f.clone()))
+                .collect()
+        };
+        if todo.is_empty() {
+            return;
+        }
+        let total = todo.len() as u64;
+        for (i, (id, f)) in todo.into_iter().enumerate() {
+            if job.cancelled() && job.stop_requested.load(Ordering::Relaxed) {
+                break;
+            }
+            let sig = crate::explorer::quick_sig(src.as_ref(), &f);
+            let m = (f.category == Category::Image && f.px.is_none() && f.taken.is_none())
+                .then(|| crate::meta::extract(src.as_ref(), &f));
+            let mut s = job.st.lock().unwrap();
+            if let Some(&k) = s.index.get(&id) {
+                let t = &mut s.found[k];
+                t.sig = sig;
+                if let Some(m) = m {
+                    t.taken = m.taken;
+                    t.camera = m.camera.clone();
+                    t.px = m.px.or(t.px);
+                    t.gps = m.gps.is_some();
+                }
+            }
+            s.enrich = Some((i as u64 + 1, total));
+        }
+        job.st.lock().unwrap().enrich = None;
     });
 }
 

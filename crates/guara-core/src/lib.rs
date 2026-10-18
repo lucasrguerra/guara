@@ -1,4 +1,4 @@
-//! Guará — núcleo de recuperação de arquivos.
+//! Guará: núcleo de recuperação de arquivos.
 //!
 //! Princípio central: a origem é aberta **somente para leitura**; nada neste
 //! crate escreve no dispositivo que está sendo recuperado.
@@ -6,15 +6,21 @@
 pub mod carve;
 pub mod device;
 pub mod error;
+pub mod explorer;
 pub mod fs;
+pub mod hashing;
 pub mod image;
+pub mod meta;
 pub mod partition;
 pub mod recover;
+pub mod report;
 pub mod scan;
+pub mod search;
 pub mod service;
 pub mod settings;
 pub mod signatures;
 pub mod source;
+pub mod thumb;
 pub mod types;
 
 pub use error::{Error, Result};

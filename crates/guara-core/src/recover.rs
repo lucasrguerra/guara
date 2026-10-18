@@ -3,10 +3,10 @@
 
 use crate::error::{Error, Result};
 use crate::fs::sanitize_name;
+use crate::hashing::{Hashes, MultiHasher};
 use crate::source::{read_vec, Source};
 use crate::types::*;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -17,6 +17,10 @@ pub struct RecoveredFile {
     pub path: String,
     pub size: u64,
     pub sha256: String,
+    #[serde(default)]
+    pub md5: String,
+    #[serde(default)]
+    pub sha1: String,
     pub confidence: Confidence,
     pub origin: Origin,
     pub partial: bool,
@@ -111,7 +115,7 @@ pub fn recover(
         }
         used.insert(path.clone());
         match write_file(src, f, &path) {
-            Ok(hash) => {
+            Ok(h) => {
                 report.total_bytes += f.size;
                 report.recovered.push(RecoveredFile {
                     id: f.id,
@@ -121,7 +125,9 @@ pub fn recover(
                         .to_string_lossy()
                         .replace('\\', "/"),
                     size: f.size,
-                    sha256: hash,
+                    sha256: h.sha256,
+                    md5: h.md5,
+                    sha1: h.sha1,
                     confidence: f.confidence,
                     origin: f.origin,
                     partial: f.confidence == Confidence::Low,
@@ -135,7 +141,7 @@ pub fn recover(
         "ferramenta": "Guará",
         "versao": env!("CARGO_PKG_VERSION"),
         "gerado_em": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
-        "algoritmo_hash": "SHA-256",
+        "algoritmos_hash": ["MD5", "SHA-1", "SHA-256"],
         "relatorio": &report,
     });
     std::fs::write(
@@ -165,12 +171,12 @@ fn target_rel(f: &Found) -> PathBuf {
 }
 
 /// Escreve o conteúdo e devolve o SHA-256.
-pub fn write_file(src: &dyn Source, f: &Found, path: &Path) -> Result<String> {
+pub fn write_file(src: &dyn Source, f: &Found, path: &Path) -> Result<Hashes> {
     let mut out = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(path)?;
-    let mut hasher = Sha256::new();
+    let mut hasher = MultiHasher::new();
     match &f.data {
         DataLoc::Resident { bytes } => {
             out.write_all(bytes)?;
@@ -204,11 +210,7 @@ pub fn write_file(src: &dyn Source, f: &Found, path: &Path) -> Result<String> {
         let _ = out.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(m as u64));
     }
     out.flush()?;
-    Ok(hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect())
+    Ok(hasher.finalize())
 }
 
 /// Lê `buf.len()` bytes do conteúdo lógico de um achado a partir de `offset`

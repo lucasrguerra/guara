@@ -237,6 +237,11 @@ impl Walk<'_, '_, '_, '_> {
                 u16::from_le_bytes([e[24], e[25]]),
                 u16::from_le_bytes([e[22], e[23]]),
             );
+            let ctime = super::dos_to_unix(
+                u16::from_le_bytes([e[16], e[17]]),
+                u16::from_le_bytes([e[14], e[15]]),
+            );
+            let atime = super::dos_to_unix(u16::from_le_bytes([e[18], e[19]]), 0);
             self.count += 1;
             if self.count % 512 == 0 {
                 (self.ctx.progress)(self.count, 0);
@@ -277,7 +282,7 @@ impl Walk<'_, '_, '_, '_> {
             if size == 0 || !self.fat.valid(start) {
                 continue;
             }
-            self.deleted_file(&name, path, start, size, mtime);
+            self.deleted_file(&name, path, start, size, (ctime, mtime, atime));
         }
     }
 
@@ -291,7 +296,14 @@ impl Walk<'_, '_, '_, '_> {
         v
     }
 
-    fn deleted_file(&mut self, name: &str, dir: &str, start: u32, size: u64, mtime: Option<i64>) {
+    fn deleted_file(
+        &mut self,
+        name: &str,
+        dir: &str,
+        start: u32,
+        size: u64,
+        times: (Option<i64>, Option<i64>, Option<i64>),
+    ) {
         let fat = self.fat;
         let cb = fat.cluster_bytes();
         let need = size.div_ceil(cb);
@@ -336,7 +348,9 @@ impl Walk<'_, '_, '_, '_> {
             data: DataLoc::Extents {
                 extents: trim_extents(extents, size),
             },
-            modified: mtime,
+            modified: times.1,
+            created: times.0,
+            accessed: times.2,
             base: conf,
             note,
         };

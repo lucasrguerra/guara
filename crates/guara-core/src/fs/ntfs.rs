@@ -22,6 +22,8 @@ struct Rec {
     parent: u64,
     name: Option<(String, u8)>,
     mtime: Option<i64>,
+    ctime: Option<i64>,
+    atime: Option<i64>,
     data: Option<Data>,
     has_attr_list: bool,
 }
@@ -199,6 +201,8 @@ pub fn scan(ctx: &mut Ctx, base: u64) -> VolumeScan {
                 origin: Origin::Ntfs,
                 data,
                 modified: rec.mtime,
+                created: rec.ctime,
+                accessed: rec.atime,
                 base: conf,
                 note: if rec.has_attr_list {
                     Some("registro com lista de atributos: pode estar incompleto")
@@ -320,6 +324,8 @@ fn parse_record(r: &mut [u8], bps: u64, _base: u64, _cl: u64) -> Option<Rec> {
         parent: 0,
         name: None,
         mtime: None,
+        ctime: None,
+        atime: None,
         data: None,
         has_attr_list: false,
     };
@@ -341,7 +347,11 @@ fn parse_record(r: &mut [u8], bps: u64, _base: u64, _cl: u64) -> Option<Rec> {
             0x10 if !nonres => {
                 let vo = le16(r, p + 20) as usize;
                 if p + vo + 16 <= r.len() {
+                    rec.ctime = filetime_to_unix(le64(r, p + vo));
                     rec.mtime = filetime_to_unix(le64(r, p + vo + 8));
+                    if p + vo + 32 <= r.len() {
+                        rec.atime = filetime_to_unix(le64(r, p + vo + 24));
+                    }
                 }
             }
             0x20 => rec.has_attr_list = true,

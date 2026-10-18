@@ -245,6 +245,13 @@ impl CarveEvents for Handler<'_> {
                 extents: vec![Extent::new(off, hit.len)],
             },
             modified: None,
+            created: None,
+            accessed: None,
+            taken: None,
+            camera: None,
+            px: None,
+            gps: false,
+            sig: None,
             note: if hit.confidence == Confidence::Low {
                 Some("sem rodapé/estrutura completa: pode estar truncado".into())
             } else {

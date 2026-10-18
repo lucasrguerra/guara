@@ -11,6 +11,7 @@ const CSS: &str = include_str!("../../../apps/gui/ui/app.css");
 const JS: &str = include_str!("../../../apps/gui/ui/app.js");
 const PREVIEW_JS: &str = include_str!("../../../apps/gui/ui/preview.js");
 const LOGO: &str = include_str!("../../../apps/gui/ui/guara-logo.svg");
+const EXPLORER_JS: &str = include_str!("../../../apps/gui/ui/explorer.js");
 const ICON: &str = include_str!("../../../apps/gui/ui/guara.svg");
 const PDF_JS: &str = include_str!("../../../apps/gui/ui/vendor/pdf.min.mjs");
 const PDF_WORKER: &str = include_str!("../../../apps/gui/ui/vendor/pdf.worker.min.mjs");
@@ -85,6 +86,12 @@ fn handle(mut req: Request, eng: &Engine, token: &str, hosts: &[String]) {
         (Method::Get, "/guara-logo.svg") => {
             let _ = req.respond(Response::from_string(LOGO).with_header(ct("image/svg+xml")));
         }
+        (Method::Get, "/explorer.js") => {
+            let _ = req.respond(
+                Response::from_string(EXPLORER_JS)
+                    .with_header(ct("text/javascript; charset=utf-8")),
+            );
+        }
         (Method::Get, "/guara.svg") => {
             let _ = req.respond(Response::from_string(ICON).with_header(ct("image/svg+xml")));
         }
@@ -97,6 +104,41 @@ fn handle(mut req: Request, eng: &Engine, token: &str, hosts: &[String]) {
             let _ = req.respond(
                 Response::from_string(PDF_WORKER).with_header(ct("text/javascript; charset=utf-8")),
             );
+        }
+        (Method::Get, p) if p.starts_with("/thumb/") => {
+            let tok_ok = query
+                .split('&')
+                .any(|kv| kv.strip_prefix("t=") == Some(token));
+            if !tok_ok {
+                let _ = req.respond(Response::from_string("token inválido").with_status_code(401));
+                return;
+            }
+            let mut it = p.trim_start_matches("/thumb/").split('/');
+            let (job, id) = (
+                it.next().unwrap_or(""),
+                it.next().and_then(|s| s.parse::<u64>().ok()),
+            );
+            let size = query
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("s="))
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(256);
+            let Some(id) = id else {
+                let _ = req.respond(Response::from_string("id inválido").with_status_code(400));
+                return;
+            };
+            match eng.thumb(job, id, size) {
+                Ok(bytes) => {
+                    let resp = Response::from_data(bytes.as_ref().clone())
+                        .with_header(ct("image/jpeg"))
+                        .with_header(header("Cache-Control", "private, max-age=3600"));
+                    let _ = req.respond(resp);
+                }
+                Err(code) => {
+                    let _ =
+                        req.respond(Response::from_string("sem miniatura").with_status_code(code));
+                }
+            }
         }
         (Method::Get, p) if p.starts_with("/file/") => {
             let tok_ok = query

@@ -2,9 +2,9 @@
 //! erros e hash. Serve para trabalhar sempre sobre a cópia.
 
 use crate::error::{Error, Result};
+use crate::hashing::MultiHasher;
 use crate::source::Source;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::Path;
 
@@ -12,6 +12,10 @@ use std::path::Path;
 pub struct ImageReport {
     pub bytes: u64,
     pub sha256: String,
+    #[serde(default)]
+    pub md5: String,
+    #[serde(default)]
+    pub sha1: String,
     /// (offset, tamanho) dos trechos ilegíveis, preenchidos com zeros.
     pub bad_ranges: Vec<(u64, u64)>,
     pub cancelled: bool,
@@ -38,7 +42,7 @@ pub fn create_image(
         })?;
     let size = src.size();
     let mut rep = ImageReport::default();
-    let mut hasher = Sha256::new();
+    let mut hasher = MultiHasher::new();
     let mut buf = vec![0u8; BLOCK];
     let mut pos = 0u64;
     while pos < size {
@@ -72,11 +76,10 @@ pub fn create_image(
     }
     out.flush()?;
     rep.bytes = pos;
-    rep.sha256 = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let h = hasher.finalize();
+    rep.sha256 = h.sha256;
+    rep.md5 = h.md5;
+    rep.sha1 = h.sha1;
     let map = dest.with_extension("map.json");
     std::fs::write(map, serde_json::to_vec_pretty(&rep)?)?;
     Ok(rep)

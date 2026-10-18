@@ -17,7 +17,7 @@ O Guará junta, numa única varredura, o que ferramentas como Recuva, PhotoRec, 
 - A origem é aberta **somente para leitura**. Nada no núcleo escreve no dispositivo recuperado.
 - A recuperação **recusa destinos no mesmo disco** da origem (Linux/macOS).
 - **Imagem forense** (`guara image`) tolerante a setores ruins, com mapa de erros e SHA-256: trabalhe sempre na cópia de um disco com defeito.
-- Cada recuperação grava `guara-manifesto.json` com o **SHA-256** de todos os arquivos.
+- Cada recuperação grava `guara-manifesto.json` com **MD5, SHA-1 e SHA-256** de todos os arquivos.
 - **Volumes cifrados** (BitLocker, LUKS) são **detectados e avisados**; a v1 não desbloqueia nem varre dentro deles.
 
 ## Instalação
@@ -48,6 +48,10 @@ guara scan disco.img --recover /mnt/outro-disco/Recuperados
 guara recover s.json /mnt/outro-disco/Recuperados --category image
 guara resume s.json                      # continua após Ctrl+C
 sudo guara image /dev/sdb /mnt/outro-disco/sdb.img    # imagem com mapa de erros
+sudo guara hash /dev/sdb                 # MD5, SHA-1 e SHA-256 do dispositivo
+sudo guara search /dev/sdb "contrato" "cpf"            # texto em todo o disco (UTF-8 e UTF-16)
+guara export s.json achados.csv --category image       # planilha dos achados
+guara report s.json relatorio.html --case 2026-001 --examiner "Nome" --hash-source
 guara ui                                 # interface no navegador (127.0.0.1 + token)
 ```
 
@@ -55,9 +59,28 @@ guara ui                                 # interface no navegador (127.0.0.1 + t
 
 ## Interface gráfica
 
-App desktop (Tauri) com barra lateral de dispositivos, mapa do disco, resultados ao vivo, filtros por tipo, busca, confiança por arquivo, pausar/continuar e salvar sessão. Tema **Auto / Claro / Escuro** à sua escolha (lembrado também ao reiniciar como administrador) e layout responsivo. O mesmo front-end roda em `guara ui`.
+App desktop (Tauri) no estilo de um gerenciador de arquivos, pensado para quando o Guará acha milhares de itens:
 
-**Pré-visualização antes de recuperar** (lida direto do disco, sem gravar nada): imagens (com zoom), **vídeo (MP4/MOV/WebM)** e áudio com player, **PDF** (página a página), texto, documentos Word/Excel/PowerPoint/OpenDocument (texto extraído), conteúdo de ZIP e visão hexadecimal para o resto. Use ↑/↓ para percorrer a lista, Espaço/Enter ou duplo clique para abrir em tela cheia. Quando um arquivo não abre, o aviso ajuda a julgar se ele está danificado. A reprodução de vídeo depende dos codecs do seu sistema (no Linux, instale os plugins `gstreamer1.0-libav` e `gstreamer1.0-plugins-good`).
+- **Grade de miniaturas** (gerada pelo núcleo, rápida mesmo com milhares de fotos) ou **lista**, com controle de tamanho, agrupamento por dia ou mês e rolagem virtual que aguenta dezenas de milhares de arquivos.
+- **Navegação lateral** por tipo, **data real da foto (EXIF)**, pasta, **câmera**, confiança, com localização GPS e ocultando duplicadas.
+- **Seleção como no Finder/Explorer:** clique, Ctrl/Cmd, Shift, setas, Ctrl+A. Espaço, Enter ou duplo clique abrem a **visualização rápida** em tela cheia com navegação por ← →.
+- **Painel de detalhes** com pré-visualização, datas (tirada, modificada, criada, acessada) e metadados.
+- Pausar/continuar, salvar sessão, tema **Auto / Claro / Escuro** (lembrado também ao reiniciar como administrador) e layout responsivo. O mesmo front-end roda em `guara ui`.
+
+**Pré-visualização antes de recuperar** (lida direto do disco, sem gravar nada): imagens, **vídeo (MP4/MOV/WebM)** e áudio com player, **PDF** página a página, texto, documentos Word/Excel/PowerPoint/OpenDocument (texto extraído), conteúdo de ZIP e visão hexadecimal para o resto. Quando um arquivo não abre, o aviso ajuda a julgar se ele está danificado. A reprodução de vídeo depende dos codecs do seu sistema (no Linux, instale os plugins `gstreamer1.0-libav` e `gstreamer1.0-plugins-good`).
+
+## Recursos periciais
+
+Pensados para quem precisa documentar o que fez:
+
+- **Hashes MD5, SHA-1 e SHA-256** de cada arquivo recuperado, da imagem forense e do dispositivo inteiro (`guara hash`).
+- **Metadados:** EXIF (câmera, lente, número de série, data, **GPS**), informações de PDF (autor, programa, datas), propriedades de documentos Office e OpenDocument (autor, última modificação por, empresa) e dados de vídeo MP4/MOV (data de gravação, duração, resolução).
+- **Linha do tempo:** datas de criação, modificação e acesso lidas do NTFS, FAT e exFAT.
+- **Pesquisa de texto no disco inteiro** (`guara search`), inclusive espaço livre e fora de partições, em UTF-8 e UTF-16, mostrando posição, partição e contexto.
+- **Exportação CSV** (abre no Excel) e **relatório HTML** pronto para imprimir (`guara report`), com identificação do caso, origem, partições, resumo, hashes e lista dos arquivos.
+- **Detecção de duplicadas** por assinatura de conteúdo.
+
+Escopo: o Guará trabalha com **mídias de armazenamento** (HD, SSD, pendrive, cartões e imagens de disco). Ele **não** desbloqueia celulares nem contorna senhas ou travas de segurança, e não substitui ferramentas de extração de dispositivos móveis.
 
 ## Limites conhecidos (v0.1)
 
@@ -70,7 +93,7 @@ Seja realista sobre o que dá para esperar:
 - **exFAT:** coberto por teste com imagem sintética; falta validar em mais mídias reais.
 - **Cifragem:** somente detecção.
 - **Windows/macOS:** o código compila e é testado em CI, mas os testes com imagens reais rodam só no Linux. Relatos de mídias reais são muito bem-vindos.
-- **GUI:** no Linux/macOS o app reinicia inteiro como administrador (via `pkexec`/`osascript`) em vez de usar um processo auxiliar separado — melhoria planejada.
+- **GUI:** no Linux/macOS o app reinicia inteiro como administrador (via `pkexec`/`osascript`) em vez de usar um processo auxiliar separado (melhoria planejada).
 
 ## Desenvolvimento
 

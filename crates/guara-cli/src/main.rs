@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Parser)]
-#[command(name = "guara", version, about = "Guará — recuperação de arquivos (somente leitura na origem)", long_about = None)]
+#[command(name = "guara", version, about = "Guará: recuperação de arquivos (somente leitura na origem)", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -50,6 +50,50 @@ enum Cmd {
     },
     /// Cria uma imagem do disco (tolerante a setores ruins) para trabalhar na cópia
     Image { path: String, dest: String },
+    /// Exporta os achados de uma sessão para CSV (abre no Excel)
+    Export {
+        session: String,
+        /// Arquivo CSV de saída
+        csv: String,
+        #[command(flatten)]
+        filter: FilterArgs,
+    },
+    /// Gera o relatório HTML de recuperação (identificação do caso, origem, achados, hashes)
+    Report {
+        session: String,
+        /// Arquivo HTML de saída
+        out: String,
+        #[arg(long, default_value = "")]
+        case: String,
+        #[arg(long, default_value = "")]
+        examiner: String,
+        #[arg(long, default_value = "")]
+        org: String,
+        #[arg(long, default_value = "")]
+        notes: String,
+        /// Calcula MD5/SHA-1/SHA-256 da origem e inclui no relatório (pode demorar)
+        #[arg(long)]
+        hash_source: bool,
+    },
+    /// Procura texto em todo o disco, inclusive espaço livre (UTF-8 e UTF-16)
+    Search {
+        path: String,
+        /// Termos a procurar
+        #[arg(required = true)]
+        terms: Vec<String>,
+        /// Diferencia maiúsculas de minúsculas
+        #[arg(long)]
+        case_sensitive: bool,
+        /// Não procura em UTF-16
+        #[arg(long)]
+        no_utf16: bool,
+        #[arg(long, default_value_t = 200)]
+        max: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Calcula MD5, SHA-1 e SHA-256 do dispositivo ou imagem (verificação de integridade)
+    Hash { path: String },
     /// Abre a interface gráfica no navegador (modo local)
     Ui {
         #[arg(long, default_value_t = 0)]
@@ -202,7 +246,9 @@ fn run(cli: Cli) -> Result<(), String> {
                     "a varredura dessa sessão não terminou; use `guara resume` primeiro".into(),
                 );
             }
-            recover_job(&eng, &job, &dest, &filter)
+            recover_job(&eng, &job, &dest, &filter)?;
+            eng.save_session(&job, &session).map_err(s)?;
+            Ok(())
         }
         Cmd::Image { path, dest } => {
             let job = eng.start_image(&path, &dest).map_err(s)?;
@@ -218,6 +264,107 @@ fn run(cli: Cli) -> Result<(), String> {
             if bad > 0 {
                 println!("Atenção: {bad} trecho(s) ilegível(is) preenchidos com zeros (veja {}.map.json).", dest.trim_end_matches(".img"));
             }
+            Ok(())
+        }
+        Cmd::Export {
+            session,
+            csv,
+            filter,
+        } => {
+            let job = eng.load_session(&session).map_err(s)?;
+            let q = query_from(&filter)?;
+            let r = eng
+                .rpc("export_csv", json!({ "job": job, "path": csv, "query": q }))
+                .map_err(s)?;
+            println!("{} linha(s) gravadas em {csv}", r["rows"]);
+            Ok(())
+        }
+        Cmd::Report {
+            session,
+            out,
+            case,
+            examiner,
+            org,
+            notes,
+            hash_source,
+        } => {
+            let job = eng.load_session(&session).map_err(s)?;
+            let mut hashes = Value::Null;
+            if hash_source {
+                let st = eng.status(&job).map_err(s)?;
+                let target = st["target"].as_str().unwrap_or("").to_string();
+                let hj = eng.start_hash(&target).map_err(s)?;
+                let hst = wait(&eng, &hj, None)?;
+                eprintln!();
+                if hst["status"] == "error" {
+                    return Err(hst["error"].as_str().unwrap_or("falha").to_string());
+                }
+                hashes = hst["report"].clone();
+            }
+            let case = json!({ "case_id": case, "examiner": examiner, "organization": org, "notes": notes });
+            eng.rpc(
+                "export_report",
+                json!({ "job": job, "path": out, "case": case, "hashes": hashes }),
+            )
+            .map_err(s)?;
+            println!("Relatório gravado em {out}");
+            Ok(())
+        }
+        Cmd::Search {
+            path,
+            terms,
+            case_sensitive,
+            no_utf16,
+            max,
+            json,
+        } => {
+            let opts = json!({ "path": path, "terms": terms, "ignore_case": !case_sensitive, "utf16": !no_utf16, "max_hits": max });
+            let job = eng.rpc("search_start", opts).map_err(s)?["job"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            let st = wait(&eng, &job, None)?;
+            eprintln!();
+            if st["status"] == "error" {
+                return Err(st["error"].as_str().unwrap_or("falha").to_string());
+            }
+            let res = eng
+                .rpc("search_results", json!({ "job": job, "limit": 2000 }))
+                .map_err(s)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&res).unwrap());
+                return Ok(());
+            }
+            for h in res["items"].as_array().into_iter().flatten() {
+                println!(
+                    "{:>14}  {}  {:<6} {:<8} {}",
+                    h["offset"],
+                    h["partition"]
+                        .as_u64()
+                        .map(|p| format!("part.{p}"))
+                        .unwrap_or_else(|| "fora".into()),
+                    h["encoding"].as_str().unwrap_or(""),
+                    h["term"].as_str().unwrap_or(""),
+                    h["context"].as_str().unwrap_or("")
+                );
+            }
+            println!("{} ocorrência(s).", res["total"]);
+            Ok(())
+        }
+        Cmd::Hash { path } => {
+            let job = eng.start_hash(&path).map_err(s)?;
+            let st = wait(&eng, &job, None)?;
+            eprintln!();
+            if st["status"] == "error" {
+                return Err(st["error"].as_str().unwrap_or("falha").to_string());
+            }
+            let r = &st["report"];
+            println!(
+                "MD5     {}\nSHA-1   {}\nSHA-256 {}",
+                r["md5"].as_str().unwrap_or(""),
+                r["sha1"].as_str().unwrap_or(""),
+                r["sha256"].as_str().unwrap_or("")
+            );
             Ok(())
         }
         Cmd::Ui { port, no_open } => serve::run(port, !no_open),
@@ -246,6 +393,7 @@ fn query_from(f: &FilterArgs) -> Result<Query, String> {
         sort: Some("confidence".into()),
         offset: 0,
         limit: 2000,
+        ..Default::default()
     })
 }
 
@@ -290,6 +438,9 @@ fn drive_scan(
     }
     if let Some(dest) = recover {
         recover_job(eng, job, dest, filter)?;
+        if let Some(p) = &out.session {
+            eng.save_session(job, p).map_err(s)?;
+        }
     } else if st["found"].as_u64().unwrap_or(0) > 0 && out.session.is_some() {
         eprintln!(
             "Para recuperar: guara recover {} <pasta-de-destino>",
@@ -391,8 +542,13 @@ fn wait(eng: &Engine, job: &str, session: Option<&str>) -> Result<Value, String>
                 .and_then(|v| v.checked_div(t))
                 .map_or("  … ".to_string(), |v| format!("{v:>3}%"));
             let found = st["found"].as_u64().unwrap_or(0);
+            let found = if st["hits"].as_u64().unwrap_or(0) > 0 {
+                st["hits"].as_u64().unwrap_or(0)
+            } else {
+                found
+            };
             let line = format!(
-                "{pct}  {}  ·  {found} arquivo(s) encontrado(s)  ·  {:.0}s",
+                "{pct}  {}  ·  {found} resultado(s)  ·  {:.0}s",
                 p["phase"].as_str().unwrap_or(""),
                 st["elapsed"].as_f64().unwrap_or(0.0)
             );
@@ -443,7 +599,7 @@ fn print_layout(v: &Value) {
 
 fn print_summary(st: &Value) {
     println!(
-        "Concluído em {:.1}s — {} arquivo(s) encontrado(s).",
+        "Concluído em {:.1}s: {} arquivo(s) encontrado(s).",
         st["elapsed"].as_f64().unwrap_or(0.0),
         st["found"]
     );

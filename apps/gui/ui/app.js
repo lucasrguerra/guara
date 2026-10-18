@@ -1,7 +1,7 @@
-// Guará — interface. Fala com o núcleo por `rpc(método, parâmetros)`:
+// Guará: interface. Fala com o núcleo por `rpc(método, parâmetros)`:
 //  • app Tauri: invoke('rpc')   • modo `guara ui`: POST /rpc/<método> com token.
 
-import { renderPreview, kindOf, KIND_LABEL } from './preview.js';
+import { createExplorer } from './explorer.js';
 
 const tauri = window.__TAURI__;
 const params = new URLSearchParams(location.search);
@@ -25,6 +25,7 @@ async function rpc(method, p = {}) {
 
 const isWin = /Windows/i.test(navigator.userAgent);
 const fileBase = tauri ? (isWin ? 'http://guara.localhost' : 'guara://localhost') : '';
+const thumbUrl = (job, id, s = 256) => `${fileBase}/thumb/${job}/${id}?s=${s}` + (tauri ? '' : `&t=${encodeURIComponent(token || '')}`);
 const fileUrl = (job, id) => `${fileBase}/file/${job}/${id}` + (tauri ? '' : `?t=${encodeURIComponent(token || '')}`);
 
 // Atualiza o HTML só quando mudou (evita piscar e perder o foco/hover).
@@ -63,7 +64,7 @@ const dur = (s) => {
   s = Math.round(s);
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}min ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}min`;
 };
-const date = (t) => (t ? new Date(t * 1000).toLocaleString('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const date = (t) => (t ? new Date(t * 1000).toLocaleString('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }) : 'sem data');
 const CATS = [
   ['image', 'Fotos'], ['document', 'Documentos'], ['video', 'Vídeos'], ['audio', 'Áudio'],
   ['archive', 'Compactados'], ['database', 'Bancos de dados'], ['other', 'Outros'],
@@ -100,6 +101,23 @@ function ask({ title, text, value, placeholder, ok = 'OK', pick }) {
     d.showModal();
     input.focus();
     input.select();
+  });
+}
+
+function askForm({ title, text, fields, ok = 'OK' }) {
+  return new Promise((resolve) => {
+    const d = $('#dlg');
+    d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2><p>${text || ''}</p>
+      ${fields.map((f) => `<label class="fld"><span>${esc(f.label)}</span>${f.multiline ? `<textarea class="input" name="${f.name}" rows="3" placeholder="${esc(f.placeholder || '')}">${esc(f.value || '')}</textarea>` : `<input class="input" name="${f.name}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}" autocomplete="off">`}</label>`).join('')}
+      <menu><button class="btn" value="cancel">Cancelar</button><button class="btn primary" value="ok">${esc(ok)}</button></menu></form>`;
+    d.onclose = () => {
+      if (d.returnValue !== 'ok') return resolve(null);
+      const out = {};
+      d.querySelectorAll('[name]').forEach((el) => (out[el.name] = el.value.trim()));
+      resolve(out);
+    };
+    d.showModal();
+    d.querySelector('[name]')?.focus();
   });
 }
 
@@ -153,7 +171,7 @@ function renderSide() {
   dl.innerHTML = S.devices.map((d, i) => `
     <li><button class="dev" data-i="${i}" aria-current="${S.device?.path === d.path}">
       <span class="ico">${icon(d.kind)}</span>
-      <span><span class="t">${esc(d.name)}</span><span class="s">${esc(d.kind)} · ${d.size ? human(d.size) : '—'}${d.readable ? '' : ' · requer admin'}</span></span>
+      <span><span class="t">${esc(d.name)}</span><span class="s">${esc(d.kind)} · ${d.size ? human(d.size) : '?'}${d.readable ? '' : ' · requer admin'}</span></span>
     </button></li>`).join('');
   dl.querySelectorAll('.dev').forEach((b) => (b.onclick = () => { openDevice(S.devices[+b.dataset.i]); setMenu(false); }));
   const sl = $('#sessionList');
@@ -197,12 +215,13 @@ $('#loadSessionBtn').onclick = async () => {
 
 // ------------------------------------------------------------------ início
 function renderHome() {
+  main.classList.remove('fixed');
   stopPoll();
   S.device = null; S.job = null;
   renderSide();
   main.innerHTML = `<div class="page">
     <section class="hero"><img class="hero-logo" src="guara-logo.svg" alt="Guará"><h1>Encontre o que você achou que tinha perdido.</h1>
-    <p>Escolha um disco, SSD ou pendrive ao lado. O Guará lê tudo — arquivos apagados, partições perdidas e espaço não particionado — sem escrever nada no disco de origem.</p></section>
+    <p>Escolha um disco, SSD ou pendrive ao lado. O Guará lê tudo: arquivos apagados, partições perdidas e espaço não particionado, sem escrever nada no disco de origem.</p></section>
     <div class="cards">
       <div class="card"><h3>Uma varredura, tudo junto</h3><p>Metadados do sistema de arquivos e busca por assinatura na mesma passada, sem duplicatas.</p></div>
       <div class="card"><h3>Confiança por arquivo</h3><p>Cada achado mostra a chance de abrir corretamente: alta, média ou baixa.</p></div>
@@ -214,6 +233,7 @@ function renderHome() {
 
 // ------------------------------------------------------------------ dispositivo
 async function openDevice(d) {
+  main.classList.remove('fixed');
   stopPoll();
   S.device = d; S.job = null; S.layout = null;
   renderSide();
@@ -252,7 +272,7 @@ function renderDevice(err) {
   const notes = [];
   if (!d.readable) notes.push(['bad', 'Este disco exige permissão de administrador. ' + (tauri ? '<button class="btn sm" id="elevate" style="margin-left:6px">Reiniciar como administrador</button>' : 'Feche e rode de novo com <code>sudo guara ui</code> (Linux/macOS) ou como administrador (Windows).')]);
   if (err) notes.push(['bad', esc(err)]);
-  if (d.mounted_at?.length) notes.push(['warn', `Este disco está em uso (montado em <code>${esc(d.mounted_at.join(', '))}</code>). O Guará só lê, mas evite gravar nele enquanto recupera — qualquer escrita pode sobrescrever o que você quer salvar.`]);
+  if (d.mounted_at?.length) notes.push(['warn', `Este disco está em uso (montado em <code>${esc(d.mounted_at.join(', '))}</code>). O Guará só lê, mas evite gravar nele enquanto recupera, porque qualquer escrita pode sobrescrever o que você quer salvar.`]);
   if (d.trim) notes.push(['warn', 'Este SSD usa TRIM: o sistema avisa o disco quais blocos foram apagados e o próprio SSD pode zerá-los. Arquivos apagados há bastante tempo tendem a não ser recuperáveis.']);
   (l?.warnings || []).forEach((w) => notes.push(['warn', esc(w)]));
 
@@ -272,6 +292,14 @@ function renderDevice(err) {
         <div class="mode"><h3>Criar imagem do disco</h3><p>Copia o disco inteiro para um arquivo, tolerando setores ruins. Ideal para discos com defeito: você trabalha na cópia.</p>
           <button class="btn lg" id="goImage" ${d.readable ? '' : 'disabled'}>Criar imagem…</button></div>
       </div>
+      <h2 style="margin-top:26px">Ferramentas de perícia</h2>
+      <div class="modes">
+        <div class="mode"><h3>Pesquisar texto no disco</h3><p>Procura palavras em todo o disco, inclusive em espaço livre e fora de partições (UTF-8 e UTF-16). Útil quando não há estrutura de arquivo.</p>
+          <input class="input" id="srchTerms" placeholder="termos separados por vírgula" aria-label="Termos a pesquisar" style="margin-bottom:8px">
+          <button class="btn lg" id="goSearch" ${d.readable ? '' : 'disabled'}>Pesquisar</button></div>
+        <div class="mode"><h3>Hashes da origem</h3><p>Calcula MD5, SHA-1 e SHA-256 do disco inteiro para registrar a integridade e a cadeia de custódia no relatório.</p>
+          <button class="btn lg" id="goHash" ${d.readable ? '' : 'disabled'}>Calcular hashes</button></div>
+      </div>
       <details class="adv"><summary>Opções avançadas</summary>
         <label class="check"><input type="checkbox" id="optAlloc"><span><b>Incluir áreas ainda em uso</b><br><span class="sub">Também procura cópias antigas dentro de arquivos existentes. Bem mais lento.</span></span></label>
         <div class="row" id="optCats">${CATS.map(([k, n]) => `<label class="check"><input type="checkbox" value="${k}"> ${n}</label>`).join('')}</div>
@@ -287,6 +315,9 @@ function renderDevice(err) {
   $('#goDeep')?.addEventListener('click', () => startScan(opts('deep')));
   $('#goQuick')?.addEventListener('click', () => startScan(opts('quick')));
   $('#goImage')?.addEventListener('click', startImage);
+  $('#goSearch')?.addEventListener('click', startSearch);
+  $('#srchTerms')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') startSearch(); });
+  $('#goHash')?.addEventListener('click', startHash);
 }
 
 async function startScan(options) {
@@ -312,80 +343,96 @@ async function startImage() {
   } catch (e) { toast(e.message); }
 }
 
+async function startHash() {
+  try {
+    const { job } = await rpc('hash_start', { path: S.device.path });
+    watchAux(job, 'Calculando hashes da origem', (st) => {
+      const r = st.report || {};
+      S.sourceHashes = { ...r, path: S.device.path };
+      return `<p>Hashes do conteúdo inteiro de <code>${esc(S.device.path)}</code>:</p><dl class="kv"><dt>MD5</dt><dd class="mono">${esc(r.md5)}</dd><dt>SHA-1</dt><dd class="mono">${esc(r.sha1)}</dd><dt>SHA-256</dt><dd class="mono">${esc(r.sha256)}</dd></dl><p class="sub">Eles serão incluídos nos relatórios gerados nesta sessão.</p>`;
+    });
+  } catch (e) { toast(e.message); }
+}
+
+async function startSearch() {
+  const terms = ($('#srchTerms')?.value || '').split(',').map((t) => t.trim()).filter(Boolean);
+  if (!terms.length) { toast('Digite pelo menos um termo.'); $('#srchTerms')?.focus(); return; }
+  try {
+    const { job } = await rpc('search_start', { path: S.device.path, terms, ignore_case: true, utf16: true });
+    openSearch(job, terms);
+  } catch (e) { toast(e.message); }
+}
+
+function openSearch(job, terms) {
+  stopPoll();
+  EX?.destroy(); EX = null;
+  S.job = null;
+  main.classList.remove('fixed');
+  main.innerHTML = `<div class="page"><button class="back" id="backBtn">‹ ${esc(S.device?.name || 'Dispositivos')}</button>
+    <h1 id="shTitle">Procurando…</h1><div class="sub">Termos: ${terms.map((t) => `<code>${esc(t)}</code>`).join(', ')}</div>
+    <div id="shProg" style="margin:14px 0"></div><div class="hits" id="hits"></div></div>`;
+  $('#backBtn').onclick = () => (S.device ? openDevice(S.device) : renderHome());
+  const termRe = new RegExp(terms.map((t) => esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
+  const tick2 = async () => {
+    let st, res;
+    try { st = await rpc('status', { job }); res = await rpc('search_results', { job, offset: 0, limit: 1000 }); } catch { return false; }
+    const run = st.status === 'running';
+    const p = st.progress || {};
+    const pct = p.total ? Math.floor((p.done / p.total) * 100) : 0;
+    $('#shTitle').textContent = run ? 'Procurando…' : `${res.total.toLocaleString('pt-BR')} ocorrência${res.total === 1 ? '' : 's'}`;
+    setHTML($('#shProg'), run ? `<div class="bar"><i style="width:${pct}%"></i></div><div class="sub" style="margin-top:6px">${pct}% · ${res.total.toLocaleString('pt-BR')} até agora</div><button class="btn sm danger" data-stop="1" style="margin-top:8px">Parar</button>` : st.status === 'error' ? `<div class="notice bad">${warnSvg}<div>${esc(st.error)}</div></div>` : '');
+    setHTML($('#hits'), res.items.length ? `<div class="hit head"><span>Posição</span><span>Partição</span><span>Codificação</span><span>Contexto</span></div>` + res.items.map((h) => `<div class="hit"><span class="mono" title="${h.offset} bytes (0x${h.offset.toString(16)})">${h.offset.toLocaleString('pt-BR')}</span><span>${h.partition ? '#' + h.partition : 'fora'}</span><span>${esc(h.encoding)}</span><span class="ctx">${esc(h.context).replace(termRe, (m) => `<mark>${m}</mark>`)}</span></div>`).join('') : (run ? '' : '<div class="empty"><h3>Nada encontrado</h3><p>Esses termos não aparecem em nenhum ponto do disco (nem em UTF-8 nem em UTF-16).</p></div>'));
+    return run;
+  };
+  $('#shProg').onclick = (e) => { if (e.target.dataset.stop) rpc('job_stop', { job }); };
+  (async () => { while (await tick2()) await new Promise((r) => setTimeout(r, 700)); })();
+}
+
 // ------------------------------------------------------------------ varredura
+let EX = null; // explorador de arquivos (grade, navegação, detalhes)
+
 function openJob(s) {
   stopPoll();
+  EX?.destroy();
+  EX = null;
   S.job = s.job;
-  S.filters = { category: null, minConfidence: null, query: '', sort: 'confidence' };
-  S.items = []; S.total = 0; S.selected = new Set(); S.allFiltered = false; S.current = null; S.status = null;
+  S.status = null;
   renderSide();
   renderScan();
   tick();
   S.poll = setInterval(tick, 500);
-  main.scrollTop = 0;
 }
 
 function stopPoll() { clearInterval(S.poll); S.poll = null; }
 
-let lastFound = -1, lastFilterKey = '';
 async function tick() {
   if (!S.job) return;
   let st;
   try { st = await rpc('status', { job: S.job }); } catch (e) { stopPoll(); toast(e.message); return; }
   S.status = st;
-  const key = JSON.stringify(S.filters);
-  if (st.found !== lastFound || key !== lastFilterKey) {
-    lastFound = st.found; lastFilterKey = key;
-    await loadResults(true);
-  }
   paintStatus();
-  if (st.status !== 'running') {
+  EX?.onStatus(st);
+  // continua consultando enquanto a varredura roda ou as datas/EXIF ainda estão sendo lidas
+  if (st.status !== 'running' && !st.enriching) {
     stopPoll();
     if (st.status === 'error') toast(st.error);
-    await loadResults(true);
-    paintStatus();
+  } else if (!S.poll) {
+    S.poll = setInterval(tick, 700);
   }
-}
-
-async function loadResults(reset) {
-  const f = S.filters;
-  const query = { sort: f.sort, offset: reset ? 0 : S.items.length, limit: 200 };
-  if (f.category) query.category = f.category;
-  if (f.minConfidence) query.min_confidence = f.minConfidence;
-  if (f.query) query.query = f.query;
-  const r = await rpc('results', { job: S.job, query });
-  S.items = reset ? r.items : S.items.concat(r.items);
-  S.total = r.total;
-  paintList();
 }
 
 function renderScan() {
-  main.innerHTML = `<div class="page">
-    <button class="back" id="backBtn">‹ Dispositivos</button>
-    <div class="dev-head"><div><h1 id="scanTitle">Procurando…</h1><div class="sub" id="scanSub"></div></div></div>
+  main.classList.add('fixed');
+  main.innerHTML = `<div class="page wide fill">
+    <div class="xp-top"><button class="back" id="backBtn">‹ Dispositivos</button><div><h1 id="scanTitle">Procurando…</h1><div class="sub" id="scanSub"></div></div></div>
     <div id="progressArea"></div>
     <div id="warnArea"></div>
-    <div class="toolbar">
-      <div class="chips" id="chips" role="group" aria-label="Filtrar por tipo"></div>
-    </div>
-    <div class="toolbar" style="margin-top:0">
-      <input class="input" id="q" type="search" placeholder="Buscar por nome ou pasta" value="${esc(S.filters.query)}" aria-label="Buscar">
-      <select class="select" id="conf" aria-label="Confiança mínima"><option value="">Qualquer confiança</option><option value="medium">Média ou alta</option><option value="high">Só alta</option></select>
-      <select class="select" id="sort" aria-label="Ordenar"><option value="confidence">Mais confiáveis</option><option value="size">Maiores</option><option value="name">Nome</option></select>
-    </div>
-    <div class="split"><div class="table" id="table"></div><aside class="preview" id="preview" aria-live="polite"></aside></div>
-  </div><div id="barHost"></div>`;
+    <div class="xp-host" id="xpHost"></div>
+  </div>`;
   $('#backBtn').onclick = () => (S.device ? openDevice(S.device) : renderHome());
   $('#progressArea').onclick = onProgressClick;
-  $('#chips').onclick = (e) => { const c = e.target.closest('.chip'); if (c) { S.filters.category = c.dataset.c || null; resetSel(); tick(); } };
-  let t;
-  $('#q').oninput = (e) => { clearTimeout(t); t = setTimeout(() => { S.filters.query = e.target.value; resetSel(); tick(); }, 250); };
-  $('#conf').onchange = (e) => { S.filters.minConfidence = e.target.value || null; resetSel(); tick(); };
-  $('#sort').onchange = (e) => { S.filters.sort = e.target.value; tick(); };
-  wireTable();
-  paintPreview();
+  EX = createExplorer({ host: $('#xpHost'), job: S.job, rpc, esc, human, fileUrl, thumbUrl, onRecover: recover, toast });
 }
-const resetSel = () => { S.selected = new Set(); S.allFiltered = false; };
 
 function paintStatus() {
   const st = S.status;
@@ -397,26 +444,27 @@ function paintStatus() {
   $('#scanSub').innerHTML = `<span class="mono">${esc(st.target)}</span>`;
   const rate = p.total && st.elapsed > 1 && p.done ? p.done / st.elapsed : 0;
   const eta = rate && running ? dur((p.total - p.done) / rate) : null;
-  setHTML($('#progressArea'), `<div class="progress-card">
-    <div class="row spread"><div><b>${esc(p.phase || (running ? 'Iniciando' : ''))}</b>${pct != null ? ` <span class="sub">· ${pct}%</span>` : ''}</div>
-      <div class="row">${running ? '<button class="btn sm" data-act="pause">Pausar</button><button class="btn sm danger" data-act="stop">Parar</button>' : st.status === 'paused' ? '<button class="btn sm primary" data-act="resume">Continuar</button>' : ''}
-      ${!running && st.found ? '<button class="btn sm" data-act="save">Salvar sessão…</button>' : ''}</div></div>
-    <div class="bar ${running && pct == null ? 'indet' : ''}"><i style="width:${pct ?? (running ? 35 : 100)}%"></i></div>
-    <div class="stats">
-      <div class="stat"><b>${st.found.toLocaleString('pt-BR')}</b><span>arquivos encontrados</span></div>
-      <div class="stat"><b>${dur(st.elapsed)}</b><span>decorrido${eta ? ' · faltam ~' + eta : ''}</span></div>
-      <div class="stat"><b style="color:var(--ok)">${st.confidence.high}</b><span>confiança alta</span></div>
-      <div class="stat"><b style="color:var(--warn)">${st.confidence.medium}</b><span>média</span></div>
-      <div class="stat"><b style="color:var(--bad)">${st.confidence.low}</b><span>baixa</span></div>
-    </div></div>`);
+  const enr = st.enriching ? `<span class="sub">Lendo datas e metadados das fotos… ${st.enriching.done.toLocaleString('pt-BR')}/${st.enriching.total.toLocaleString('pt-BR')}</span>` : '';
+  const buttons = running ? '<button class="btn sm" data-act="pause">Pausar</button><button class="btn sm danger" data-act="stop">Parar</button>'
+    : st.status === 'paused' ? '<button class="btn sm primary" data-act="resume">Continuar</button>' : '';
+  const tools = !running && st.found ? '<button class="btn sm" data-act="csv">Exportar CSV</button><button class="btn sm" data-act="report">Relatório</button><button class="btn sm" data-act="save">Salvar sessão…</button>' : '';
+  if (running || st.status === 'paused') {
+    setHTML($('#progressArea'), `<div class="progress-card slim">
+      <div class="row spread"><div><b>${esc(p.phase || 'Iniciando')}</b>${pct != null ? ` <span class="sub">· ${pct}%</span>` : ''}</div><div class="row">${buttons}</div></div>
+      <div class="bar ${running && pct == null ? 'indet' : ''}"><i style="width:${pct ?? (running ? 35 : 100)}%"></i></div>
+      <div class="stats compact">
+        <div class="stat"><b>${st.found.toLocaleString('pt-BR')}</b><span>arquivos</span></div>
+        <div class="stat"><b>${dur(st.elapsed)}</b><span>decorrido${eta ? ' · faltam ~' + eta : ''}</span></div>
+        <div class="stat"><b style="color:var(--ok)">${st.confidence.high}</b><span>alta</span></div>
+        <div class="stat"><b style="color:var(--warn)">${st.confidence.medium}</b><span>média</span></div>
+        <div class="stat"><b style="color:var(--bad)">${st.confidence.low}</b><span>baixa</span></div>
+      </div></div>`);
+  } else {
+    setHTML($('#progressArea'), `<div class="done-bar"><span><b>${st.found.toLocaleString('pt-BR')}</b> arquivos em ${dur(st.elapsed)}</span>
+      <span class="sub">confiança alta ${st.confidence.high} · média ${st.confidence.medium} · baixa ${st.confidence.low}</span>${enr}<span class="grow"></span>${tools}</div>`);
+  }
   setHTML($('#warnArea'), (st.warnings || []).map((w) => `<div class="notice">${warnSvg}<div>${esc(w)}</div></div>`).join('')
     + (st.error ? `<div class="notice bad">${warnSvg}<div>${esc(st.error)}</div></div>` : ''));
-  // chips
-  const total = st.found;
-  setHTML($('#chips'), [`<button class="chip" data-c="" aria-pressed="${!S.filters.category}">Tudo<small>${total}</small></button>`]
-    .concat(CATS.filter(([k]) => st.categories[k]).map(([k, n]) => `<button class="chip" data-c="${k}" aria-pressed="${S.filters.category === k}">${n}<small>${st.categories[k]}</small></button>`)).join(''));
-  const sel = $('#conf'); if (sel && sel.value !== (S.filters.minConfidence || '')) sel.value = S.filters.minConfidence || '';
-  paintBar();
 }
 
 async function onProgressClick(e) {
@@ -425,169 +473,25 @@ async function onProgressClick(e) {
   if (act === 'pause') { await rpc('scan_pause', { job: S.job }); toast('Pausando…'); }
   else if (act === 'stop') await rpc('scan_stop', { job: S.job });
   else if (act === 'resume') { await rpc('scan_resume', { job: S.job }); stopPoll(); S.poll = setInterval(tick, 500); tick(); }
-  else if (act === 'save') {
+  else if (act === 'csv') {
+    const path = await ask({ title: 'Exportar para CSV', text: 'Grava os arquivos da vista atual (com os filtros aplicados). O arquivo abre direto no Excel.', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-achados.csv', ok: 'Exportar' });
+    if (path) { try { const r = await rpc('export_csv', { job: S.job, path, query: EX?.query() }); toast(`${r.rows.toLocaleString('pt-BR')} linhas gravadas`); } catch (err) { toast(err.message); } }
+  } else if (act === 'report') {
+    const f = await askForm({ title: 'Relatório de recuperação', text: 'Gera um relatório HTML pronto para imprimir, com a origem examinada, os achados e os hashes dos arquivos recuperados.', ok: 'Gerar relatório', fields: [
+      { name: 'path', label: 'Salvar em', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-relatorio.html' },
+      { name: 'case_id', label: 'Número do caso' }, { name: 'examiner', label: 'Responsável pelo exame' }, { name: 'organization', label: 'Organização' },
+      { name: 'notes', label: 'Observações', multiline: true } ] });
+    if (f) {
+      try {
+        const hashes = S.sourceHashes && S.sourceHashes.path === (S.status?.target) ? { md5: S.sourceHashes.md5, sha1: S.sourceHashes.sha1, sha256: S.sourceHashes.sha256 } : null;
+        await rpc('export_report', { job: S.job, path: f.path, case: { case_id: f.case_id, examiner: f.examiner, organization: f.organization, notes: f.notes }, hashes });
+        toast('Relatório gravado');
+      } catch (err) { toast(err.message); }
+    }
+  } else if (act === 'save') {
     const path = await ask({ title: 'Salvar sessão', text: 'Guarda os resultados para recuperar depois, sem varrer de novo.', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-sessao.json', ok: 'Salvar' });
     if (path) { try { await rpc('session_save', { job: S.job, path }); toast('Sessão salva'); } catch (err) { toast(err.message); } }
   }
-}
-
-function rowHtml(i) {
-  const [cl, cc] = CONF[i.confidence];
-  const on = S.allFiltered || S.selected.has(i.id);
-  return `<div class="tr" role="row" data-id="${i.id}" aria-selected="${on || S.current?.id === i.id}" tabindex="0">
-    <input type="checkbox" ${on ? 'checked' : ''} aria-label="Selecionar ${esc(i.name)}">
-    <div class="nm"><b>${esc(i.name)}</b><small>${esc(i.dir || (i.origin === 'carved' ? 'Encontrado por assinatura' : '—'))}</small></div>
-    <div class="num">${human(i.size)}</div><div class="num" style="text-align:left">${i.origin === 'carved' ? 'assinatura' : esc(i.origin)}</div>
-    <div class="num"><span class="pill ${cc}">${cl}</span></div></div>`;
-}
-
-function paintList() {
-  const el = $('#table');
-  if (!el) return;
-  const st = S.status;
-  if (!S.items.length) {
-    setHTML(el, `<div class="empty"><h3>${st && st.status === 'running' ? 'Procurando…' : 'Nada por aqui'}</h3><p>${st && st.status === 'running' ? 'Os arquivos aparecem aqui assim que são encontrados.' : (S.filters.category || S.filters.query || S.filters.minConfidence) ? 'Nenhum arquivo combina com os filtros.' : 'Não encontramos arquivos recuperáveis neste disco.'}</p></div>`);
-    paintBar();
-    return;
-  }
-  const allSel = S.items.every((i) => S.selected.has(i.id)) || S.allFiltered;
-  setHTML(el, `<div class="thead"><input type="checkbox" id="selAll" aria-label="Selecionar todos" ${allSel ? 'checked' : ''}><span>Nome</span><span style="text-align:right">Tamanho</span><span>Origem</span><span style="text-align:right">Confiança</span></div>`
-    + S.items.map(rowHtml).join('')
-    + (S.items.length < S.total ? `<div class="more"><button class="btn" id="moreBtn">Mostrar mais (${(S.total - S.items.length).toLocaleString('pt-BR')})</button></div>` : ''));
-  paintBar();
-}
-
-// Eventos da tabela por delegação (o HTML é recriado, o listener não).
-function wireTable() {
-  const el = $('#table');
-  el.addEventListener('click', (e) => {
-    if (e.target.id === 'moreBtn') return loadResults(false);
-    const row = e.target.closest('.tr');
-    if (e.target.id === 'selAll') {
-      if (e.target.checked) S.items.forEach((i) => S.selected.add(i.id)); else resetSel();
-      el._h = null; paintList();
-      return;
-    }
-    if (!row) return;
-    const id = +row.dataset.id;
-    if (e.target.matches('input[type=checkbox]')) {
-      if (S.allFiltered) { S.allFiltered = false; S.items.forEach((i) => S.selected.add(i.id)); }
-      e.target.checked ? S.selected.add(id) : S.selected.delete(id);
-      row.setAttribute('aria-selected', e.target.checked);
-      el._h = null;
-      paintBar();
-      return;
-    }
-    focusItem(S.items.find((i) => i.id === id));
-  });
-  el.addEventListener('dblclick', (e) => { if (e.target.closest('.tr')) openLightbox(); });
-}
-
-let stopPv = null;
-function focusItem(item, { scroll = false } = {}) {
-  if (!item) return;
-  S.current = item;
-  document.querySelectorAll('.tr').forEach((r) => {
-    const on = +r.dataset.id === item.id || S.selected.has(+r.dataset.id) || S.allFiltered;
-    r.setAttribute('aria-selected', on);
-    if (scroll && +r.dataset.id === item.id) r.scrollIntoView({ block: 'nearest' });
-  });
-  paintPreview();
-}
-
-function detailsHtml(i) {
-  const [cl, cc] = CONF[i.confidence];
-  return `<dl class="kv"><dt>Nome</dt><dd>${esc(i.name)}</dd><dt>Pasta</dt><dd>${esc(i.dir || '—')}</dd><dt>Tamanho</dt><dd>${human(i.size)}</dd>
-    <dt>Modificado</dt><dd>${date(i.modified)}</dd><dt>Origem</dt><dd>${i.origin === 'carved' ? 'Assinatura de formato' : esc(i.origin.toUpperCase())}</dd>
-    <dt>Confiança</dt><dd><span class="pill ${cc}">${cl}</span></dd>${i.note ? `<dt>Aviso</dt><dd>${esc(i.note)}</dd>` : ''}</dl>`;
-}
-
-function paintPreview() {
-  const el = $('#preview');
-  if (!el) return;
-  stopPv?.(); stopPv = null;
-  const i = S.current;
-  if (!i) { el.innerHTML = '<div class="viewer"><div class="pv-note">Selecione um arquivo para pré-visualizar</div></div>'; return; }
-  el.innerHTML = `<div class="viewer" id="pvHost"></div><div class="sub" style="font-size:12.5px">${esc(KIND_LABEL[kindOf(i)])}</div>${detailsHtml(i)}
-    <div class="row"><button class="btn sm" id="pvFull">Tela cheia</button><button class="btn primary sm" id="recOne">Recuperar este arquivo</button></div>`;
-  stopPv = renderPreview($('#pvHost'), i, { url: fileUrl(S.job, i.id) });
-  $('#pvFull').onclick = openLightbox;
-  $('#recOne').onclick = () => recover({ ids: [i.id] });
-}
-
-// ------------------------------------------------------------------ tela cheia
-let stopLb = null;
-function openLightbox() {
-  const i = S.current;
-  if (!i) return;
-  const d = $('#lightbox');
-  const idx = S.items.findIndex((x) => x.id === i.id);
-  d.innerHTML = `<div class="lb-head"><button class="icon-btn" id="lbPrev" aria-label="Anterior" ${idx <= 0 ? 'disabled' : ''}>‹</button><button class="icon-btn" id="lbNext" aria-label="Próximo" ${idx >= S.items.length - 1 ? 'disabled' : ''}>›</button>
-      <div class="ttl"><b>${esc(i.name)}</b><small>${esc(KIND_LABEL[kindOf(i)])} · ${human(i.size)} · confiança ${CONF[i.confidence][0]}</small></div>
-      <button class="icon-btn" id="lbClose" aria-label="Fechar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
-    <div class="lb-body"><div class="viewer large" id="lbHost"></div></div>
-    <div class="lb-foot"><span class="sub">${i.note ? esc(i.note) : '← → para navegar · Esc para fechar'}</span><button class="btn primary sm" id="lbRec">Recuperar este arquivo</button></div>`;
-  stopLb?.();
-  stopLb = renderPreview($('#lbHost', d), i, { url: fileUrl(S.job, i.id), large: true });
-  const go = (n) => { const t = S.items[idx + n]; if (t) { focusItem(t, { scroll: true }); openLightbox(); } };
-  $('#lbPrev', d).onclick = () => go(-1);
-  $('#lbNext', d).onclick = () => go(1);
-  $('#lbClose', d).onclick = () => d.close();
-  $('#lbRec', d).onclick = () => { d.close(); recover({ ids: [i.id] }); };
-  d.onclose = () => { stopLb?.(); stopLb = null; };
-  d.onkeydown = (e) => { if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1); };
-  if (!d.open) d.showModal();
-}
-
-// Teclado: ↑/↓ percorre a lista; Espaço/Enter abre a tela cheia.
-document.addEventListener('keydown', (e) => {
-  if (!S.job || document.querySelector('dialog[open]') || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName) && document.activeElement.type !== 'checkbox') return;
-  const idx = S.items.findIndex((x) => x.id === S.current?.id);
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    const t = S.items[Math.min(S.items.length - 1, Math.max(0, idx + (e.key === 'ArrowDown' ? 1 : -1)))];
-    focusItem(t, { scroll: true });
-  } else if ((e.key === ' ' || e.key === 'Enter') && S.current && !e.target.closest?.('button')) {
-    e.preventDefault();
-    openLightbox();
-  }
-});
-
-function selCount() { return S.allFiltered ? S.total : S.selected.size; }
-
-function paintBar() {
-  const host = $('#barHost');
-  if (!host) return;
-  const st = S.status;
-  const n = selCount();
-  const canAll = st && st.found > 0 && st.status !== 'error';
-  if (!n && !canAll) { host.innerHTML = ''; host._h = null; return; }
-  const moreOffer = !S.allFiltered && S.selected.size > 0 && S.selected.size < S.total && S.items.length === S.selected.size
-    ? '<button class="btn sm" data-bar="all">Selecionar todos os ' + S.total.toLocaleString('pt-BR') + '</button>' : '';
-  const inner = `<span class="info">${n ? `${n.toLocaleString('pt-BR')} selecionado(s)` : `${S.total.toLocaleString('pt-BR')} arquivo(s) na lista`}</span>${moreOffer}
-    ${n ? '<button class="btn primary" data-bar="sel">Recuperar selecionados</button>' : '<button class="btn primary" data-bar="rec">Recuperar todos da lista</button>'}`;
-  let bar = host.firstElementChild;
-  if (!bar) {
-    // A barra é criada uma vez (com animação de entrada) e depois só tem o texto atualizado.
-    host.innerHTML = '<div class="actionbar enter"></div>';
-    bar = host.firstElementChild;
-    bar.onclick = (e) => {
-      const act = e.target.closest('[data-bar]')?.dataset.bar;
-      if (act === 'all') { S.allFiltered = true; $('#table')._h = null; paintList(); }
-      else if (act === 'sel') recover(S.allFiltered ? { filter: currentFilter() } : { ids: [...S.selected] });
-      else if (act === 'rec') recover({ filter: currentFilter() });
-    };
-  }
-  setHTML(bar, inner);
-}
-
-function currentFilter() {
-  const f = S.filters;
-  const q = { sort: f.sort, limit: 1 };
-  if (f.category) q.category = f.category;
-  if (f.minConfidence) q.min_confidence = f.minConfidence;
-  if (f.query) q.query = f.query;
-  return q;
 }
 
 async function recover(sel) {

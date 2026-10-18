@@ -32,6 +32,15 @@ fn check(fs: &str, only_carvable: bool) {
             assert!(seen.insert(o), "[{fs}] achado duplicado no offset {o}");
         }
     }
+    if fs != "ext4" {
+        for f in res.found.iter().filter(|f| f.origin != Origin::Carved) {
+            assert!(
+                f.modified.is_some() && f.created.is_some(),
+                "[{fs}] {} sem datas de modificação/criação",
+                f.name
+            );
+        }
+    }
     assert_eq!(before, sha256_file(&img), "a origem foi modificada!");
 }
 

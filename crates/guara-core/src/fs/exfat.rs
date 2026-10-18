@@ -174,6 +174,14 @@ fn walk(
         let mdate = u16::from_le_bytes([e[14], e[15]]);
         let mtime = u16::from_le_bytes([e[12], e[13]]);
         let mod_unix = super::dos_to_unix(mdate, mtime);
+        let cre_unix = super::dos_to_unix(
+            u16::from_le_bytes([e[10], e[11]]),
+            u16::from_le_bytes([e[8], e[9]]),
+        );
+        let acc_unix = super::dos_to_unix(
+            u16::from_le_bytes([e[18], e[19]]),
+            u16::from_le_bytes([e[16], e[17]]),
+        );
         let mut stream: Option<&[u8]> = None;
         let mut name_u16: Vec<u8> = vec![];
         for s in 1..=secondary.min(19) {
@@ -259,6 +267,8 @@ fn walk(
                 origin: Origin::Exfat,
                 data: DataLoc::Extents { extents: ex },
                 modified: mod_unix,
+                created: cre_unix,
+                accessed: acc_unix,
                 base: conf,
                 note,
             },

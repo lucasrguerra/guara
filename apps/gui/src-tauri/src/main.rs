@@ -101,6 +101,28 @@ fn elevated_exe() -> Result<std::path::PathBuf, String> {
 /// com suporte a Range para vídeo/áudio/PDF, lendo direto da origem.
 fn serve_file(eng: &Engine, req: &tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
     use tauri::http::Response;
+    if let Some(rest) = req.uri().path().strip_prefix("/thumb/") {
+        let mut it = rest.split('/');
+        let (job, id) = (it.next().unwrap_or(""), it.next().and_then(|s| s.parse::<u64>().ok()));
+        let size = req
+            .uri()
+            .query()
+            .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("s=")))
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(256);
+        let err = |code: u16| Response::builder().status(code).header("Access-Control-Allow-Origin", "*").body(Vec::new()).unwrap();
+        let Some(id) = id else { return err(400) };
+        return match eng.thumb(job, id, size) {
+            Ok(b) => Response::builder()
+                .status(200)
+                .header("Content-Type", "image/jpeg")
+                .header("Cache-Control", "private, max-age=3600")
+                .header("Access-Control-Allow-Origin", "*")
+                .body(b.as_ref().clone())
+                .unwrap_or_else(|_| err(500)),
+            Err(code) => err(code),
+        };
+    }
     const CAP: u64 = 8 * 1024 * 1024;
     let mut it = req.uri().path().trim_start_matches("/file/").split('/');
     let (job, id) = (it.next().unwrap_or(""), it.next().and_then(|s| s.parse::<u64>().ok()));

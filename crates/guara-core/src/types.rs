@@ -132,7 +132,32 @@ pub struct Found {
     pub data: DataLoc,
     /// Segundos desde 1970-01-01 UTC.
     pub modified: Option<i64>,
+    #[serde(default)]
+    pub created: Option<i64>,
+    #[serde(default)]
+    pub accessed: Option<i64>,
+    /// Data em que a foto foi tirada (EXIF; hora da câmera lida como UTC), s desde 1970.
+    #[serde(default)]
+    pub taken: Option<i64>,
+    #[serde(default)]
+    pub camera: Option<String>,
+    /// Largura × altura em pixels, quando conhecidas.
+    #[serde(default)]
+    pub px: Option<(u32, u32)>,
+    /// Há coordenadas GPS nos metadados.
+    #[serde(default)]
+    pub gps: bool,
+    /// Assinatura rápida do conteúdo (tamanho + início + fim) para achar duplicadas.
+    #[serde(default)]
+    pub sig: Option<u64>,
     pub note: Option<String>,
+}
+
+impl Found {
+    /// Data mais representativa: quando foi tirada > modificada > criada.
+    pub fn when(&self) -> Option<i64> {
+        self.taken.or(self.modified).or(self.created)
+    }
 }
 
 impl Found {

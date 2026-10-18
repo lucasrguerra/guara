@@ -90,7 +90,7 @@ function note(host, html, cls = '') {
 
 function failure(host, item, err, withHex) {
   host.innerHTML = '';
-  note(host, `<b>Não foi possível pré-visualizar.</b><br>${esc(err?.message || err || '')} O arquivo pode estar danificado, incompleto ou parcialmente sobrescrito — isso também indica que a chance de recuperação é menor.`, 'bad');
+  note(host, `<b>Não foi possível pré-visualizar.</b><br>${esc(err?.message || err || '')} O arquivo pode estar danificado, incompleto ou parcialmente sobrescrito, o que também indica que a chance de recuperação é menor.`, 'bad');
   return withHex ? hex(host, item, host.dataset.url, false) : null;
 }
 
@@ -121,7 +121,7 @@ async function text(host, item, url, large) {
   if (item.size > b.length) note(host, `Mostrando o início (${human(b.length)} de ${human(item.size)}).`);
 }
 
-async function image(host, item, url, state) {
+async function image(host, item, url, state, thumb) {
   await new Promise((resolve) => {
     const img = new Image();
     img.alt = `Pré-visualização de ${item.name}`;
@@ -133,7 +133,7 @@ async function image(host, item, url, state) {
       host.appendChild(img);
       host.classList.add('zoomable');
       img.onclick = () => host.classList.toggle('actual');
-      note(host, `${img.naturalWidth} × ${img.naturalHeight} px — clique para alternar entre ajustar e tamanho real.`);
+      if (!thumb) note(host, `${img.naturalWidth} × ${img.naturalHeight} px. Clique para alternar entre ajustar e tamanho real.`);
       resolve();
     };
     img.onerror = () => { if (!state.dead) failure(host, item, 'A imagem não pôde ser decodificada.', true); resolve(); };
@@ -272,7 +272,7 @@ async function zip(host, item, url, state) {
 
 // ------------------------------------------------------------------ API
 /** Desenha a pré-visualização de `item` dentro de `host`. Devolve uma função de limpeza. */
-export function renderPreview(host, item, { url, large = false }) {
+export function renderPreview(host, item, { url, large = false, thumb = false }) {
   const state = { dead: false, cleanup: [] };
   host.dataset.url = url;
   host.classList.remove('zoomable', 'actual');
@@ -281,7 +281,7 @@ export function renderPreview(host, item, { url, large = false }) {
   (async () => {
     try {
       if (!item.size) { host.innerHTML = ''; note(host, 'Arquivo vazio.'); return; }
-      if (kind === 'image') await image(host, item, url, state);
+      if (kind === 'image') await image(host, item, url, state, thumb);
       else if (kind === 'video') media(host, item, url, 'video', state);
       else if (kind === 'audio') media(host, item, url, 'audio', state);
       else if (kind === 'pdf') await pdf(host, item, url, state, large);
