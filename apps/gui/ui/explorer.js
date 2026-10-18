@@ -279,7 +279,10 @@ export function createExplorer(deps) {
     if (img.tagName !== 'IMG' || !img.dataset.th) return;
     const wrap = img.closest('.xp-thumb, .xp-lth');
     img.remove();
-    wrap?.insertAdjacentHTML('afterbegin', `<div class="xp-ico c-bad" title="Não foi possível gerar a miniatura (arquivo possivelmente danificado)"><span>${I.warn}</span><b>?</b></div>`);
+    const offline = E.status && E.status.source === false;
+    wrap?.insertAdjacentHTML('afterbegin', offline
+      ? '<div class="xp-ico c-image" title="Origem desconectada: sem miniatura"><span>🖼</span><b>IMG</b></div>'
+      : `<div class="xp-ico c-bad" title="Não foi possível gerar a miniatura (arquivo possivelmente danificado)"><span>${I.warn}</span><b>?</b></div>`);
   }, true);
 
   // ------------------------------------------------------------ seleção

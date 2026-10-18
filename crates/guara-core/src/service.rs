@@ -63,7 +63,7 @@ pub struct Job {
     opts: ScanOptions,
     cancel: AtomicBool,
     stop_requested: AtomicBool,
-    src: Option<Arc<dyn Source>>,
+    src: Mutex<Option<Arc<dyn Source>>>,
     st: Mutex<State>,
 }
 
@@ -82,7 +82,7 @@ impl Job {
             opts,
             cancel: AtomicBool::new(false),
             stop_requested: AtomicBool::new(false),
-            src,
+            src: Mutex::new(src),
             st: Mutex::new(State {
                 status: Status::Running,
                 progress: Progress::default(),
@@ -104,6 +104,9 @@ impl Job {
                 hits: vec![],
             }),
         })
+    }
+    fn source(&self) -> Option<Arc<dyn Source>> {
+        self.src.lock().unwrap().clone()
     }
     fn cancelled(&self) -> bool {
         self.cancel.load(Ordering::Relaxed)
@@ -254,6 +257,7 @@ impl Engine {
             "error": s.error,
             "report": s.report,
             "elapsed": elapsed,
+            "source": j.source().is_some(),
             "hits": s.hits.len(),
             "enriching": s.enrich.map(|(d, t)| json!({ "done": d, "total": t })),
         }))
@@ -294,7 +298,7 @@ impl Engine {
         if let Some(v) = self.thumbs.lock().unwrap().get(&key) {
             return if v.is_empty() { Err(422) } else { Ok(v) };
         }
-        let (f, src) = self.open_file(job, id).map_err(|_| 404u16)?;
+        let (f, src) = self.open_file(job, id).map_err(status_of)?;
         if f.category != Category::Image {
             return Err(415);
         }
@@ -319,10 +323,7 @@ impl Engine {
             .index
             .get(&file)
             .ok_or_else(|| Error::msg("arquivo não encontrado"))?;
-        Ok((
-            s.found[i].clone(),
-            j.src.clone().ok_or_else(|| Error::msg("sem origem"))?,
-        ))
+        Ok((s.found[i].clone(), j.source().ok_or_else(no_source)?))
     }
 
     // ---------------------------------------------------------------- recuperação
@@ -335,7 +336,7 @@ impl Engine {
         dest: &str,
     ) -> Result<String> {
         let sj = self.job(scan_id)?;
-        let src = sj.src.clone().ok_or_else(|| Error::msg("sem origem"))?;
+        let src = sj.source().ok_or_else(no_source)?;
         let files: Vec<Found> = {
             let s = sj.st.lock().unwrap();
             match (&ids, &filter) {
@@ -611,13 +612,31 @@ impl Engine {
     }
 
     pub fn load_session(&self, path: &str) -> Result<String> {
-        let data: SessionFile = serde_json::from_slice(&std::fs::read(path)?)?;
-        let src = open_path(Path::new(&data.target)).map_err(|e| open_error(&data.target, e))?;
+        let bytes = std::fs::read(path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                Error::msg(format!(
+                    "Sem permissão para ler a sessão {path}. Se ela foi criada como administrador (por exemplo em /root), abra o Guará como administrador ou copie o arquivo para a sua pasta."
+                ))
+            } else {
+                Error::msg(format!("Não foi possível ler a sessão {path}: {e}"))
+            }
+        })?;
+        let data: SessionFile = serde_json::from_slice(&bytes).map_err(|e| {
+            Error::msg(format!(
+                "O arquivo {path} não é uma sessão do Guará válida (ou foi criado por uma versão incompatível): {e}"
+            ))
+        })?;
+        // A sessão abre mesmo sem a origem: dá para navegar, exportar e gerar relatório.
+        // Pré-visualização e recuperação voltam quando a origem for reconectada.
+        let (src, missing) = match open_path(Path::new(&data.target)) {
+            Ok(s) => (Some(s), None),
+            Err(e) => (None, Some(open_error(&data.target, e).to_string())),
+        };
         let job = self.register(
             JobKind::Scan,
             data.target.clone(),
             data.options.clone(),
-            Some(src),
+            src,
         );
         {
             let mut s = job.st.lock().unwrap();
@@ -636,10 +655,43 @@ impl Engine {
                 Status::Paused
             };
         }
+        if let Some(m) = missing {
+            job.st.lock().unwrap().warnings.push(format!(
+                "A origem {} não está disponível agora ({m}). Você pode navegar, exportar e gerar relatório; para pré-visualizar e recuperar, reconecte o disco ou escolha a origem.",
+                data.target
+            ));
+        }
         if data.done {
             spawn_enrich(job.clone());
         }
         Ok(job.id.clone())
+    }
+
+    /// Aponta uma sessão carregada para a origem (disco ou imagem) atual.
+    pub fn relink(&self, id: &str, path: &str) -> Result<()> {
+        let j = self.job(id)?;
+        let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
+        {
+            let s = j.st.lock().unwrap();
+            if let Some(l) = &s.layout {
+                if l.size != 0 && l.size != src.size() {
+                    return Err(Error::msg(format!(
+                        "Essa origem tem {} bytes, mas a sessão foi feita sobre um disco de {} bytes. Escolha o mesmo disco ou uma imagem dele.",
+                        src.size(),
+                        l.size
+                    )));
+                }
+            }
+        }
+        *j.src.lock().unwrap() = Some(src);
+        j.st.lock()
+            .unwrap()
+            .warnings
+            .retain(|w| !w.starts_with("A origem "));
+        if j.st.lock().unwrap().status == Status::Done {
+            spawn_enrich(j);
+        }
+        Ok(())
     }
 
     // ---------------------------------------------------------------- RPC
@@ -758,6 +810,10 @@ impl Engine {
                 self.save_session(&s("job")?, &s("path")?)?;
                 json!({})
             }
+            "session_relink" => {
+                self.relink(&s("job")?, &s("path")?)?;
+                json!({})
+            }
             "session_load" => json!({ "job": self.load_session(&s("path")?)? }),
             "defaults" => {
                 let home = std::env::var("HOME")
@@ -793,6 +849,19 @@ struct SessionFile {
 
 use crate::explorer::cat_key;
 
+/// 503 quando a origem da sessão está desconectada; 404 nos demais casos.
+fn status_of(e: Error) -> u16 {
+    if e.to_string().contains("não está disponível") {
+        503
+    } else {
+        404
+    }
+}
+
+fn no_source() -> Error {
+    Error::msg("A origem desta sessão não está disponível. Reconecte o disco ou escolha a origem para pré-visualizar e recuperar.")
+}
+
 fn open_error(path: &str, e: std::io::Error) -> Error {
     if e.kind() == std::io::ErrorKind::PermissionDenied {
         Error::msg(format!(
@@ -805,7 +874,12 @@ fn open_error(path: &str, e: std::io::Error) -> Error {
 
 fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
     std::thread::spawn(move || {
-        let src = job.src.clone().expect("origem");
+        let Some(src) = job.source() else {
+            let mut s = job.st.lock().unwrap();
+            s.status = Status::Error;
+            s.error = Some(no_source().to_string());
+            return;
+        };
         let existing: Vec<Found> = job.st.lock().unwrap().found.clone();
         let cancelled = || job.cancelled();
         let mut sink = JobSink(job.clone());
@@ -845,7 +919,7 @@ fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
 /// navegar por data, câmera e resolução.
 fn spawn_enrich(job: Arc<Job>) {
     std::thread::spawn(move || {
-        let Some(src) = job.src.clone() else { return };
+        let Some(src) = job.source() else { return };
         let todo: Vec<(u64, Found)> = {
             let s = job.st.lock().unwrap();
             s.found
@@ -1045,7 +1119,7 @@ impl Engine {
         id: u64,
         range: Option<&str>,
     ) -> std::result::Result<FileSlice, u16> {
-        let (found, src) = self.open_file(job, id).map_err(|_| 404u16)?;
+        let (found, src) = self.open_file(job, id).map_err(status_of)?;
         let total = found.size;
         let (mut start, mut end, mut partial) = (0u64, total.saturating_sub(1), false);
         if let Some(spec) = range.and_then(|r| r.strip_prefix("bytes=")) {

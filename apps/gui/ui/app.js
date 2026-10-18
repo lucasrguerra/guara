@@ -210,7 +210,7 @@ $('#loadSessionBtn').onclick = async () => {
     const s = { job, target: st.target, label: 'Sessão: ' + st.target.split(/[\\/]/).pop() };
     S.sessions.unshift(s);
     openJob(s);
-  } catch (e) { toast(e.message); }
+  } catch (e) { info({ title: 'Não foi possível abrir a sessão', html: `<p>${esc(e.message)}</p>` }); }
 };
 
 // ------------------------------------------------------------------ início
@@ -447,7 +447,8 @@ function paintStatus() {
   const enr = st.enriching ? `<span class="sub">Lendo datas e metadados das fotos… ${st.enriching.done.toLocaleString('pt-BR')}/${st.enriching.total.toLocaleString('pt-BR')}</span>` : '';
   const buttons = running ? '<button class="btn sm" data-act="pause">Pausar</button><button class="btn sm danger" data-act="stop">Parar</button>'
     : st.status === 'paused' ? '<button class="btn sm primary" data-act="resume">Continuar</button>' : '';
-  const tools = !running && st.found ? '<button class="btn sm" data-act="csv">Exportar CSV</button><button class="btn sm" data-act="report">Relatório</button><button class="btn sm" data-act="save">Salvar sessão…</button>' : '';
+  const relink = st.source === false ? '<button class="btn sm primary" data-act="relink">Escolher a origem…</button>' : '';
+  const tools = relink + (!running && st.found ? '<button class="btn sm" data-act="csv">Exportar CSV</button><button class="btn sm" data-act="report">Relatório</button><button class="btn sm" data-act="save">Salvar sessão…</button>' : '');
   if (running || st.status === 'paused') {
     setHTML($('#progressArea'), `<div class="progress-card slim">
       <div class="row spread"><div><b>${esc(p.phase || 'Iniciando')}</b>${pct != null ? ` <span class="sub">· ${pct}%</span>` : ''}</div><div class="row">${buttons}</div></div>
@@ -473,7 +474,12 @@ async function onProgressClick(e) {
   if (act === 'pause') { await rpc('scan_pause', { job: S.job }); toast('Pausando…'); }
   else if (act === 'stop') await rpc('scan_stop', { job: S.job });
   else if (act === 'resume') { await rpc('scan_resume', { job: S.job }); stopPoll(); S.poll = setInterval(tick, 500); tick(); }
-  else if (act === 'csv') {
+  else if (act === 'relink') {
+    const path = await ask({ title: 'Escolher a origem', text: `Esta sessão foi feita sobre <code>${esc(S.status?.target || '')}</code>. Informe o dispositivo ou a imagem do mesmo disco para pré-visualizar e recuperar.`, value: S.status?.target || '', ok: 'Usar esta origem' });
+    if (path) {
+      try { await rpc('session_relink', { job: S.job, path }); toast('Origem reconectada'); const cur = { job: S.job, target: S.status.target, label: S.sessions.find((x) => x.job === S.job)?.label || 'Sessão' }; openJob(cur); } catch (err) { info({ title: 'Não foi possível usar essa origem', html: `<p>${esc(err.message)}</p>` }); }
+    }
+  } else if (act === 'csv') {
     const path = await ask({ title: 'Exportar para CSV', text: 'Grava os arquivos da vista atual (com os filtros aplicados). O arquivo abre direto no Excel.', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-achados.csv', ok: 'Exportar' });
     if (path) { try { const r = await rpc('export_csv', { job: S.job, path, query: EX?.query() }); toast(`${r.rows.toLocaleString('pt-BR')} linhas gravadas`); } catch (err) { toast(err.message); } }
   } else if (act === 'report') {

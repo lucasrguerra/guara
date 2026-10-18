@@ -302,3 +302,102 @@ fn configuracoes_de_tema_persistem() {
     .unwrap();
     assert_eq!(settings::load().theme, "dark");
 }
+
+fn wait_done(eng: &service::Engine, job: &str) {
+    for _ in 0..500 {
+        if eng.status(job).unwrap()["status"] != "running" {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("job não terminou");
+}
+
+/// Uma sessão gravada pela v0.1.0 continua abrindo nas versões novas.
+#[test]
+fn sessao_da_v0_1_0_abre_e_funciona() {
+    let Some(dir) = fixtures() else { return };
+    let img = dir.join("ntfs.img");
+    let raw = include_str!("data/sessao-v0.1.0.json").replace("@@ALVO@@", img.to_str().unwrap());
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), raw).unwrap();
+    let eng = service::Engine::new();
+    let job = eng.load_session(tmp.path().to_str().unwrap()).unwrap();
+    wait_done(&eng, &job);
+    let st = eng.status(&job).unwrap();
+    assert_eq!(st["status"], "done");
+    assert_eq!(st["found"], 7);
+    assert_eq!(st["source"], true);
+    let res = eng.results(&job, &service::Query::default()).unwrap();
+    assert_eq!(res["total"], 7);
+    // recuperar a partir da sessão antiga continua dando o mesmo conteúdo
+    let out = tempfile::tempdir().unwrap();
+    let rj = eng
+        .start_recover(
+            &job,
+            None,
+            Some(service::Query::default()),
+            out.path().to_str().unwrap(),
+        )
+        .unwrap();
+    wait_done(&eng, &rj);
+    let got = hashes_in(out.path());
+    for (h, p) in expected(&dir, "ntfs") {
+        assert!(got.contains_key(&h), "faltou {p}");
+    }
+}
+
+/// Origem indisponível não impede abrir a sessão; reapontar a origem religa tudo.
+#[test]
+fn sessao_abre_sem_a_origem_e_pode_ser_reconectada() {
+    let Some(dir) = fixtures() else { return };
+    let img = dir.join("ntfs.img");
+    let raw =
+        include_str!("data/sessao-v0.1.0.json").replace("@@ALVO@@", "/dev/disco-que-nao-existe");
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), raw).unwrap();
+    let eng = service::Engine::new();
+    let job = eng.load_session(tmp.path().to_str().unwrap()).unwrap();
+    let st = eng.status(&job).unwrap();
+    assert_eq!(st["source"], false);
+    assert_eq!(st["found"], 7);
+    assert!(st["warnings"][0]
+        .as_str()
+        .unwrap()
+        .contains("não está disponível"));
+    // navegar e exportar funcionam
+    assert_eq!(
+        eng.results(&job, &service::Query::default()).unwrap()["total"],
+        7
+    );
+    let csv = tempfile::NamedTempFile::new().unwrap();
+    assert_eq!(
+        eng.export_csv(&job, csv.path().to_str().unwrap(), None)
+            .unwrap(),
+        7
+    );
+    // pré-visualização e recuperação avisam com clareza
+    assert_eq!(eng.thumb(&job, 1, 128).err(), Some(503));
+    let out = tempfile::tempdir().unwrap();
+    let e = eng
+        .start_recover(&job, None, None, out.path().to_str().unwrap())
+        .unwrap_err();
+    assert!(e.to_string().contains("não está disponível"), "{e}");
+    // reconecta
+    eng.relink(&job, img.to_str().unwrap()).unwrap();
+    let st = eng.status(&job).unwrap();
+    assert_eq!(st["source"], true);
+    assert!(st["warnings"].as_array().unwrap().is_empty());
+    let rj = eng
+        .start_recover(&job, None, None, out.path().to_str().unwrap())
+        .unwrap();
+    wait_done(&eng, &rj);
+    assert_eq!(hashes_in(out.path()).len(), 7);
+    // arquivo que não é sessão
+    std::fs::write(tmp.path(), b"nao e json").unwrap();
+    let e = eng.load_session(tmp.path().to_str().unwrap()).unwrap_err();
+    assert!(
+        e.to_string().contains("não é uma sessão do Guará válida"),
+        "{e}"
+    );
+}
