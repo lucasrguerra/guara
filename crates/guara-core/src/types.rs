@@ -1,0 +1,272 @@
+//! Tipos compartilhados entre núcleo, CLI e interface gráfica.
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Confidence {
+    Low,
+    Medium,
+    High,
+}
+
+impl Confidence {
+    pub fn label_pt(self) -> &'static str {
+        match self {
+            Confidence::High => "alta",
+            Confidence::Medium => "média",
+            Confidence::Low => "baixa",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Category {
+    Image,
+    Document,
+    Video,
+    Audio,
+    Archive,
+    Database,
+    Other,
+}
+
+impl Category {
+    pub const ALL: [Category; 7] = [
+        Category::Image,
+        Category::Document,
+        Category::Video,
+        Category::Audio,
+        Category::Archive,
+        Category::Database,
+        Category::Other,
+    ];
+
+    pub fn label_pt(self) -> &'static str {
+        match self {
+            Category::Image => "Fotos",
+            Category::Document => "Documentos",
+            Category::Video => "Vídeos",
+            Category::Audio => "Áudio",
+            Category::Archive => "Compactados",
+            Category::Database => "Bancos de dados",
+            Category::Other => "Outros",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Category> {
+        Some(match s.to_ascii_lowercase().as_str() {
+            "image" | "imagem" | "fotos" => Category::Image,
+            "document" | "documento" | "documentos" => Category::Document,
+            "video" | "vídeo" | "videos" | "vídeos" => Category::Video,
+            "audio" | "áudio" => Category::Audio,
+            "archive" | "compactados" => Category::Archive,
+            "database" | "banco" => Category::Database,
+            "other" | "outros" => Category::Other,
+            _ => return None,
+        })
+    }
+}
+
+/// Trecho contíguo de bytes na origem (offset absoluto).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Extent {
+    pub offset: u64,
+    pub len: u64,
+    /// Trecho esparso: lido como zeros.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub sparse: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+impl Extent {
+    pub fn new(offset: u64, len: u64) -> Self {
+        Self {
+            offset,
+            len,
+            sparse: false,
+        }
+    }
+    pub fn end(&self) -> u64 {
+        self.offset + self.len
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum DataLoc {
+    /// Dados dentro do próprio registro (NTFS residente).
+    Resident {
+        bytes: Vec<u8>,
+    },
+    Extents {
+        extents: Vec<Extent>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Origin {
+    Ntfs,
+    Fat,
+    Exfat,
+    Carved,
+}
+
+/// Um arquivo encontrado (apagado, perdido ou reconstruído por assinatura).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Found {
+    pub id: u64,
+    pub name: String,
+    /// Pasta de origem, quando o sistema de arquivos a preserva.
+    pub dir: Option<String>,
+    pub ext: String,
+    pub category: Category,
+    pub size: u64,
+    pub origin: Origin,
+    pub confidence: Confidence,
+    pub data: DataLoc,
+    /// Segundos desde 1970-01-01 UTC.
+    pub modified: Option<i64>,
+    pub note: Option<String>,
+}
+
+impl Found {
+    pub fn first_offset(&self) -> Option<u64> {
+        match &self.data {
+            DataLoc::Extents { extents } => extents.iter().find(|e| !e.sparse).map(|e| e.offset),
+            DataLoc::Resident { .. } => None,
+        }
+    }
+
+    pub fn full_path(&self) -> String {
+        match &self.dir {
+            Some(d) if !d.is_empty() => format!("{}/{}", d.trim_end_matches('/'), self.name),
+            _ => self.name.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FsKind {
+    Ntfs,
+    Fat12,
+    Fat16,
+    Fat32,
+    Exfat,
+    Ext,
+    Apfs,
+    HfsPlus,
+    Bitlocker,
+    Luks,
+    Unknown,
+}
+
+impl FsKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            FsKind::Ntfs => "NTFS",
+            FsKind::Fat12 => "FAT12",
+            FsKind::Fat16 => "FAT16",
+            FsKind::Fat32 => "FAT32",
+            FsKind::Exfat => "exFAT",
+            FsKind::Ext => "ext2/3/4",
+            FsKind::Apfs => "APFS",
+            FsKind::HfsPlus => "HFS+",
+            FsKind::Bitlocker => "BitLocker",
+            FsKind::Luks => "LUKS",
+            FsKind::Unknown => "desconhecido",
+        }
+    }
+
+    /// Volume cifrado: só detectamos (v1), sem desbloquear.
+    pub fn encrypted(self) -> Option<&'static str> {
+        match self {
+            FsKind::Bitlocker => Some("BitLocker"),
+            FsKind::Luks => Some("LUKS"),
+            _ => None,
+        }
+    }
+
+    /// Há leitor de metadados (arquivos apagados com nome) para este sistema.
+    pub fn has_metadata_scanner(self) -> bool {
+        matches!(
+            self,
+            FsKind::Ntfs | FsKind::Fat12 | FsKind::Fat16 | FsKind::Fat32 | FsKind::Exfat
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartInfo {
+    pub index: usize,
+    pub start: u64,
+    pub len: u64,
+    pub fs: FsKind,
+    pub label: Option<String>,
+    /// Encontrada por varredura, não consta da tabela de partições.
+    pub lost: bool,
+    pub encrypted: Option<String>,
+    /// Descrição do tipo na tabela (ex.: "Microsoft basic data").
+    pub table_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Gap {
+    pub start: u64,
+    pub len: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DiskLayout {
+    pub size: u64,
+    /// "gpt", "mbr" ou "none".
+    pub table: String,
+    pub partitions: Vec<PartInfo>,
+    /// Espaço não particionado relevante (> 1 MiB).
+    pub gaps: Vec<Gap>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScanMode {
+    /// Só metadados dos sistemas de arquivos (segundos).
+    Quick,
+    /// Metadados + carving por assinatura em todo espaço livre/desconhecido.
+    Deep,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanOptions {
+    pub mode: ScanMode,
+    /// Inclui áreas ainda alocadas no carving (mais lento, acha cópias antigas).
+    #[serde(default)]
+    pub include_allocated: bool,
+    /// Limita o carving a estas categorias (vazio = todas).
+    #[serde(default)]
+    pub categories: Vec<Category>,
+    /// Tamanho máximo aceito para arquivos carved (bytes).
+    #[serde(default = "default_max_carve")]
+    pub max_carve_size: u64,
+}
+
+fn default_max_carve() -> u64 {
+    8 * 1024 * 1024 * 1024
+}
+
+impl Default for ScanOptions {
+    fn default() -> Self {
+        Self {
+            mode: ScanMode::Deep,
+            include_allocated: false,
+            categories: vec![],
+            max_carve_size: default_max_carve(),
+        }
+    }
+}

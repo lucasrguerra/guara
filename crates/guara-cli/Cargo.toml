@@ -1,0 +1,20 @@
+[package]
+name = "guara-cli"
+description = "Guará: recuperação de arquivos pelo terminal (e servidor da interface gráfica)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "guara"
+path = "src/main.rs"
+
+[dependencies]
+guara-core = { path = "../guara-core" }
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
+tiny_http = "0.12"
+getrandom = "0.2"
+ctrlc = "3"

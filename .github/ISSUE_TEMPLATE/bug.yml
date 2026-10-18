@@ -1,0 +1,17 @@
+name: Relatar um problema
+description: Algo não funcionou como esperado
+labels: [bug]
+body:
+  - type: textarea
+    id: o-que
+    attributes: { label: O que aconteceu?, description: "Passos, o que esperava e o que viu." }
+    validations: { required: true }
+  - type: input
+    id: sistema
+    attributes: { label: "Sistema operacional e versão do Guará", placeholder: "Windows 11 / guara 0.1.0" }
+  - type: input
+    id: midia
+    attributes: { label: "Tipo de mídia e sistema de arquivos", placeholder: "pendrive 32 GB, FAT32" }
+  - type: textarea
+    id: log
+    attributes: { label: "Saída do terminal (guara inspect / scan)", render: shell }

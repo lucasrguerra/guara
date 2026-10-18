@@ -1,0 +1,15 @@
+# Material de trabalho local, não versionado
+.superpowers/
+docs/
+
+# Estado de ferramentas locais
+.wolf/
+.claude/
+CLAUDE.md
+
+# Build
+target/
+node_modules/
+*.img
+*.guara-session.json
+.DS_Store

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Guará">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#d9441c"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#g)"/>
+  <!-- orelhas grandes e focinho longo do lobo-guará -->
+  <path d="M30 22 L52 50 L38 62 Z" fill="#fff"/>
+  <path d="M98 22 L76 50 L90 62 Z" fill="#fff"/>
+  <path d="M38 62 L52 50 Q64 44 76 50 L90 62 L74 96 Q64 108 54 96 Z" fill="#fff"/>
+  <path d="M54 80 Q64 90 74 80 L69 96 Q64 100 59 96 Z" fill="#3a1608"/>
+  <circle cx="53" cy="68" r="4" fill="#3a1608"/>
+  <circle cx="75" cy="68" r="4" fill="#3a1608"/>
+  <path d="M54 52 Q64 47 74 52 L70 60 Q64 56 58 60 Z" fill="#ffd2b0"/>
+</svg>
