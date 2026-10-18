@@ -34,7 +34,7 @@ Cada arquivo tem um `.sha256` ao lado. Compilar do código: `cargo build --relea
 
 > Os binários ainda **não são assinados**: o Windows SmartScreen e o Gatekeeper do macOS vão avisar. Confira o SHA-256.
 
-Ler discos brutos exige privilégios: **administrador** (Windows), `sudo` (Linux/macOS).
+Ler discos brutos exige privilégios: **administrador** (Windows), `sudo` (Linux/macOS). Mesmo como root, o Guará grava sessões, relatórios e arquivos recuperados com o dono e as permissões do usuário que o abriu.
 
 ## Uso (terminal)
 

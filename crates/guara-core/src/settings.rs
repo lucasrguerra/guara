@@ -29,8 +29,8 @@ pub fn config_dir() -> PathBuf {
     }
     #[cfg(unix)]
     {
-        if let Some(home) = invoking_user_home() {
-            return default_dir(home);
+        if let Some(u) = crate::owner::invoking_user() {
+            return default_dir(u.home);
         }
     }
     default_dir(PathBuf::from(
@@ -69,25 +69,6 @@ fn default_dir(home: PathBuf) -> PathBuf {
     }
 }
 
-/// Se somos root por sudo/pkexec, a home de quem invocou.
-#[cfg(unix)]
-fn invoking_user_home() -> Option<PathBuf> {
-    // SAFETY: geteuid não tem pré-condições.
-    if unsafe { libc::geteuid() } != 0 {
-        return None;
-    }
-    let user = std::env::var("SUDO_USER").ok().filter(|u| u != "root");
-    let uid = std::env::var("PKEXEC_UID").ok();
-    let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
-    for l in passwd.lines() {
-        let f: Vec<&str> = l.split(':').collect();
-        if f.len() >= 6 && (user.as_deref() == Some(f[0]) || uid.as_deref() == Some(f[2])) {
-            return Some(PathBuf::from(f[5]));
-        }
-    }
-    None
-}
-
 fn file() -> PathBuf {
     config_dir().join("settings.json")
 }
@@ -100,19 +81,6 @@ pub fn load() -> Settings {
 }
 
 pub fn save(s: &Settings) -> Result<()> {
-    let dir = config_dir();
-    std::fs::create_dir_all(&dir)?;
-    let path = file();
-    std::fs::write(&path, serde_json::to_vec_pretty(s)?)?;
-    #[cfg(unix)]
-    {
-        // Como root, devolve a posse ao dono da pasta para o app normal conseguir regravar.
-        use std::os::unix::fs::MetadataExt;
-        if unsafe { libc::geteuid() } == 0 {
-            if let Ok(m) = std::fs::metadata(&dir) {
-                let _ = std::os::unix::fs::chown(&path, Some(m.uid()), Some(m.gid()));
-            }
-        }
-    }
+    crate::owner::write_owned(&file(), serde_json::to_vec_pretty(s)?)?;
     Ok(())
 }

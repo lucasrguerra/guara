@@ -450,7 +450,7 @@ impl Engine {
             Some(q) => q.select(&s.found),
             None => s.found.iter().collect(),
         };
-        std::fs::write(path, crate::report::csv(&items))?;
+        crate::owner::write_owned(Path::new(path), crate::report::csv(&items))?;
         Ok(items.len())
     }
 
@@ -479,7 +479,7 @@ impl Engine {
             recoveries: &s.recoveries,
             source_hashes: hashes.as_ref(),
         });
-        std::fs::write(path, html)?;
+        crate::owner::write_owned(Path::new(path), html)?;
         Ok(())
     }
 
@@ -607,7 +607,7 @@ impl Engine {
             recoveries: s.recoveries.clone(),
             started_unix: s.started_unix,
         };
-        std::fs::write(path, serde_json::to_vec(&data)?)?;
+        crate::owner::write_owned(Path::new(path), serde_json::to_vec(&data)?)?;
         Ok(())
     }
 
@@ -816,9 +816,7 @@ impl Engine {
             }
             "session_load" => json!({ "job": self.load_session(&s("path")?)? }),
             "defaults" => {
-                let home = std::env::var("HOME")
-                    .or_else(|_| std::env::var("USERPROFILE"))
-                    .unwrap_or_default();
+                let home = crate::owner::user_home().to_string_lossy().to_string();
                 json!({ "home": home, "sep": std::path::MAIN_SEPARATOR.to_string() })
             }
             "version" => {

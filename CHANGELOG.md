@@ -8,6 +8,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); 
 - Abrir uma sessão salva falhava por inteiro quando a origem (por exemplo `/dev/sdb`) não estava acessível, e a mensagem de erro era vaga. Agora a sessão sempre abre: dá para navegar, exportar e gerar relatório, e o botão "Escolher a origem…" reconecta o disco ou uma imagem para voltar a pré-visualizar e recuperar.
 - Mensagens claras quando o arquivo de sessão não pode ser lido (por exemplo, criado como administrador em `/root`) ou não é uma sessão válida.
 - Teste automático garante que sessões gravadas pela v0.1.0 continuam abrindo.
+- Rodando como administrador (sudo/pkexec), as pastas sugeridas passam a ser as do usuário que abriu o Guará e tudo que ele grava (sessões, CSV, relatórios, imagens e arquivos recuperados, com as pastas criadas) fica com o dono e as permissões desse usuário, e não do root.
 
 ## [0.3.0] - 2026-10-18
 

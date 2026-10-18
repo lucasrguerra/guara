@@ -11,6 +11,7 @@ pub mod fs;
 pub mod hashing;
 pub mod image;
 pub mod meta;
+pub mod owner;
 pub mod partition;
 pub mod recover;
 pub mod report;

@@ -37,7 +37,7 @@ pub struct RecoverReport {
 
 /// Recusa destinos que ficam no mesmo dispositivo da origem.
 pub fn check_destination(source_path: Option<&Path>, dest: &Path) -> Result<()> {
-    std::fs::create_dir_all(dest)?;
+    crate::owner::create_dir_all_owned(dest)?;
     let dest = dest.canonicalize()?;
     let Some(sp) = source_path else { return Ok(()) };
     let sp_str = sp.to_string_lossy().to_string();
@@ -79,7 +79,7 @@ pub fn recover(
     cancelled: &(dyn Fn() -> bool + Sync),
     progress: &mut dyn FnMut(usize, usize, u64),
 ) -> Result<RecoverReport> {
-    std::fs::create_dir_all(dest)?;
+    crate::owner::create_dir_all_owned(dest)?;
     let mut report = RecoverReport {
         destination: dest.display().to_string(),
         ..Default::default()
@@ -94,7 +94,7 @@ pub fn recover(
         let rel = target_rel(f);
         let mut path = dest.join(&rel);
         if let Some(parent) = path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
+            if let Err(e) = crate::owner::create_dir_all_owned(parent) {
                 report.failed.push((f.id, e.to_string()));
                 continue;
             }
@@ -144,8 +144,8 @@ pub fn recover(
         "algoritmos_hash": ["MD5", "SHA-1", "SHA-256"],
         "relatorio": &report,
     });
-    std::fs::write(
-        dest.join("guara-manifesto.json"),
+    crate::owner::write_owned(
+        &dest.join("guara-manifesto.json"),
         serde_json::to_vec_pretty(&manifest)?,
     )?;
     Ok(report)
@@ -176,6 +176,7 @@ pub fn write_file(src: &dyn Source, f: &Found, path: &Path) -> Result<Hashes> {
         .write(true)
         .create_new(true)
         .open(path)?;
+    crate::owner::give_to_user(path);
     let mut hasher = MultiHasher::new();
     match &f.data {
         DataLoc::Resident { bytes } => {

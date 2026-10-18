@@ -40,6 +40,7 @@ pub fn create_image(
                 dest.display()
             ))
         })?;
+    crate::owner::give_to_user(dest);
     let size = src.size();
     let mut rep = ImageReport::default();
     let mut hasher = MultiHasher::new();
@@ -81,7 +82,7 @@ pub fn create_image(
     rep.md5 = h.md5;
     rep.sha1 = h.sha1;
     let map = dest.with_extension("map.json");
-    std::fs::write(map, serde_json::to_vec_pretty(&rep)?)?;
+    crate::owner::write_owned(&map, serde_json::to_vec_pretty(&rep)?)?;
     Ok(rep)
 }
 
