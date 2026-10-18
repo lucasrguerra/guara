@@ -553,3 +553,49 @@ fn png_truncado_seguido_de_texto_nao_vira_arquivo_gigante() {
     let h = signatures::detect(&MemSource(ok.clone()), 0, &ok[..64], 8 << 30).unwrap();
     assert_eq!((h.len as usize, h.confidence), (n, Confidence::High));
 }
+
+// ------------------------------------------------------------------ abrir no player do sistema
+
+/// O vídeo é copiado para uma pasta temporária e entregue ao aplicativo padrão do sistema
+/// (aqui um `xdg-open`/`open` falso grava o que recebeu).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn abre_no_player_do_sistema() {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    let marker = bin.path().join("recebido");
+    let name = if cfg!(target_os = "linux") {
+        "xdg-open"
+    } else {
+        "open"
+    };
+    let script = bin.path().join(name);
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\ncp \"$1\" '{}'\n", marker.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let old = std::env::var("PATH").unwrap_or_default();
+    std::env::set_var("PATH", format!("{}:{old}", bin.path().display()));
+    let content: Vec<u8> = (0..5000u32).map(|i| (i * 7) as u8).collect();
+    let mut f = resident("meu video.mp4", content.clone());
+    f.id = 42;
+    let path = external::open_found(&MemSource(vec![]), &f).unwrap();
+    std::env::set_var("PATH", old);
+    assert!(path
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .starts_with("42-"));
+    for _ in 0..100 {
+        if marker.exists() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+    assert_eq!(std::fs::read(&marker).unwrap(), content);
+    assert_eq!(std::fs::read(&path).unwrap(), content);
+    let _ = std::fs::remove_file(path);
+}

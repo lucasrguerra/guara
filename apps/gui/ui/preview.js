@@ -131,8 +131,10 @@ async function image(host, item, url, state, thumb) {
       if (state.dead) return resolve();
       host.innerHTML = '';
       host.appendChild(img);
-      host.classList.add('zoomable');
-      img.onclick = () => host.classList.toggle('actual');
+      if (!thumb) {
+        host.classList.add('zoomable');
+        img.onclick = () => host.classList.toggle('actual');
+      }
       if (!thumb) note(host, `${img.naturalWidth} × ${img.naturalHeight} px. Clique para alternar entre ajustar e tamanho real.`);
       resolve();
     };
@@ -272,12 +274,35 @@ async function zip(host, item, url, state) {
 
 // ------------------------------------------------------------------ API
 /** Desenha a pré-visualização de `item` dentro de `host`. Devolve uma função de limpeza. */
-export function renderPreview(host, item, { url, large = false, thumb = false }) {
+function mediaCard(host, item, kind, { large, inlineMedia, onOpen, onExternal }) {
+  const ico = kind === 'video' ? '🎞' : '🎵';
+  const canInline = inlineMedia && large;
+  host.innerHTML = `<div class="pv-card"><div class="pv-bigicon" aria-hidden="true">${ico}</div>
+    <b>${esc(item.name)}</b><span class="sub">${esc(KIND_LABEL[kind])} · ${human(item.size)}</span>
+    ${inlineMedia
+      ? '<button class="btn primary" data-pv="open">Reproduzir em tela grande</button>'
+      : '<button class="btn primary" data-pv="ext">Abrir no player do sistema</button><span class="pv-why">Neste app o ' + (kind === 'video' ? 'vídeo' : 'áudio') + ' abre no seu player: o navegador embutido do Linux não traz os codecs e travaria a janela.</span>'}
+  </div>`;
+  host.onclick = (e) => {
+    const a = e.target.closest('[data-pv]')?.dataset.pv;
+    if (a === 'open') onOpen?.();
+    else if (a === 'ext') onExternal?.();
+  };
+  void canInline;
+}
+
+export function renderPreview(host, item, { url, large = false, thumb = false, inlineMedia = true, onOpen = null, onExternal = null }) {
   const state = { dead: false, cleanup: [] };
   host.dataset.url = url;
   host.classList.remove('zoomable', 'actual');
   host.innerHTML = '<div class="pv-loading"><i></i></div>';
   const kind = kindOf(item);
+  // Vídeo e áudio: nunca criamos <video>/<audio> no painel pequeno, e no Linux do app desktop
+  // (WebKitGTK sem plugins de mídia) nem na tela grande, pois o processo da página morre.
+  if ((kind === 'video' || kind === 'audio') && (!large || !inlineMedia)) {
+    mediaCard(host, item, kind, { large, inlineMedia, onOpen, onExternal });
+    return () => { state.dead = true; };
+  }
   (async () => {
     try {
       if (!item.size) { host.innerHTML = ''; note(host, 'Arquivo vazio.'); return; }

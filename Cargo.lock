@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "guara-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "clap",
  "ctrlc",
@@ -329,7 +329,7 @@ dependencies = [
 
 [[package]]
 name = "guara-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "flate2",
  "image",
@@ -343,6 +343,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror",
+ "tiny_http",
  "windows-sys 0.59.0",
 ]
 

@@ -736,6 +736,15 @@ impl Engine {
             }
             "status" => self.status(&s("job")?)?,
             "facets" => self.facets(&s("job")?)?,
+            "open_external" => {
+                let id = p
+                    .get("id")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| Error::msg("id ausente"))?;
+                let (f, src) = self.open_file(&s("job")?, id)?;
+                let path = crate::external::open_found(src.as_ref(), &f)?;
+                json!({ "path": path.to_string_lossy() })
+            }
             "export_csv" => {
                 let q: Option<Query> = p
                     .get("query")
@@ -1051,6 +1060,10 @@ impl FileSlice {
                 "sandbox; default-src 'none'".into(),
             ),
             ("Access-Control-Allow-Origin", "*".into()),
+            (
+                "Access-Control-Expose-Headers",
+                "Content-Range, Content-Length, Accept-Ranges".into(),
+            ),
             ("Content-Disposition", "inline".into()),
         ];
         if self.partial {

@@ -2,6 +2,14 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [0.3.2] - 2026-10-18
+
+### Corrigido
+- **Travamento ao clicar em um vídeo no app para Linux.** O AppImage traz o WebKitGTK sem os plugins de mídia do GStreamer: ao criar um `<video>` ou `<audio>` o processo da página morria e a janela ficava congelada. Agora o app para Linux nunca cria esses elementos; vídeo e áudio têm o botão "Abrir no player do sistema", que copia o arquivo para uma pasta temporária do usuário e o abre no player padrão (inclusive quando o Guará roda como administrador). No navegador (`guara ui`) e nos demais sistemas o vídeo continua tocando dentro do app, mas só na tela grande, nunca no painel pequeno.
+
+### Alterado
+- Clicar na pré-visualização do painel de detalhes abre a visualização grande (imagem, PDF, documento e demais tipos), agora maior (até 98% da largura e 95% da altura da janela).
+
 ## [0.3.1] - 2026-10-18
 
 ### Adicionado

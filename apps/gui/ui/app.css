@@ -323,7 +323,7 @@ code, .mono { overflow-wrap: anywhere; font-family: var(--mono); font-size: .92e
 .pv-pdfbar .pg { font-size: 13px; color: var(--text-2); min-width: 110px; text-align: center; }
 .pv-pdfwrap { padding: 8px; } .pv-canvas { display: block; background: #fff; box-shadow: 0 2px 14px rgba(0, 0, 0, .25); }
 
-dialog.lightbox { width: min(1180px, 96vw); height: min(90vh, 920px); padding: 0; display: none; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+dialog.lightbox { width: min(1760px, 98vw); height: min(95vh, 1100px); padding: 0; display: none; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 dialog.lightbox[open] { display: grid; }
 .lb-head, .lb-foot { display: flex; gap: 12px; align-items: center; padding: 12px 16px; }
 .lb-head { border-bottom: 1px solid var(--line); } .lb-foot { border-top: 1px solid var(--line); flex-wrap: wrap; justify-content: space-between; }
@@ -454,3 +454,9 @@ dialog.lightbox[open] { display: grid; }
 .hit .ctx { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; color: var(--text-2); }
 .hit mark { background: var(--accent-soft); color: var(--accent); padding: 0 2px; border-radius: 3px; font-weight: 600; }
 @media (max-width: 860px) { .hit { grid-template-columns: 100px 1fr; } .hit span:nth-child(2), .hit span:nth-child(3) { display: none; } }
+
+.xp-insp #xpPv { cursor: zoom-in; }
+.pv-card { width: 100%; min-height: 220px; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; }
+.pv-card b { overflow-wrap: anywhere; font-size: 15px; }
+.pv-bigicon { font-size: 52px; line-height: 1; }
+.pv-why { max-width: 38ch; font-size: 12.5px; color: var(--text-2); }

@@ -4,7 +4,7 @@ use guara_core::service::Engine;
 use serde_json::json;
 use std::io::Read;
 use std::sync::Arc;
-use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
+use tiny_http::{Header, Method, Request, Response, Server};
 
 const INDEX: &str = include_str!("../../../apps/gui/ui/index.html");
 const CSS: &str = include_str!("../../../apps/gui/ui/app.css");
@@ -52,7 +52,7 @@ fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name.as_bytes(), value.as_bytes()).unwrap()
 }
 
-fn handle(mut req: Request, eng: &Engine, token: &str, hosts: &[String]) {
+fn handle(req: Request, eng: &Engine, token: &str, hosts: &[String]) {
     let host_ok = req
         .headers()
         .iter()
@@ -61,8 +61,11 @@ fn handle(mut req: Request, eng: &Engine, token: &str, hosts: &[String]) {
         let _ = req.respond(Response::from_string("host inválido").with_status_code(403));
         return;
     }
+    let Some(mut req) = guara_core::http::handle_media(eng, token, req) else {
+        return;
+    };
     let full = req.url().to_string();
-    let (path, query) = full.split_once('?').unwrap_or((full.as_str(), ""));
+    let (path, _query) = full.split_once('?').unwrap_or((full.as_str(), ""));
     let ct = |v: &str| header("Content-Type", v);
     match (req.method().clone(), path) {
         (Method::Get, "/") | (Method::Get, "/index.html") => {
@@ -104,78 +107,6 @@ fn handle(mut req: Request, eng: &Engine, token: &str, hosts: &[String]) {
             let _ = req.respond(
                 Response::from_string(PDF_WORKER).with_header(ct("text/javascript; charset=utf-8")),
             );
-        }
-        (Method::Get, p) if p.starts_with("/thumb/") => {
-            let tok_ok = query
-                .split('&')
-                .any(|kv| kv.strip_prefix("t=") == Some(token));
-            if !tok_ok {
-                let _ = req.respond(Response::from_string("token inválido").with_status_code(401));
-                return;
-            }
-            let mut it = p.trim_start_matches("/thumb/").split('/');
-            let (job, id) = (
-                it.next().unwrap_or(""),
-                it.next().and_then(|s| s.parse::<u64>().ok()),
-            );
-            let size = query
-                .split('&')
-                .find_map(|kv| kv.strip_prefix("s="))
-                .and_then(|v| v.parse::<u32>().ok())
-                .unwrap_or(256);
-            let Some(id) = id else {
-                let _ = req.respond(Response::from_string("id inválido").with_status_code(400));
-                return;
-            };
-            match eng.thumb(job, id, size) {
-                Ok(bytes) => {
-                    let resp = Response::from_data(bytes.as_ref().clone())
-                        .with_header(ct("image/jpeg"))
-                        .with_header(header("Cache-Control", "private, max-age=3600"));
-                    let _ = req.respond(resp);
-                }
-                Err(code) => {
-                    let _ =
-                        req.respond(Response::from_string("sem miniatura").with_status_code(code));
-                }
-            }
-        }
-        (Method::Get, p) if p.starts_with("/file/") => {
-            let tok_ok = query
-                .split('&')
-                .any(|kv| kv.strip_prefix("t=") == Some(token));
-            if !tok_ok {
-                let _ = req.respond(Response::from_string("token inválido").with_status_code(401));
-                return;
-            }
-            let mut it = p.trim_start_matches("/file/").split('/');
-            let (job, id) = (
-                it.next().unwrap_or(""),
-                it.next().and_then(|s| s.parse::<u64>().ok()),
-            );
-            let range = req
-                .headers()
-                .iter()
-                .find(|h| h.field.equiv("Range"))
-                .map(|h| h.value.as_str().to_string());
-            let Some(id) = id else {
-                let _ = req.respond(Response::from_string("id inválido").with_status_code(400));
-                return;
-            };
-            match eng.file_slice(job, id, range.as_deref()) {
-                Ok(slice) => {
-                    let (status, len) = (slice.status(), slice.len() as usize);
-                    let headers: Vec<Header> =
-                        slice.headers().iter().map(|(k, v)| header(k, v)).collect();
-                    let resp =
-                        Response::new(StatusCode(status), headers, slice.reader(), Some(len), None);
-                    let _ = req.respond(resp);
-                }
-                Err(code) => {
-                    let _ =
-                        req.respond(Response::from_string("indisponível").with_status_code(code));
-                }
-            }
         }
         (Method::Post, p) if p.starts_with("/rpc/") => {
             let ok = req

@@ -431,7 +431,7 @@ function renderScan() {
   </div>`;
   $('#backBtn').onclick = () => (S.device ? openDevice(S.device) : renderHome());
   $('#progressArea').onclick = onProgressClick;
-  EX = createExplorer({ host: $('#xpHost'), job: S.job, rpc, esc, human, fileUrl, thumbUrl, onRecover: recover, toast });
+  EX = createExplorer({ host: $('#xpHost'), job: S.job, rpc, esc, human, fileUrl, thumbUrl, onRecover: recover, toast, noInlineMedia: !!tauri && /Linux/i.test(navigator.userAgent) });
 }
 
 function paintStatus() {

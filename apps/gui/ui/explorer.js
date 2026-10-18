@@ -31,6 +31,11 @@ const I = {
 
 export function createExplorer(deps) {
   const { host, job, rpc, esc, human, fileUrl, thumbUrl, onRecover, toast } = deps;
+  const inlineMedia = !deps.noInlineMedia;
+  const openExternal = (it) => {
+    toast('Preparando para abrir no player do sistema…');
+    rpc('open_external', { job, id: it.id }).then(() => toast('Aberto no player do sistema')).catch((err) => toast(err.message));
+  };
   const E = {
     filters: { category: null, year: null, month: null, undated: false, folder: null, camera: null, origin: null, minConf: null, gps: false, dedupe: false, bigOnly: false, mp1: false, query: '' },
     sort: 'date',
@@ -570,7 +575,12 @@ export function createExplorer(deps) {
       <dl class="kv"><dt>Pasta</dt><dd>${esc(it.dir || (it.origin === 'carved' ? 'Encontrado por assinatura' : '/'))}</dd>${timesHtml(it)}${it.camera ? `<dt>Câmera</dt><dd>${esc(it.camera)}</dd>` : ''}${it.px ? `<dt>Resolução</dt><dd>${it.px[0]} × ${it.px[1]} px</dd>` : ''}</dl>
       <div class="xp-meta" id="xpMeta"></div>
       <div class="row"><button class="btn sm" data-i="full">Tela cheia</button><button class="btn primary sm" data-i="rec1">Recuperar este arquivo</button></div>`;
-    stopPv = renderPreview($('#xpPv'), it, { url, thumb: kindOf(it) === 'image' });
+    stopPv = renderPreview($('#xpPv'), it, { url, thumb: kindOf(it) === 'image', inlineMedia, onOpen: () => openLightbox(idxOf(it.id)), onExternal: () => openExternal(it) });
+    // clicar na miniatura abre o modal grande
+    $('#xpPv').addEventListener('click', (ev) => {
+      if (ev.target.closest('button, a, .pv-pdfbar')) return;
+      openLightbox(idxOf(it.id));
+    });
     const my = ++metaToken;
     rpc('metadata', { job, id: it.id }).then((m) => {
       if (my !== metaToken || !$('#xpMeta')) return;
@@ -602,7 +612,7 @@ export function createExplorer(deps) {
       <div class="lb-body"><div class="viewer large" id="lbHost"></div></div>
       <div class="lb-foot"><span class="sub">${it.note ? esc(it.note) : '← → para navegar · Esc para fechar'}</span><button class="btn primary sm" id="lbRec">Recuperar este arquivo</button></div>`;
     stopLb?.();
-    stopLb = renderPreview(d.querySelector('#lbHost'), it, { url: fileUrl(job, it.id), large: true });
+    stopLb = renderPreview(d.querySelector('#lbHost'), it, { url: fileUrl(job, it.id), large: true, inlineMedia, onExternal: () => openExternal(it) });
     const go = (n) => { const t = i + n; if (t >= 0 && t < E.items.length) { setCursor(t, { reveal: true }); openLightbox(t); } };
     d.querySelector('#lbPrev').onclick = () => go(-1);
     d.querySelector('#lbNext').onclick = () => go(1);

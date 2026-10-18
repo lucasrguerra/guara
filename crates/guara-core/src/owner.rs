@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct User {
+    pub name: String,
     pub uid: u32,
     pub gid: u32,
     pub home: PathBuf,
@@ -41,6 +42,7 @@ pub fn lookup_user(passwd: &str, uid: Option<u32>, name: Option<&str>) -> Option
         };
         if uid == Some(fuid) || (uid.is_none() && name == Some(f[0])) {
             return Some(User {
+                name: f[0].to_string(),
                 uid: fuid,
                 gid: fgid,
                 home: PathBuf::from(f[5]),
