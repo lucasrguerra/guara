@@ -10,6 +10,8 @@ const INDEX: &str = include_str!("../../../apps/gui/ui/index.html");
 const CSS: &str = include_str!("../../../apps/gui/ui/app.css");
 const JS: &str = include_str!("../../../apps/gui/ui/app.js");
 const PREVIEW_JS: &str = include_str!("../../../apps/gui/ui/preview.js");
+const I18N_JS: &str = include_str!("../../../apps/gui/ui/i18n.js");
+const I18N_EN_JS: &str = include_str!("../../../apps/gui/ui/i18n-en.js");
 const LOGO: &str = include_str!("../../../apps/gui/ui/guara-logo.svg");
 const EXPLORER_JS: &str = include_str!("../../../apps/gui/ui/explorer.js");
 const ICON: &str = include_str!("../../../apps/gui/ui/guara.svg");
@@ -84,6 +86,16 @@ fn handle(req: Request, eng: &Engine, token: &str, hosts: &[String]) {
         (Method::Get, "/preview.js") => {
             let _ = req.respond(
                 Response::from_string(PREVIEW_JS).with_header(ct("text/javascript; charset=utf-8")),
+            );
+        }
+        (Method::Get, "/i18n.js") => {
+            let _ = req.respond(
+                Response::from_string(I18N_JS).with_header(ct("text/javascript; charset=utf-8")),
+            );
+        }
+        (Method::Get, "/i18n-en.js") => {
+            let _ = req.respond(
+                Response::from_string(I18N_EN_JS).with_header(ct("text/javascript; charset=utf-8")),
             );
         }
         (Method::Get, "/guara-logo.svg") => {

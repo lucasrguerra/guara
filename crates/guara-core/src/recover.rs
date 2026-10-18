@@ -33,6 +33,9 @@ pub struct RecoverReport {
     pub failed: Vec<(u64, String)>,
     pub total_bytes: u64,
     pub cancelled: bool,
+    /// Arquivos já recuperados e conferidos numa execução anterior (pulados ao retomar).
+    #[serde(default)]
+    pub skipped: usize,
 }
 
 /// Recusa destinos que ficam no mesmo dispositivo da origem.
@@ -124,18 +127,98 @@ pub fn recover_with(
     cancelled: &(dyn Fn() -> bool + Sync),
     progress: &mut dyn FnMut(usize, usize, u64),
 ) -> Result<RecoverReport> {
+    recover_resumable(src, files, dest, layout, "", false, cancelled, progress)
+}
+
+/// Uma linha do diário de recuperação (`guara-diario.jsonl`): cada arquivo gravado e conferido.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JournalEntry {
+    source: String,
+    id: u64,
+    name: String,
+    file: RecoveredFile,
+}
+
+pub const JOURNAL: &str = "guara-diario.jsonl";
+
+fn sha256_of_file(p: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(p).ok()?;
+    let mut h = MultiHasher::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = f.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Some(h.finalize().sha256)
+}
+
+/// Como `recover_with`, mas mantém um diário e, com `resume`, pula o que já foi
+/// recuperado (e conferido por SHA-256) numa execução interrompida.
+/// `source_key` identifica a origem para que o diário de outro disco não seja reaproveitado.
+#[allow(clippy::too_many_arguments)]
+pub fn recover_resumable(
+    src: &dyn Source,
+    files: &[&Found],
+    dest: &Path,
+    layout: RecoverLayout,
+    source_key: &str,
+    resume: bool,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    progress: &mut dyn FnMut(usize, usize, u64),
+) -> Result<RecoverReport> {
+    use std::io::Write;
     crate::owner::create_dir_all_owned(dest)?;
     let mut report = RecoverReport {
         destination: dest.display().to_string(),
         ..Default::default()
     };
     let mut used: HashSet<PathBuf> = HashSet::new();
+    let journal_path = dest.join(JOURNAL);
+    let mut prior: std::collections::HashMap<u64, JournalEntry> = std::collections::HashMap::new();
+    if resume {
+        if let Ok(text) = std::fs::read_to_string(&journal_path) {
+            for line in text.lines() {
+                if let Ok(e) = serde_json::from_str::<JournalEntry>(line) {
+                    if e.source == source_key {
+                        prior.insert(e.id, e);
+                    }
+                }
+            }
+        }
+    }
+    let mut journal = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&journal_path)
+        .ok();
+    crate::owner::give_to_user(&journal_path);
     for (i, f) in files.iter().enumerate() {
         if cancelled() {
             report.cancelled = true;
             break;
         }
         progress(i, files.len(), report.total_bytes);
+        // retomada: já está lá e confere?
+        if let Some(e) = prior.get(&f.id) {
+            let p = dest.join(&e.file.path);
+            if e.name == f.name && e.file.size == f.size && p.is_file() {
+                if std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0) == f.size
+                    && sha256_of_file(&p).as_deref() == Some(e.file.sha256.as_str())
+                {
+                    used.insert(p);
+                    report.skipped += 1;
+                    report.total_bytes += f.size;
+                    report.recovered.push(e.file.clone());
+                    continue;
+                }
+                // incompleto ou alterado: refaz (é um arquivo nosso)
+                let _ = std::fs::remove_file(&p);
+            }
+        }
         let rel = target_rel(f, layout);
         let mut path = dest.join(&rel);
         if let Some(parent) = path.parent() {
@@ -162,7 +245,7 @@ pub fn recover_with(
         match write_file(src, f, &path) {
             Ok(h) => {
                 report.total_bytes += f.size;
-                report.recovered.push(RecoveredFile {
+                let rec = RecoveredFile {
                     id: f.id,
                     path: path
                         .strip_prefix(dest)
@@ -176,7 +259,21 @@ pub fn recover_with(
                     confidence: f.confidence,
                     origin: f.origin,
                     partial: f.confidence == Confidence::Low,
-                });
+                };
+                if let Some(j) = journal.as_mut() {
+                    let line = JournalEntry {
+                        source: source_key.to_string(),
+                        id: f.id,
+                        name: f.name.clone(),
+                        file: rec.clone(),
+                    };
+                    if let Ok(mut l) = serde_json::to_string(&line) {
+                        l.push('\n');
+                        let _ = j.write_all(l.as_bytes());
+                        let _ = j.flush();
+                    }
+                }
+                report.recovered.push(rec);
             }
             Err(e) => report.failed.push((f.id, e.to_string())),
         }
@@ -345,5 +442,20 @@ pub fn read_found_at(
             }
             Ok(0)
         }
+    }
+}
+
+/// Um arquivo achado visto como origem de leitura posicional (para leitores de formato).
+pub struct FoundSource<'a> {
+    pub src: &'a dyn Source,
+    pub found: &'a Found,
+}
+
+impl Source for FoundSource<'_> {
+    fn size(&self) -> u64 {
+        self.found.size
+    }
+    fn read_at(&self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        read_found_at(self.src, self.found, offset, buf)
     }
 }

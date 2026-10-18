@@ -1,0 +1,223 @@
+//! Saúde do disco, notificações, configurações e retomada da recuperação.
+
+mod common;
+use common::*;
+use guara_core::*;
+use serde_json::json;
+
+// ------------------------------------------------------------------ saúde (SMART)
+
+#[test]
+fn smart_reprovado_e_setores_ruins_viram_alerta_serio() {
+    let v = json!({
+        "model_name": "WDC WD5000", "serial_number": "ABC123",
+        "power_on_time": {"hours": 43000}, "temperature": {"current": 38},
+        "smart_status": {"passed": false},
+        "ata_smart_attributes": {"table": [
+            {"id": 5, "raw": {"value": 120}}, {"id": 197, "raw": {"value": 3}}, {"id": 199, "raw": {"value": 0}}
+        ]}
+    });
+    let h = health::parse_smartctl(&v);
+    assert!(h.available);
+    assert_eq!(h.status, "failing");
+    assert!(h
+        .details
+        .iter()
+        .any(|(k, v)| k == "Setores realocados" && v == "120"));
+    assert!(h
+        .details
+        .iter()
+        .any(|(k, _)| k == "Setores pendentes de realocação"));
+    assert!(
+        h.advice.iter().any(|a| a.contains("imagem")),
+        "deve recomendar a imagem primeiro"
+    );
+}
+
+#[test]
+fn smart_saudavel_nvme_desgastado_e_nvme_critico() {
+    let ok = json!({"smart_status": {"passed": true}, "ata_smart_attributes": {"table": [{"id": 5, "raw": {"value": 0}}, {"id": 197, "raw": {"value": 0}}]}});
+    let h = health::parse_smartctl(&ok);
+    assert_eq!(h.status, "ok");
+    assert!(h.advice.is_empty());
+
+    let worn = json!({"smart_status": {"passed": true}, "nvme_smart_health_information_log": {"critical_warning": 0, "percentage_used": 93, "media_errors": 0, "available_spare": 80, "available_spare_threshold": 10}});
+    assert_eq!(health::parse_smartctl(&worn).status, "warning");
+
+    let crit = json!({"smart_status": {"passed": true}, "nvme_smart_health_information_log": {"critical_warning": 4, "percentage_used": 10, "media_errors": 0}});
+    assert_eq!(health::parse_smartctl(&crit).status, "failing");
+
+    let media = json!({"nvme_smart_health_information_log": {"critical_warning": 0, "percentage_used": 10, "media_errors": 7}});
+    assert_eq!(health::parse_smartctl(&media).status, "failing");
+}
+
+#[test]
+fn imagem_de_disco_nao_tem_smart() {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    let h = health::check(f.path().to_str().unwrap());
+    assert!(!h.available);
+    assert_eq!(h.status, "unknown");
+}
+
+// ------------------------------------------------------------------ configurações
+
+#[test]
+fn configuracoes_antigas_ganham_os_valores_padrao_novos() {
+    init();
+    // arquivo gravado pela v0.3: só tinha o tema
+    std::fs::create_dir_all(settings::config_dir()).unwrap();
+    std::fs::write(
+        settings::config_dir().join("settings.json"),
+        br#"{"theme":"dark"}"#,
+    )
+    .unwrap();
+    let s = settings::load();
+    assert_eq!(
+        (s.theme.as_str(), s.lang.as_str(), s.notify, s.maps),
+        ("dark", "auto", true, false)
+    );
+    settings::save(&settings::Settings {
+        theme: "light".into(),
+        lang: "en".into(),
+        notify: false,
+        maps: true,
+    })
+    .unwrap();
+    let s = settings::load();
+    assert_eq!(
+        (s.theme.as_str(), s.lang.as_str(), s.notify, s.maps),
+        ("light", "en", false, true)
+    );
+}
+
+// ------------------------------------------------------------------ notificações
+
+#[cfg(target_os = "linux")]
+#[test]
+fn notificacao_chama_o_notify_send() {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    let marker = bin.path().join("recebido");
+    let script = bin.path().join("notify-send");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\nprintf '%s|' \"$@\" > '{}'\n", marker.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let old = std::env::var("PATH").unwrap_or_default();
+    std::env::set_var("PATH", format!("{}:{old}", bin.path().display()));
+    notify::send("Guará: varredura concluída", "7 arquivos");
+    for _ in 0..100 {
+        if marker.exists() && !std::fs::read(&marker).unwrap().is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+    std::env::set_var("PATH", old);
+    let got = String::from_utf8(std::fs::read(&marker).unwrap()).unwrap();
+    assert!(
+        got.contains("Guará: varredura concluída") && got.contains("7 arquivos"),
+        "{got}"
+    );
+}
+
+// ------------------------------------------------------------------ retomar recuperação
+
+#[test]
+fn recuperacao_interrompida_retoma_pulando_o_que_ja_foi_conferido() {
+    let Some(dir) = fixtures() else { return };
+    let img = dir.join("fat32.img");
+    let res = scan_path(
+        &img,
+        &ScanOptions {
+            mode: ScanMode::Quick,
+            ..Default::default()
+        },
+    );
+    assert_eq!(res.found.len(), 7);
+    let src = source::open_path(&img).unwrap();
+    let files: Vec<&Found> = res.found.iter().collect();
+    let out = tempfile::tempdir().unwrap();
+    let key = "disco-de-teste";
+
+    // 1ª execução: "cai a energia" depois de 3 arquivos
+    let n = std::sync::atomic::AtomicUsize::new(0);
+    let cancel = || n.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 3;
+    let r1 = recover::recover_resumable(
+        src.as_ref(),
+        &files,
+        out.path(),
+        recover::RecoverLayout::Folders,
+        key,
+        true,
+        &cancel,
+        &mut |_, _, _| {},
+    )
+    .unwrap();
+    assert!(r1.cancelled);
+    assert_eq!(r1.recovered.len(), 3);
+    let journal = std::fs::read_to_string(out.path().join(recover::JOURNAL)).unwrap();
+    assert_eq!(journal.lines().count(), 3);
+
+    // 2ª execução: retoma, pula os 3 e faz os outros 4
+    let r2 = recover::recover_resumable(
+        src.as_ref(),
+        &files,
+        out.path(),
+        recover::RecoverLayout::Folders,
+        key,
+        true,
+        &|| false,
+        &mut |_, _, _| {},
+    )
+    .unwrap();
+    assert!(!r2.cancelled);
+    assert_eq!((r2.skipped, r2.recovered.len()), (3, 7));
+    let got = hashes_in(out.path());
+    for (h, p) in expected(&dir, "fat32") {
+        assert!(got.contains_key(&h), "faltou {p}");
+    }
+    assert_eq!(
+        std::fs::read_to_string(out.path().join(recover::JOURNAL))
+            .unwrap()
+            .lines()
+            .count(),
+        7
+    );
+
+    // um arquivo é danificado entre as execuções: é refeito, os outros 6 são pulados
+    let victim = out.path().join(&r2.recovered[0].path);
+    std::fs::write(&victim, b"lixo").unwrap();
+    let r3 = recover::recover_resumable(
+        src.as_ref(),
+        &files,
+        out.path(),
+        recover::RecoverLayout::Folders,
+        key,
+        true,
+        &|| false,
+        &mut |_, _, _| {},
+    )
+    .unwrap();
+    assert_eq!((r3.skipped, r3.recovered.len(), r3.failed.len()), (6, 7, 0));
+    assert!(
+        hashes_in(out.path()).contains_key(&r2.recovered[0].sha256),
+        "o arquivo danificado deveria ter sido refeito"
+    );
+
+    // outro disco (outra chave) não reaproveita o diário
+    let r4 = recover::recover_resumable(
+        src.as_ref(),
+        &files,
+        out.path(),
+        recover::RecoverLayout::Folders,
+        "outro-disco",
+        true,
+        &|| false,
+        &mut |_, _, _| {},
+    )
+    .unwrap();
+    assert_eq!(r4.skipped, 0);
+    let _ = json!({});
+}

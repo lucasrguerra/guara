@@ -116,3 +116,10 @@ Veja [CONTRIBUTING.md](CONTRIBUTING.md). Versões seguem [SemVer](https://semver
 ## Licença
 
 [MIT](LICENSE-MIT) ou [Apache-2.0](LICENSE-APACHE), à sua escolha.
+
+## Novidades da 0.5.0
+
+- Visualizador de bancos SQLite com recuperação de linhas apagadas.
+- Aviso de saúde do disco (SMART) antes da varredura profunda.
+- Notificações do sistema, retomada de recuperação interrompida e mapa de fotos com GPS (opcional).
+- Interface em inglês e janela de Configurações.

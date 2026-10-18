@@ -8,13 +8,34 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     /// "auto", "light" ou "dark".
+    #[serde(default = "auto")]
     pub theme: String,
+    /// Idioma da interface: "auto", "pt" ou "en".
+    #[serde(default = "auto")]
+    pub lang: String,
+    /// Notificação do sistema quando uma tarefa longa termina.
+    #[serde(default = "yes")]
+    pub notify: bool,
+    /// Mostrar mapas das fotos com GPS (baixa blocos do OpenStreetMap pela internet).
+    #[serde(default)]
+    pub maps: bool,
+}
+
+fn auto() -> String {
+    "auto".into()
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme: "auto".into(),
+            theme: auto(),
+            lang: auto(),
+            notify: true,
+            maps: false,
         }
     }
 }

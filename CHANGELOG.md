@@ -2,6 +2,20 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [0.5.0] - 2026-10-18
+
+### Adicionado
+- **Visualizador de bancos de dados:** arquivos SQLite (`.db`, `.sqlite`, `.sqlite3`, `.db3`, `.sdb`, `.sqlitedb`, `.storedata`) abrem na pré-visualização com esquema, tabelas paginadas, blobs e datas reconhecidas. Leitor próprio, só leitura, tolerante a arquivos truncados ou corrompidos. Também **recupera linhas apagadas** a partir do espaço livre das páginas.
+- **Saúde do disco (SMART):** antes de varrer, o Guará consulta o `smartctl` (quando instalado) e o contador de erros do kernel. Se o disco parece com defeito, recomenda criar a imagem primeiro e pede confirmação antes da varredura profunda.
+- **Notificação do sistema** quando uma varredura longa ou uma recuperação termina, ou pausa por desconexão.
+- **Retomar recuperação interrompida:** um diário na pasta de destino faz o Guará pular o que já foi copiado e conferido; o resultado mostra quantos foram pulados.
+- **Mapa das fotos com GPS** no painel de detalhes (opcional, usa a internet) e botão para abrir no OpenStreetMap.
+- **Interface em inglês**, com escolha de idioma (Auto, Português, English) na nova janela de Configurações, que também controla notificações e mapas online.
+- **Fechar a janela durante a varredura** pergunta se você quer pausar e sair, sair sem pausar ou continuar.
+
+### Notas
+- Mensagens de erro vindas do núcleo e o terminal continuam em português.
+
 ## [0.4.0] - 2026-10-18
 
 ### Adicionado

@@ -320,6 +320,55 @@ impl Engine {
         Ok(crate::explorer::facets(&s.found))
     }
 
+    /// Esquema de um banco SQLite achado, com o número de linhas de cada tabela.
+    pub fn db_info(&self, id: &str, file: u64) -> Result<Value> {
+        let (f, src) = self.open_file(id, file)?;
+        let fs = recover::FoundSource {
+            src: src.as_ref(),
+            found: &f,
+        };
+        let db = crate::sqlite::Db::open(&fs).map_err(Error::msg)?;
+        let schema = db.schema();
+        let counts: Vec<u64> = schema.tables.iter().map(|t| db.count_rows(t)).collect();
+        let mut v = serde_json::to_value(&schema)?;
+        for (t, c) in v["tables"].as_array_mut().unwrap().iter_mut().zip(counts) {
+            t["rows"] = json!(c);
+        }
+        Ok(v)
+    }
+
+    /// Uma página de linhas de uma tabela (ou os registros apagados prováveis dela).
+    pub fn db_rows(
+        &self,
+        id: &str,
+        file: u64,
+        table: &str,
+        offset: usize,
+        limit: usize,
+        deleted: bool,
+    ) -> Result<Value> {
+        let (f, src) = self.open_file(id, file)?;
+        let fs = recover::FoundSource {
+            src: src.as_ref(),
+            found: &f,
+        };
+        let db = crate::sqlite::Db::open(&fs).map_err(Error::msg)?;
+        let page = if deleted {
+            let mut p = db.deleted_rows(table).map_err(Error::msg)?;
+            p.rows = p
+                .rows
+                .into_iter()
+                .skip(offset)
+                .take(limit.clamp(1, 1000))
+                .collect();
+            p
+        } else {
+            db.rows(table, offset, limit.clamp(1, 1000))
+                .map_err(Error::msg)?
+        };
+        Ok(serde_json::to_value(&page)?)
+    }
+
     /// Metadados detalhados (EXIF, PDF, Office, vídeo…) de um arquivo.
     pub fn metadata(&self, id: &str, file: u64) -> Result<crate::meta::Meta> {
         let (f, src) = self.open_file(id, file)?;
@@ -407,6 +456,12 @@ impl Engine {
         );
         let j2 = job.clone();
         let parent = sj.clone();
+        let source_key = sj
+            .fingerprint
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| sj.target.clone());
         std::thread::spawn(move || {
             let cancelled = || j2.cancelled();
             let mut prog = |done: usize, total: usize, bytes: u64| {
@@ -418,11 +473,13 @@ impl Engine {
                 };
             };
             let refs: Vec<&Found> = files.iter().collect();
-            let res = recover::recover_with(
+            let res = recover::recover_resumable(
                 src.as_ref(),
                 &refs,
                 &dest_path,
                 layout,
+                &source_key,
+                true,
                 &cancelled,
                 &mut prog,
             );
@@ -431,6 +488,19 @@ impl Engine {
                 Ok(rep) => {
                     s.report = serde_json::to_value(&rep).ok();
                     parent.st.lock().unwrap().recoveries.push(rep.clone());
+                    if !rep.cancelled
+                        && s.started.elapsed().as_secs() >= 8
+                        && crate::settings::load().notify
+                    {
+                        crate::notify::send(
+                            "Guará: recuperação concluída",
+                            &format!(
+                                "{} arquivo(s) salvos em {}",
+                                rep.recovered.len(),
+                                rep.destination
+                            ),
+                        );
+                    }
                     s.status = if rep.cancelled {
                         Status::Stopped
                     } else {
@@ -907,6 +977,28 @@ impl Engine {
             }
             "status" => self.status(&s("job")?)?,
             "facets" => self.facets(&s("job")?)?,
+            "health" => json!(crate::health::check(&s("path")?)),
+            "open_url" => {
+                let u = s("url")?;
+                // só mapas do OpenStreetMap: evita abrir endereços arbitrários a partir de metadados
+                if !u.starts_with("https://www.openstreetmap.org/") {
+                    return Err(Error::msg("endereço não permitido"));
+                }
+                crate::external::open_path(Path::new(&u))?;
+                json!({})
+            }
+            "db_info" => self.db_info(
+                &s("job")?,
+                p.get("id").and_then(|v| v.as_u64()).unwrap_or(0),
+            )?,
+            "db_rows" => self.db_rows(
+                &s("job")?,
+                p.get("id").and_then(|v| v.as_u64()).unwrap_or(0),
+                &s("table")?,
+                p.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+                p.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize,
+                p.get("deleted").and_then(|v| v.as_bool()).unwrap_or(false),
+            )?,
             "open_external" => {
                 let id = p
                     .get("id")
@@ -1100,6 +1192,16 @@ fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
             Outcome::Completed => {
                 s.status = Status::Done;
                 s.checkpoint = None;
+                if s.started.elapsed().as_secs() >= 20 && crate::settings::load().notify {
+                    crate::notify::send(
+                        "Guará: varredura concluída",
+                        &format!(
+                            "{} arquivo(s) encontrados em {}.",
+                            s.found.len(),
+                            job.target
+                        ),
+                    );
+                }
             }
             Outcome::Interrupted(cp) => {
                 if job.stop_requested.load(Ordering::Relaxed) {
@@ -1107,6 +1209,9 @@ fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
                 } else {
                     s.status = Status::Paused;
                     if cp.io_lost {
+                        if crate::settings::load().notify {
+                            crate::notify::send("Guará: disco desconectado?", "A varredura foi pausada sem perder nada. Reconecte o disco e continue.");
+                        }
                         s.warnings.push("A leitura do dispositivo falhou repetidamente: ele provavelmente foi desconectado. A varredura foi pausada sem perder nada. Reconecte o disco e clique em Continuar.".into());
                     }
                     s.checkpoint = Some(cp);

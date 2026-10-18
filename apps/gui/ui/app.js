@@ -2,6 +2,7 @@
 //  • app Tauri: invoke('rpc')   • modo `guara ui`: POST /rpc/<método> com token.
 
 import { createExplorer } from './explorer.js';
+import { setLang, LOC } from './i18n.js';
 
 const tauri = window.__TAURI__;
 const params = new URLSearchParams(location.search);
@@ -47,8 +48,16 @@ document.querySelectorAll('[data-theme-pick]').forEach((b) => (b.onclick = async
   const t = b.dataset.themePick;
   applyTheme(t);
   try { localStorage.setItem('guara-theme', t); } catch { /* sem armazenamento */ }
-  try { await rpc('settings_set', { theme: t }); } catch { /* segue só com o armazenamento local */ }
+  saveSettings({ theme: t });
 }));
+
+// ------------------------------------------------------------------ configurações
+// (declarado antes do uso: `S` é definido mais abaixo, por isso o objeto fica aqui)
+const SETTINGS = { theme: 'auto', lang: 'auto', notify: true, maps: false };
+async function saveSettings(patch) {
+  Object.assign(SETTINGS, patch);
+  try { await rpc('settings_set', SETTINGS); } catch { /* segue só com o armazenamento local */ }
+}
 
 // ------------------------------------------------------------------ utilidades
 const $ = (s, el = document) => el.querySelector(s);
@@ -64,7 +73,7 @@ const dur = (s) => {
   s = Math.round(s);
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}min ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}min`;
 };
-const date = (t) => (t ? new Date(t * 1000).toLocaleString('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }) : 'sem data');
+const date = (t) => (t ? new Date(t * 1000).toLocaleString(LOC(), { dateStyle: 'medium', timeStyle: 'short' }) : 'sem data');
 const CATS = [
   ['image', 'Fotos'], ['document', 'Documentos'], ['video', 'Vídeos'], ['audio', 'Áudio'],
   ['archive', 'Compactados'], ['database', 'Bancos de dados'], ['other', 'Outros'],
@@ -192,7 +201,7 @@ function renderSide() {
   rl.dataset.empty = 'Nada salvo ainda';
   rl.innerHTML = (S.recent || []).map((r, i) => `
     <li><button class="dev" data-r="${i}" title="${esc(r.path)}"><span class="ico">${icon('default')}</span>
-      <span><span class="t">${esc((r.target || '').split(/[\\/]/).pop() || 'Sessão')}</span><span class="s">${r.found.toLocaleString('pt-BR')} arquivos · ${esc(r.status)} · ${new Date(r.saved_at * 1000).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span></span></button></li>`).join('');
+      <span><span class="t">${esc((r.target || '').split(/[\\/]/).pop() || 'Sessão')}</span><span class="s">${r.found.toLocaleString(LOC())} arquivos · ${esc(r.status)} · ${new Date(r.saved_at * 1000).toLocaleString(LOC(), { dateStyle: 'short', timeStyle: 'short' })}</span></span></button></li>`).join('');
   rl.querySelectorAll('.dev').forEach((b) => (b.onclick = () => openRecent(S.recent[+b.dataset.r])));
 }
 
@@ -270,9 +279,36 @@ async function openDevice(d) {
   main.innerHTML = `<div class="page"><p class="sub">Lendo ${esc(d.name)}…</p></div>`;
   main.scrollTop = 0;
   let layout = null, err = null;
+  S.health = null;
   try { layout = await rpc('inspect', { path: d.path }); } catch (e) { err = e.message; }
   S.layout = layout;
   renderDevice(err);
+  // saúde (SMART) em segundo plano: não atrasa a tela
+  rpc('health', { path: d.path }).then((h) => { if (S.device === d) { S.health = h; paintHealth(); } }).catch(() => {});
+}
+
+function paintHealth() {
+  const el = $('#healthArea');
+  const h = S.health;
+  if (!el || !h || !h.available) { if (el) el.innerHTML = ''; return; }
+  const bad = h.status === 'failing' || h.status === 'warning';
+  const rows = (h.details || []).filter(([k]) => bad || ['Modelo', 'Horas ligado', 'Temperatura'].includes(k)).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+  el.innerHTML = `<div class="notice ${h.status === 'failing' ? 'bad' : h.status === 'warning' ? '' : 'info'}">${warnSvg}<div><b>${esc(h.summary)}</b>
+    ${rows ? `<dl class="kv" style="margin-top:6px">${rows}</dl>` : ''}${(h.advice || []).map((a) => `<div style="margin-top:6px">${esc(a)}</div>`).join('')}
+    ${bad ? '<div class="row" style="margin-top:8px"><button class="btn sm primary" id="healthImg">Criar a imagem primeiro</button></div>' : ''}</div></div>`;
+  $('#healthImg')?.addEventListener('click', startImage);
+}
+
+/** Disco com sinais de defeito: oferece criar a imagem antes de varrer. */
+function confirmRisky() {
+  return new Promise((resolve) => {
+    const h = S.health;
+    const d = $('#dlg');
+    d.innerHTML = `<form method="dialog"><h2>Este disco parece estar com defeito</h2><p>${esc(h.summary)}</p>${(h.advice || []).map((a) => `<p class="sub">${esc(a)}</p>`).join('')}
+      <menu><button class="btn" value="cancel">Cancelar</button><button class="btn" value="scan">Varrer mesmo assim</button><button class="btn primary" value="image">Criar a imagem primeiro</button></menu></form>`;
+    d.onclose = () => resolve(d.returnValue === 'image' ? 'image' : d.returnValue === 'scan' ? 'scan' : null);
+    d.showModal();
+  });
 }
 
 function fsClass(p) {
@@ -309,6 +345,7 @@ function renderDevice(err) {
   main.innerHTML = `<div class="page">
     <div class="dev-head"><div><h1>${esc(d.name)}</h1><div class="sub">${esc(d.kind)}${d.size ? ' · ' + human(d.size) : l ? ' · ' + human(l.size) : ''} · <span class="mono">${esc(d.path)}</span></div></div></div>
     ${notes.map(([k, t]) => `<div class="notice ${k === 'bad' ? 'bad' : ''}">${warnSvg}<div>${t}</div></div>`).join('')}
+    <div id="healthArea"></div>
     ${l ? `<div class="section"><h2>Mapa do disco</h2>${diskMap(l)}
       <div class="legend">${l.partitions.map((p) => `<div><span class="dot ${fsClass(p)}"></span><b>Partição ${p.index + 1}</b> ${esc(FS_NAME[p.fs] || p.fs)} · ${human(p.len)}${p.label ? ' · ' + esc(p.label) : ''}
         ${p.lost ? '<span class="pill accent">encontrada por varredura</span>' : ''}${p.encrypted ? `<span class="pill warn">cifrada (${esc(p.encrypted)}) · só detecção</span>` : ''}</div>`).join('')}
@@ -345,12 +382,19 @@ function renderDevice(err) {
   $('#goDeep')?.addEventListener('click', () => startScan(opts('deep')));
   $('#goQuick')?.addEventListener('click', () => startScan(opts('quick')));
   $('#goImage')?.addEventListener('click', startImage);
+  paintHealth();
   $('#goSearch')?.addEventListener('click', startSearch);
   $('#srchTerms')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') startSearch(); });
   $('#goHash')?.addEventListener('click', startHash);
 }
 
 async function startScan(options) {
+  if (S.health && (S.health.status === 'failing' || S.health.status === 'warning') && options.mode === 'deep' && !S.healthAck?.[S.device.path]) {
+    const c = await confirmRisky();
+    if (c === 'image') return startImage();
+    if (!c) return;
+    (S.healthAck ??= {})[S.device.path] = true;
+  }
   try {
     const { job } = await rpc('scan_start', { path: S.device.path, options });
     const s = { job, target: S.device.path, label: S.device.name };
@@ -409,9 +453,9 @@ function openSearch(job, terms) {
     const run = st.status === 'running';
     const p = st.progress || {};
     const pct = p.total ? Math.floor((p.done / p.total) * 100) : 0;
-    $('#shTitle').textContent = run ? 'Procurando…' : `${res.total.toLocaleString('pt-BR')} ocorrência${res.total === 1 ? '' : 's'}`;
-    setHTML($('#shProg'), run ? `<div class="bar"><i style="width:${pct}%"></i></div><div class="sub" style="margin-top:6px">${pct}% · ${res.total.toLocaleString('pt-BR')} até agora</div><button class="btn sm danger" data-stop="1" style="margin-top:8px">Parar</button>` : st.status === 'error' ? `<div class="notice bad">${warnSvg}<div>${esc(st.error)}</div></div>` : '');
-    setHTML($('#hits'), res.items.length ? `<div class="hit head"><span>Posição</span><span>Partição</span><span>Codificação</span><span>Contexto</span></div>` + res.items.map((h) => `<div class="hit"><span class="mono" title="${h.offset} bytes (0x${h.offset.toString(16)})">${h.offset.toLocaleString('pt-BR')}</span><span>${h.partition ? '#' + h.partition : 'fora'}</span><span>${esc(h.encoding)}</span><span class="ctx">${esc(h.context).replace(termRe, (m) => `<mark>${m}</mark>`)}</span></div>`).join('') : (run ? '' : '<div class="empty"><h3>Nada encontrado</h3><p>Esses termos não aparecem em nenhum ponto do disco (nem em UTF-8 nem em UTF-16).</p></div>'));
+    $('#shTitle').textContent = run ? 'Procurando…' : `${res.total.toLocaleString(LOC())} ocorrência${res.total === 1 ? '' : 's'}`;
+    setHTML($('#shProg'), run ? `<div class="bar"><i style="width:${pct}%"></i></div><div class="sub" style="margin-top:6px">${pct}% · ${res.total.toLocaleString(LOC())} até agora</div><button class="btn sm danger" data-stop="1" style="margin-top:8px">Parar</button>` : st.status === 'error' ? `<div class="notice bad">${warnSvg}<div>${esc(st.error)}</div></div>` : '');
+    setHTML($('#hits'), res.items.length ? `<div class="hit head"><span>Posição</span><span>Partição</span><span>Codificação</span><span>Contexto</span></div>` + res.items.map((h) => `<div class="hit"><span class="mono" title="${h.offset} bytes (0x${h.offset.toString(16)})">${h.offset.toLocaleString(LOC())}</span><span>${h.partition ? '#' + h.partition : 'fora'}</span><span>${esc(h.encoding)}</span><span class="ctx">${esc(h.context).replace(termRe, (m) => `<mark>${m}</mark>`)}</span></div>`).join('') : (run ? '' : '<div class="empty"><h3>Nada encontrado</h3><p>Esses termos não aparecem em nenhum ponto do disco (nem em UTF-8 nem em UTF-16).</p></div>'));
     return run;
   };
   $('#shProg').onclick = (e) => { if (e.target.dataset.stop) rpc('job_stop', { job }); };
@@ -462,7 +506,7 @@ function renderScan() {
   </div>`;
   $('#backBtn').onclick = () => (S.device ? openDevice(S.device) : renderHome());
   $('#progressArea').onclick = onProgressClick;
-  EX = createExplorer({ host: $('#xpHost'), job: S.job, rpc, esc, human, fileUrl, thumbUrl, onRecover: recover, toast, noInlineMedia: !!tauri && /Linux/i.test(navigator.userAgent) });
+  EX = createExplorer({ host: $('#xpHost'), job: S.job, rpc, esc, human, fileUrl, thumbUrl, onRecover: recover, toast, noInlineMedia: !!tauri && /Linux/i.test(navigator.userAgent), getSettings: () => SETTINGS });
 }
 
 function paintStatus() {
@@ -475,7 +519,7 @@ function paintStatus() {
   $('#scanSub').innerHTML = `<span class="mono">${esc(st.target)}</span>`;
   const rate = p.total && st.elapsed > 1 && p.done ? p.done / st.elapsed : 0;
   const eta = rate && running ? dur((p.total - p.done) / rate) : null;
-  const enr = st.enriching ? `<span class="sub">Lendo datas e metadados das fotos… ${st.enriching.done.toLocaleString('pt-BR')}/${st.enriching.total.toLocaleString('pt-BR')}</span>` : '';
+  const enr = st.enriching ? `<span class="sub">Lendo datas e metadados das fotos… ${st.enriching.done.toLocaleString(LOC())}/${st.enriching.total.toLocaleString(LOC())}</span>` : '';
   const buttons = running ? '<button class="btn sm" data-act="pause">Pausar</button><button class="btn sm danger" data-act="stop">Parar</button>'
     : st.status === 'paused' ? `<button class="btn sm primary" data-act="${st.source === false ? 'reconnect' : 'resume'}">${st.source === false ? 'Reconectar o disco' : 'Continuar'}</button><button class="btn sm" data-act="relink">Escolher a origem…</button>` : '';
   const relink = st.source === false ? '<button class="btn sm primary" data-act="relink">Escolher a origem…</button>' : '';
@@ -485,14 +529,14 @@ function paintStatus() {
       <div class="row spread"><div><b>${esc(p.phase || 'Iniciando')}</b>${pct != null ? ` <span class="sub">· ${pct}%</span>` : ''}</div><div class="row">${buttons}</div></div>
       <div class="bar ${running && pct == null ? 'indet' : ''}"><i style="width:${pct ?? (running ? 35 : 100)}%"></i></div>
       <div class="stats compact">
-        <div class="stat"><b>${st.found.toLocaleString('pt-BR')}</b><span>arquivos</span></div>
+        <div class="stat"><b>${st.found.toLocaleString(LOC())}</b><span>arquivos</span></div>
         <div class="stat"><b>${dur(st.elapsed)}</b><span>decorrido${eta ? ' · faltam ~' + eta : ''}</span></div>
         <div class="stat"><b style="color:var(--ok)">${st.confidence.high}</b><span>alta</span></div>
         <div class="stat"><b style="color:var(--warn)">${st.confidence.medium}</b><span>média</span></div>
         <div class="stat"><b style="color:var(--bad)">${st.confidence.low}</b><span>baixa</span></div>
       </div></div>`);
   } else {
-    setHTML($('#progressArea'), `<div class="done-bar"><span><b>${st.found.toLocaleString('pt-BR')}</b> arquivos em ${dur(st.elapsed)}</span>
+    setHTML($('#progressArea'), `<div class="done-bar"><span><b>${st.found.toLocaleString(LOC())}</b> arquivos em ${dur(st.elapsed)}</span>
       <span class="sub">confiança alta ${st.confidence.high} · média ${st.confidence.medium} · baixa ${st.confidence.low}</span>${enr}<span class="grow"></span>${tools}</div>`);
   }
   setHTML($('#warnArea'), (st.warnings || []).map((w) => `<div class="notice">${warnSvg}<div>${esc(w)}</div></div>`).join('')
@@ -553,7 +597,7 @@ async function onProgressClick(e) {
   else if (act === 'relink') { chooseSource();
   } else if (act === 'csv') {
     const path = await ask({ title: 'Exportar para CSV', text: 'Grava os arquivos da vista atual (com os filtros aplicados). O arquivo abre direto no Excel.', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-achados.csv', ok: 'Exportar' });
-    if (path) { try { const r = await rpc('export_csv', { job: S.job, path, query: EX?.query() }); toast(`${r.rows.toLocaleString('pt-BR')} linhas gravadas`); } catch (err) { toast(err.message); } }
+    if (path) { try { const r = await rpc('export_csv', { job: S.job, path, query: EX?.query() }); toast(`${r.rows.toLocaleString(LOC())} linhas gravadas`); } catch (err) { toast(err.message); } }
   } else if (act === 'report') {
     const f = await askForm({ title: 'Relatório de recuperação', text: 'Gera um relatório HTML pronto para imprimir, com a origem examinada, os achados e os hashes dos arquivos recuperados.', ok: 'Gerar relatório', fields: [
       { name: 'path', label: 'Salvar em', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-relatorio.html' },
@@ -575,7 +619,7 @@ async function onProgressClick(e) {
 async function recover(sel) {
   const f = await askForm({
     title: 'Recuperar para…',
-    text: 'Escolha uma pasta em <b>outro disco</b>. O Guará nunca grava no disco de origem, para não sobrescrever o que ainda dá para salvar.',
+    text: 'Escolha uma pasta em <b>outro disco</b>. O Guará nunca grava no disco de origem, para não sobrescrever o que ainda dá para salvar. <span class="sub">Se a recuperação for interrompida, escolha a mesma pasta de novo: o Guará pula o que já foi conferido.</span>',
     ok: 'Recuperar',
     fields: [
       { name: 'dest', label: 'Pasta de destino', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'Guara-Recuperados', pick: { directory: true, multiple: false } },
@@ -590,6 +634,7 @@ async function recover(sel) {
       const r = st.report || {};
       const ok = (r.recovered || []).length, bad = (r.failed || []).length;
       return `<p><b>${ok}</b> arquivo(s) salvos em <code>${esc(dest)}</code> (${human(r.total_bytes)}).</p>
+        ${r.skipped ? `<p class="sub">${r.skipped} já estavam recuperados e conferidos (pulados).</p>` : ''}
         ${bad ? `<div class="notice">${warnSvg}<div>${bad} arquivo(s) não puderam ser gravados.</div></div>` : ''}
         <p class="sub">O arquivo <code>guara-manifesto.json</code> lista MD5, SHA-1 e SHA-256 de cada arquivo para você conferir a integridade.</p>`;
     });
@@ -625,13 +670,72 @@ function watchAux(job, title, doneHtml) {
 
 async function openJobFromList(s) { openJob(s); }
 
+// ------------------------------------------------------------------ configurações (janela)
+$('#settingsBtn')?.addEventListener('click', () => {
+  const d = $('#dlg');
+  d.innerHTML = `<form method="dialog"><h2>Configurações</h2>
+    <label class="fld"><span>Idioma</span><select class="select" name="lang"><option value="auto">Auto</option><option value="pt">Português</option><option value="en">English</option></select></label>
+    <label class="check"><input type="checkbox" name="notify" ${SETTINGS.notify ? 'checked' : ''}><span><b>Notificações</b><br><span class="sub">Avisar quando uma tarefa longa terminar</span></span></label>
+    <label class="check"><input type="checkbox" name="maps" ${SETTINGS.maps ? 'checked' : ''}><span><b>Mapas online</b><br><span class="sub">Mostrar mapas das fotos com GPS (usa a internet: baixa blocos do OpenStreetMap)</span></span></label>
+    <menu><button class="btn" value="cancel">Cancelar</button><button class="btn primary" value="ok">Salvar</button></menu></form>`;
+  d.querySelector('[name=lang]').value = SETTINGS.lang;
+  d.onclose = () => {
+    if (d.returnValue !== 'ok') return;
+    const patch = { lang: d.querySelector('[name=lang]').value, notify: d.querySelector('[name=notify]').checked, maps: d.querySelector('[name=maps]').checked };
+    saveSettings(patch);
+    setLang(patch.lang);
+    toast('Salvo');
+  };
+  d.showModal();
+});
+
+// ------------------------------------------------------------------ fechar com varredura em andamento
+function askClose() {
+  return new Promise((resolve) => {
+    const d = $('#dlg');
+    d.innerHTML = `<form method="dialog"><h2>Há uma varredura em andamento</h2><p>A sessão é salva automaticamente. Pausando agora, você retoma exatamente do ponto em que parou.</p>
+      <menu><button class="btn" value="stay">Continuar varrendo</button><button class="btn" value="quit">Sair sem pausar</button><button class="btn primary" value="pause">Pausar e sair</button></menu></form>`;
+    d.onclose = () => resolve(d.returnValue);
+    d.showModal();
+  });
+}
+
+function watchClose() {
+  window.addEventListener('beforeunload', (e) => {
+    if (S.status?.status === 'running' && !tauri) { e.preventDefault(); e.returnValue = ''; }
+  });
+  const win = tauri?.window?.getCurrentWindow?.();
+  if (!win?.onCloseRequested) return;
+  win.onCloseRequested(async (ev) => {
+    if (S.status?.status !== 'running') return;
+    ev.preventDefault();
+    const c = await askClose();
+    if (c === 'stay' || !c) return;
+    if (c === 'pause') {
+      try {
+        await rpc('scan_pause', { job: S.job });
+        for (let i = 0; i < 40; i++) { const st = await rpc('status', { job: S.job }); if (st.status !== 'running') break; await new Promise((r) => setTimeout(r, 250)); }
+        await new Promise((r) => setTimeout(r, 600)); // dá tempo do salvamento automático
+      } catch { /* sai mesmo assim */ }
+    }
+    win.destroy();
+  });
+}
+
 // ------------------------------------------------------------------ início do app
 (async function init() {
   try {
     const v = await rpc('version');
     $('#versionTag').textContent = `v${v.version}`;
     S.defaults = await rpc('defaults');
-    try { const st = await rpc('settings_get'); if (st?.theme) { applyTheme(st.theme); try { localStorage.setItem('guara-theme', st.theme); } catch { /* */ } } } catch { /* usa o local */ }
+    try {
+      const st = await rpc('settings_get');
+      Object.assign(SETTINGS, st);
+      applyTheme(st.theme);
+      try { localStorage.setItem('guara-theme', st.theme); } catch { /* */ }
+    } catch { /* usa o local */ }
+    setLang(SETTINGS.lang);
+    watchClose();
     tauri?.event?.listen?.('elevate-failed', (e) => { toast(String(e.payload || 'Não foi possível reiniciar como administrador')); });
   } catch (e) {
     main.innerHTML = `<div class="page"><div class="notice bad">${warnSvg}<div>Não foi possível falar com o núcleo do Guará: ${esc(e.message)}. Se abriu esta página manualmente, use o endereço completo exibido pelo comando <code>guara ui</code> (ele inclui o token).</div></div></div>`;

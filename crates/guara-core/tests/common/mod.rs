@@ -111,7 +111,9 @@ pub fn hashes_in(dir: &Path) -> HashMap<String, PathBuf> {
             let p = e.path();
             if p.is_dir() {
                 walk(&p, m);
-            } else if p.file_name().unwrap() != "guara-manifesto.json" {
+            } else if !["guara-manifesto.json", "guara-diario.jsonl"]
+                .contains(&p.file_name().unwrap().to_str().unwrap())
+            {
                 m.insert(sha256_file(&p), p);
             }
         }

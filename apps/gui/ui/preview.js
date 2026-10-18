@@ -1,3 +1,4 @@
+import { LOC } from './i18n.js';
 // Pré-visualização de arquivos recuperados.
 // O conteúdo é lido em streaming do núcleo (com Range) pela URL `url`; nada é
 // gravado em disco. Tipos: imagem, vídeo, áudio, PDF (pdf.js), texto, documentos
@@ -9,6 +10,7 @@ const AUD = new Set(['mp3', 'wav', 'ogg', 'opus', 'm4a', 'aac', 'flac']);
 const TXT = new Set(['txt', 'md', 'csv', 'tsv', 'json', 'xml', 'html', 'htm', 'log', 'ini', 'yml', 'yaml', 'js', 'css', 'c', 'h', 'cpp', 'py', 'rs', 'sh', 'bat', 'sql', 'toml', 'cfg', 'conf', 'srt', 'tex', 'svg']);
 const OFFICE = new Set(['docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp']);
 const ZIPS = new Set(['zip', 'jar', 'apk', 'epub']);
+const DBS = new Set(['db', 'sqlite', 'sqlite3', 'db3', 'sdb', 'sqlitedb', 'storedata']);
 
 export function kindOf(item) {
   const e = (item.ext || '').toLowerCase();
@@ -16,6 +18,7 @@ export function kindOf(item) {
   if (VID.has(e)) return 'video';
   if (AUD.has(e)) return 'audio';
   if (e === 'pdf') return 'pdf';
+  if (DBS.has(e)) return 'database';
   if (OFFICE.has(e)) return 'office';
   if (ZIPS.has(e)) return 'zip';
   if (TXT.has(e)) return 'text';
@@ -24,7 +27,7 @@ export function kindOf(item) {
 
 export const KIND_LABEL = {
   image: 'Imagem', video: 'Vídeo', audio: 'Áudio', pdf: 'PDF', office: 'Documento (texto extraído)',
-  zip: 'Conteúdo do arquivo compactado', text: 'Texto', hex: 'Dados brutos (hexadecimal)',
+  zip: 'Conteúdo do arquivo compactado', database: 'Banco de dados SQLite', text: 'Texto', hex: 'Dados brutos (hexadecimal)',
 };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -272,6 +275,91 @@ async function zip(host, item, url, state) {
   note(host, `${ents.length} item(ns) no arquivo compactado.`);
 }
 
+// ------------------------------------------------------------------ bancos de dados (SQLite)
+
+/** Valores inteiros que parecem datas (Unix, Chrome/WebKit, macOS) viram uma dica legível. */
+function tsHint(v) {
+  if (!Number.isInteger(v)) return null;
+  let ms = null, kind = '';
+  if (v > 9.4e8 && v < 4.2e9) { ms = v * 1000; kind = 'Unix (s)'; }
+  else if (v > 9.4e11 && v < 4.2e12) { ms = v; kind = 'Unix (ms)'; }
+  else if (v > 9.4e14 && v < 4.2e15) { ms = v / 1000; kind = 'Unix (µs)'; }
+  else if (v > 1.2e16 && v < 1.4e16) { ms = v / 1000 - 11644473600000; kind = 'Chrome/WebKit'; }
+  else if (v > 3e8 && v < 9.4e8) { ms = (v + 978307200) * 1000; kind = 'macOS/CoreData'; }
+  if (ms == null) return null;
+  const d = new Date(ms);
+  return Number.isNaN(d.getTime()) ? null : { kind, text: d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC' };
+}
+
+function cellHtml(c) {
+  switch (c.t) {
+    case 'null': return '<span class="db-null">NULL</span>';
+    case 'int': { const h = tsHint(c.v); return h ? `<span title="${esc(h.kind)}: ${esc(h.text)}">${c.v}<i class="db-ts">${esc(h.text.slice(0, 10))}</i></span>` : String(c.v); }
+    case 'real': return String(c.v);
+    case 'text': return `<span title="${esc(c.v.slice(0, 600))}">${esc(c.v.length > 240 ? c.v.slice(0, 240) + '…' : c.v)}</span>`;
+    default: return `<span class="db-blob" title="${esc(c.v.head)}">BLOB ${c.v.mime ? esc(c.v.mime) + ' ' : ''}${human(c.v.len)}</span>`;
+  }
+}
+
+async function database(host, item, state, large, db, onOpen) {
+  if (!db) throw new Error('visualizador indisponível');
+  const info = await db.info();
+  if (state.dead) return;
+  const tables = info.tables;
+  const warn = (info.warnings || []).map((w) => `<div class="pv-note bad">${esc(w)}</div>`).join('');
+  if (!large) {
+    const total = tables.reduce((a, t) => a + (t.rows || 0), 0);
+    host.innerHTML = `<div class="db-sum"><b>Banco SQLite</b><span class="sub">${tables.length} tabela(s) · ${total.toLocaleString(LOC())} linhas · páginas de ${human(info.page_size)}</span>
+      <ul>${tables.slice(0, 10).map((t) => `<li><span>${esc(t.name)}</span><small>${(t.rows || 0).toLocaleString(LOC())}</small></li>`).join('')}</ul>
+      ${tables.length > 10 ? `<span class="sub">e mais ${tables.length - 10}…</span>` : ''}${warn}
+      <button class="btn primary sm" data-pv="open">Abrir o visualizador</button></div>`;
+    host.onclick = (e) => { if (e.target.closest('[data-pv]')) onOpen?.(); };
+    return;
+  }
+  const S = { table: tables.find((t) => t.rows > 0)?.name || tables[0]?.name, offset: 0, limit: 100, deleted: false, q: '', schema: false };
+  host.classList.add('db-large');
+  host.innerHTML = `<div class="db-wrap"><nav class="db-tables" aria-label="Tabelas"></nav><section class="db-main"><div class="db-bar"></div><div class="db-grid"></div><div class="db-foot"></div></section></div>`;
+  const $ = (sel) => host.querySelector(sel);
+  const nav = $('.db-tables'), bar = $('.db-bar'), grid = $('.db-grid'), foot = $('.db-foot');
+  nav.innerHTML = tables.map((t) => `<button class="db-t" data-t="${esc(t.name)}"><span>${esc(t.name)}</span><small>${(t.rows || 0).toLocaleString(LOC())}</small></button>`).join('')
+    + (info.indexes.length || info.views.length ? `<div class="db-meta">${info.views.length ? `<b>Views</b>${info.views.map((v) => `<span>${esc(v)}</span>`).join('')}` : ''}${info.indexes.length ? `<b>Índices</b>${info.indexes.map((v) => `<span>${esc(v)}</span>`).join('')}` : ''}</div>` : '')
+    + warn;
+
+  async function load() {
+    if (state.dead) return;
+    nav.querySelectorAll('.db-t').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.t === S.table)));
+    const t = tables.find((x) => x.name === S.table);
+    if (!t) { grid.innerHTML = '<div class="pv-note">Nenhuma tabela.</div>'; return; }
+    bar.innerHTML = `<b>${esc(t.name)}</b><span class="sub">${(t.rows || 0).toLocaleString(LOC())} linhas · ${t.columns.length} colunas</span>
+      <input class="input" id="dbq" type="search" placeholder="Filtrar esta página" value="${esc(S.q)}" aria-label="Filtrar">
+      <label class="check" style="padding:0"><input type="checkbox" id="dbdel" ${S.deleted ? 'checked' : ''}><span>Registros apagados (prováveis)</span></label>
+      <button class="btn sm" id="dbsch">${S.schema ? 'Ver dados' : 'Ver esquema'}</button>`;
+    if (S.schema) { grid.innerHTML = `<pre class="pv-text">${esc(t.sql)}</pre>`; foot.innerHTML = ''; wire(); return; }
+    grid.innerHTML = '<div class="pv-loading"><i></i></div>';
+    let page;
+    try { page = await db.rows(S.table, S.offset, S.limit, S.deleted); } catch (e) { grid.innerHTML = `<div class="pv-note bad">${esc(e.message || e)}</div>`; wire(); return; }
+    if (state.dead) return;
+    const q = S.q.toLowerCase();
+    const rows = q ? page.rows.filter((r) => r.cells.some((c) => String(c.t === 'blob' ? '' : c.v).toLowerCase().includes(q))) : page.rows;
+    const notes = (page.warnings || []).map((w) => `<div class="pv-note bad">${esc(w)}</div>`).join('');
+    grid.innerHTML = notes + (rows.length ? `<table class="db-table"><thead><tr><th>#</th>${page.columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map((r, i) => `<tr class="${r.deleted ? 'del' : ''}"><th>${r.deleted ? 'apagado' : (r.rowid ?? S.offset + i + 1)}</th>${r.cells.map((c) => `<td>${cellHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+      : `<div class="pv-note">${S.deleted ? 'Nenhum registro apagado reconhecido nesta tabela. Isso não garante que não existam: o conteúdo pode ter sido sobrescrito.' : 'Nenhuma linha.'}</div>`);
+    const total = S.deleted ? page.total : (t.rows || page.total);
+    foot.innerHTML = `<span class="sub">${S.deleted ? `${total.toLocaleString(LOC())} registro(s) provável(is) apagado(s)` : `${total ? S.offset + 1 : 0} a ${Math.min(S.offset + S.limit, total)} de ${total.toLocaleString(LOC())}`}</span>
+      <span class="row"><button class="btn sm" id="dbprev" ${S.offset <= 0 ? 'disabled' : ''}>‹ Anterior</button><button class="btn sm" id="dbnext" ${S.offset + S.limit >= total ? 'disabled' : ''}>Próximas ›</button></span>`;
+    wire();
+  }
+  function wire() {
+    $('#dbq')?.addEventListener('input', (e) => { S.q = e.target.value; clearTimeout(S.t); S.t = setTimeout(load, 200); });
+    $('#dbdel')?.addEventListener('change', (e) => { S.deleted = e.target.checked; S.offset = 0; load(); });
+    $('#dbsch')?.addEventListener('click', () => { S.schema = !S.schema; load(); });
+    $('#dbprev')?.addEventListener('click', () => { S.offset = Math.max(0, S.offset - S.limit); load(); });
+    $('#dbnext')?.addEventListener('click', () => { S.offset += S.limit; load(); });
+  }
+  nav.addEventListener('click', (e) => { const b = e.target.closest('.db-t'); if (b) { S.table = b.dataset.t; S.offset = 0; S.q = ''; S.deleted = false; S.schema = false; load(); } });
+  load();
+}
+
 // ------------------------------------------------------------------ API
 /** Desenha a pré-visualização de `item` dentro de `host`. Devolve uma função de limpeza. */
 function mediaCard(host, item, kind, { large, inlineMedia, onOpen, onExternal }) {
@@ -291,7 +379,7 @@ function mediaCard(host, item, kind, { large, inlineMedia, onOpen, onExternal })
   void canInline;
 }
 
-export function renderPreview(host, item, { url, large = false, thumb = false, inlineMedia = true, onOpen = null, onExternal = null }) {
+export function renderPreview(host, item, { url, large = false, thumb = false, inlineMedia = true, onOpen = null, onExternal = null, db = null }) {
   const state = { dead: false, cleanup: [] };
   host.dataset.url = url;
   host.classList.remove('zoomable', 'actual');
@@ -310,6 +398,7 @@ export function renderPreview(host, item, { url, large = false, thumb = false, i
       else if (kind === 'video') media(host, item, url, 'video', state);
       else if (kind === 'audio') media(host, item, url, 'audio', state);
       else if (kind === 'pdf') await pdf(host, item, url, state, large);
+      else if (kind === 'database') await database(host, item, state, large, db, onOpen);
       else if (kind === 'office') await office(host, item, url, state);
       else if (kind === 'zip') await zip(host, item, url, state);
       else if (kind === 'text') { host.innerHTML = ''; await text(host, item, url, large); }

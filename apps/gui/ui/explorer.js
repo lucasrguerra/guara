@@ -4,6 +4,7 @@
 // visualização rápida em tela cheia.
 
 import { renderPreview, kindOf, KIND_LABEL } from './preview.js';
+import { LOC } from './i18n.js';
 
 const CAT = {
   image: ['Fotos', '🖼'], document: ['Documentos', '📄'], video: ['Vídeos', '🎞'], audio: ['Áudio', '🎵'],
@@ -32,6 +33,10 @@ const I = {
 export function createExplorer(deps) {
   const { host, job, rpc, esc, human, fileUrl, thumbUrl, onRecover, toast } = deps;
   const inlineMedia = !deps.noInlineMedia;
+  const dbApi = (it) => ({
+    info: () => rpc('db_info', { job, id: it.id }),
+    rows: (table, offset, limit, deleted) => rpc('db_rows', { job, id: it.id, table, offset, limit, deleted }),
+  });
   const openExternal = (it) => {
     toast('Preparando para abrir no player do sistema…');
     rpc('open_external', { job, id: it.id }).then(() => toast('Aberto no player do sistema')).catch((err) => toast(err.message));
@@ -141,11 +146,11 @@ export function createExplorer(deps) {
   const dayLabel = (k) => {
     if (k === 'Sem data') return k;
     return groupBy === 'day'
-      ? new Date(k + 'T00:00:00Z').toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-      : new Date(k + '-01T00:00:00Z').toLocaleDateString('pt-BR', { timeZone: 'UTC', month: 'long', year: 'numeric' });
+      ? new Date(k + 'T00:00:00Z').toLocaleDateString(LOC(), { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      : new Date(k + '-01T00:00:00Z').toLocaleDateString(LOC(), { timeZone: 'UTC', month: 'long', year: 'numeric' });
   };
-  const fmtDate = (t) => (t == null ? 'sem data' : new Date(t * 1000).toLocaleString('pt-BR', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' }));
-  const fmtDay = (t) => (t == null ? '' : new Date(t * 1000).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }));
+  const fmtDate = (t) => (t == null ? 'sem data' : new Date(t * 1000).toLocaleString(LOC(), { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' }));
+  const fmtDay = (t) => (t == null ? '' : new Date(t * 1000).toLocaleDateString(LOC(), { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }));
 
   function geometry() {
     const W = Math.max(200, scroll.clientWidth - PAD * 2);
@@ -383,11 +388,11 @@ export function createExplorer(deps) {
   function paintActions() {
     const n = selCount();
     const html = n
-      ? `<span class="info"><b>${n.toLocaleString('pt-BR')}</b> selecionado${n === 1 ? '' : 's'}${E.allFiltered ? ' (todos desta vista)' : ''}</span>
+      ? `<span class="info"><b>${n.toLocaleString(LOC())}</b> selecionado${n === 1 ? '' : 's'}${E.allFiltered ? ' (todos desta vista)' : ''}</span>
          <button class="btn sm" data-a="clear">Limpar seleção</button>
-         ${!E.allFiltered && E.total > n ? `<button class="btn sm" data-a="all">Selecionar todos os ${E.total.toLocaleString('pt-BR')}</button>` : ''}
+         ${!E.allFiltered && E.total > n ? `<button class="btn sm" data-a="all">Selecionar todos os ${E.total.toLocaleString(LOC())}</button>` : ''}
          <button class="btn primary" data-a="rec">Recuperar ${n === 1 ? 'selecionado' : 'selecionados'}</button>`
-      : `<span class="info">${E.total.toLocaleString('pt-BR')} ${E.total === 1 ? 'item' : 'itens'} nesta vista${E.total > E.items.length ? ` (mostrando ${E.items.length.toLocaleString('pt-BR')})` : ''}</span>
+      : `<span class="info">${E.total.toLocaleString(LOC())} ${E.total === 1 ? 'item' : 'itens'} nesta vista${E.total > E.items.length ? ` (mostrando ${E.items.length.toLocaleString(LOC())})` : ''}</span>
          ${E.total ? '<button class="btn sm" data-a="all">Selecionar tudo</button><button class="btn primary" data-a="recall">Recuperar tudo desta vista</button>' : ''}`;
     if (actions._h !== html) { actions._h = html; actions.innerHTML = html; }
   }
@@ -405,7 +410,7 @@ export function createExplorer(deps) {
     if (!f) return;
     const F = E.filters;
     const node = (label, count, attrs, active, depth = 0, extra = '') =>
-      `<button class="xp-node${active ? ' on' : ''}" ${attrs} style="--d:${depth}" aria-pressed="${!!active}">${extra}<span class="l">${label}</span><small>${count.toLocaleString('pt-BR')}</small></button>`;
+      `<button class="xp-node${active ? ' on' : ''}" ${attrs} style="--d:${depth}" aria-pressed="${!!active}">${extra}<span class="l">${label}</span><small>${count.toLocaleString(LOC())}</small></button>`;
     const sec = (title, body) => (body ? `<div class="xp-sec"><h4>${title}</h4>${body}</div>` : '');
 
     const cats = Object.keys(CAT).filter((k) => f.categories[k]).map((k) => node(`${CAT[k][1]} ${CAT[k][0]}`, f.categories[k], `data-f="category" data-v="${k}"`, F.category === k)).join('');
@@ -489,7 +494,7 @@ export function createExplorer(deps) {
     if (F.undated) parts.push('Sem data');
     if (F.folder) parts.push(F.folder === '@carved' ? 'Por assinatura' : F.folder === '@raiz' ? 'Raiz' : F.folder.split('/').join(' › '));
     if (F.camera) parts.push(F.camera);
-    $('#xpCrumb').innerHTML = `<b>${parts.length ? esc(parts.join(' › ')) : 'Todos os arquivos'}</b><small>${E.total.toLocaleString('pt-BR')}</small>`;
+    $('#xpCrumb').innerHTML = `<b>${parts.length ? esc(parts.join(' › ')) : 'Todos os arquivos'}</b><small>${E.total.toLocaleString(LOC())}</small>`;
   }
 
   function paintChips() {
@@ -558,7 +563,7 @@ export function createExplorer(deps) {
     const close = `<button class="icon-btn xp-insp-x" data-i="close" aria-label="Fechar">${I.close}</button>`;
     if (n > 1) {
       const sizeSum = E.allFiltered ? null : [...E.sel].reduce((a, id) => a + (E.items[idxOf(id)]?.size || 0), 0);
-      insp.innerHTML = `${close}<div class="xp-multi"><b>${n.toLocaleString('pt-BR')} itens selecionados</b>${sizeSum != null ? `<span class="sub">${human(sizeSum)} no total</span>` : ''}
+      insp.innerHTML = `${close}<div class="xp-multi"><b>${n.toLocaleString(LOC())} itens selecionados</b>${sizeSum != null ? `<span class="sub">${human(sizeSum)} no total</span>` : ''}
         <div class="row"><button class="btn primary" data-i="rec">Recuperar selecionados</button><button class="btn" data-i="clear">Limpar seleção</button></div></div>`;
       return;
     }
@@ -575,7 +580,7 @@ export function createExplorer(deps) {
       <dl class="kv"><dt>Pasta</dt><dd>${esc(it.dir || (it.origin === 'carved' ? 'Encontrado por assinatura' : '/'))}</dd>${timesHtml(it)}${it.camera ? `<dt>Câmera</dt><dd>${esc(it.camera)}</dd>` : ''}${it.px ? `<dt>Resolução</dt><dd>${it.px[0]} × ${it.px[1]} px</dd>` : ''}</dl>
       <div class="xp-meta" id="xpMeta"></div>
       <div class="row"><button class="btn sm" data-i="full">Tela cheia</button><button class="btn primary sm" data-i="rec1">Recuperar este arquivo</button></div>`;
-    stopPv = renderPreview($('#xpPv'), it, { url, thumb: kindOf(it) === 'image', inlineMedia, onOpen: () => openLightbox(idxOf(it.id)), onExternal: () => openExternal(it) });
+    stopPv = renderPreview($('#xpPv'), it, { url, thumb: kindOf(it) === 'image', inlineMedia, db: dbApi(it), onOpen: () => openLightbox(idxOf(it.id)), onExternal: () => openExternal(it) });
     // clicar na miniatura abre o modal grande
     $('#xpPv').addEventListener('click', (ev) => {
       if (ev.target.closest('button, a, .pv-pdfbar')) return;
@@ -587,8 +592,26 @@ export function createExplorer(deps) {
       const rows = (m.fields || []).filter(([k]) => !['Dimensões'].includes(k));
       if (!rows.length) return;
       $('#xpMeta').innerHTML = `<h5>Metadados${m.kind ? ` · ${esc(m.kind)}` : ''}</h5><dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`
-        + (m.gps ? `<div class="sub" style="font-size:12.5px">Coordenadas: ${m.gps[0].toFixed(5)}, ${m.gps[1].toFixed(5)}</div>` : '');
+        + (m.gps ? gpsHtml(m.gps) : '');
+      $('#xpOsm')?.addEventListener('click', () => rpc('open_url', { url: `https://www.openstreetmap.org/?mlat=${m.gps[0]}&mlon=${m.gps[1]}#map=15/${m.gps[0]}/${m.gps[1]}` }).catch(() => {}));
     }).catch(() => {});
+  }
+  /** Coordenadas e, se o usuário permitiu, um mapa (blocos do OpenStreetMap, 3x3 ao redor do ponto). */
+  function gpsHtml([lat, lon]) {
+    let map = '';
+    if (deps.getSettings?.().maps) {
+      const z = 15, n = 2 ** z;
+      const fx = (lon + 180) / 360 * n;
+      const fy = (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n;
+      const tx = Math.floor(fx), ty = Math.floor(fy);
+      let imgs = '';
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) imgs += `<img src="https://tile.openstreetmap.org/${z}/${tx + dx}/${ty + dy}.png" alt="" loading="lazy" draggable="false">`;
+      const px = (fx - tx + 1) / 3 * 100, py = (fy - ty + 1) / 3 * 100;
+      map = `<div class="xp-map"><div class="xp-tiles">${imgs}</div><span class="xp-pin" style="left:${px}%;top:${py}%"></span></div>`;
+    }
+    return `<div class="sub" style="font-size:12.5px;margin-top:8px">Coordenadas: ${lat.toFixed(5)}, ${lon.toFixed(5)}</div>${map}
+      <div class="row" style="margin-top:6px"><button class="btn sm" id="xpOsm">Abrir no OpenStreetMap</button></div>
+      ${map ? '<div class="sub" style="font-size:11px;margin-top:4px">© colaboradores do OpenStreetMap</div>' : ''}`;
   }
   insp.addEventListener('click', (e) => {
     const a = e.target.closest('[data-i]')?.dataset.i;
@@ -612,7 +635,7 @@ export function createExplorer(deps) {
       <div class="lb-body"><div class="viewer large" id="lbHost"></div></div>
       <div class="lb-foot"><span class="sub">${it.note ? esc(it.note) : '← → para navegar · Esc para fechar'}</span><button class="btn primary sm" id="lbRec">Recuperar este arquivo</button></div>`;
     stopLb?.();
-    stopLb = renderPreview(d.querySelector('#lbHost'), it, { url: fileUrl(job, it.id), large: true, inlineMedia, onExternal: () => openExternal(it) });
+    stopLb = renderPreview(d.querySelector('#lbHost'), it, { url: fileUrl(job, it.id), large: true, inlineMedia, db: dbApi(it), onExternal: () => openExternal(it) });
     const go = (n) => { const t = i + n; if (t >= 0 && t < E.items.length) { setCursor(t, { reveal: true }); openLightbox(t); } };
     d.querySelector('#lbPrev').onclick = () => go(-1);
     d.querySelector('#lbNext').onclick = () => go(1);

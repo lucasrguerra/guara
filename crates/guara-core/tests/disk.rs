@@ -300,6 +300,7 @@ fn configuracoes_de_tema_persistem() {
     assert_eq!(settings::load().theme, "auto");
     settings::save(&settings::Settings {
         theme: "dark".into(),
+        ..Default::default()
     })
     .unwrap();
     assert_eq!(settings::load().theme, "dark");
