@@ -721,6 +721,17 @@ impl Engine {
     }
 
     pub fn load_session(&self, path: &str) -> Result<String> {
+        // Clicar de novo numa sessão já aberta reaproveita o job em vez de criar outro igual.
+        let want = Path::new(path);
+        if let Some(j) = self
+            .jobs
+            .lock()
+            .unwrap()
+            .values()
+            .find(|j| j.session_file.lock().unwrap().as_deref() == Some(want))
+        {
+            return Ok(j.id.clone());
+        }
         let bytes = std::fs::read(path).map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
                 Error::msg(format!(

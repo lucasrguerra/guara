@@ -215,8 +215,11 @@ async function openRecent(r) {
   try {
     const { job } = await rpc('session_load', { path: r.path });
     const st = await rpc('status', { job });
-    const s = { job, target: st.target, label: 'Sessão: ' + st.target.split(/[\\/]/).pop() };
-    S.sessions.unshift(s);
+    let s = S.sessions.find((x) => x.job === job);
+    if (!s) {
+      s = { job, target: st.target, label: 'Sessão: ' + st.target.split(/[\\/]/).pop() };
+      S.sessions.unshift(s);
+    }
     openJob(s);
   } catch (e) { info({ title: 'Não foi possível abrir a sessão', html: `<p>${esc(e.message)}</p>` }); }
 }
@@ -246,8 +249,11 @@ $('#loadSessionBtn').onclick = async () => {
   try {
     const { job } = await rpc('session_load', { path });
     const st = await rpc('status', { job });
-    const s = { job, target: st.target, label: 'Sessão: ' + st.target.split(/[\\/]/).pop() };
-    S.sessions.unshift(s);
+    let s = S.sessions.find((x) => x.job === job);
+    if (!s) {
+      s = { job, target: st.target, label: 'Sessão: ' + st.target.split(/[\\/]/).pop() };
+      S.sessions.unshift(s);
+    }
     openJob(s);
   } catch (e) { info({ title: 'Não foi possível abrir a sessão', html: `<p>${esc(e.message)}</p>` }); }
 };
