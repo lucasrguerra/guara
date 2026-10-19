@@ -272,7 +272,14 @@ pub fn open_path(path: &Path) -> io::Result<Arc<dyn Source>> {
             return Ok(Arc::new(open_windows_device(path)?));
         }
     }
-    Ok(Arc::new(FileSource::open(path)?))
+    let file = FileSource::open(path)?;
+    // Imagens forenses EWF (E01/Ex01) são abertas como o disco que contêm.
+    let mut head = [0u8; 8];
+    if file.read_at(0, &mut head).unwrap_or(0) == 8 && crate::ewf::is_ewf_header(&head) {
+        let e = crate::ewf::EwfSource::open(path).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        return Ok(Arc::new(e));
+    }
+    Ok(Arc::new(file))
 }
 
 /// Identidade do conteúdo de um disco: SHA-256 do tamanho + primeiro e último MiB

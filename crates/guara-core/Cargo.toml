@@ -19,6 +19,7 @@ image = { version = "0.25", default-features = false, features = ["png", "gif", 
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 thiserror = "2"
 tiny_http = "0.12"
+bzip2 = "0.6"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
