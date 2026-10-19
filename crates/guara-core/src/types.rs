@@ -261,7 +261,7 @@ impl FsKind {
     pub fn has_metadata_scanner(self) -> bool {
         matches!(
             self,
-            FsKind::Ntfs | FsKind::Fat12 | FsKind::Fat16 | FsKind::Fat32 | FsKind::Exfat
+            FsKind::Ntfs | FsKind::Fat12 | FsKind::Fat16 | FsKind::Fat32 | FsKind::Exfat | FsKind::Ext | FsKind::HfsPlus
         )
     }
 }

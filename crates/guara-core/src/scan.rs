@@ -142,6 +142,7 @@ pub fn run(
                     }
                     FsKind::Exfat => Some(fs::exfat::scan(&mut ctx, p.start)),
                     FsKind::Ext => Some(fs::ext::scan(&mut ctx, p.start, p.len)),
+                    FsKind::HfsPlus => Some(fs::hfsplus::scan(&mut ctx, p.start, p.len)),
                     _ => None,
                 };
                 let _ = progress_phase;
