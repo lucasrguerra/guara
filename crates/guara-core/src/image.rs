@@ -48,6 +48,17 @@ pub enum ImageFormat {
         #[serde(default = "default_compression")]
         compression: u32,
     },
+    /// AFF4 (padrão v1.0, blocos snappy).
+    Aff4 {
+        #[serde(default)]
+        case_number: String,
+        #[serde(default)]
+        examiner: String,
+        #[serde(default)]
+        evidence_number: String,
+        #[serde(default)]
+        notes: String,
+    },
 }
 
 fn default_segment_mib() -> u64 {
@@ -66,6 +77,17 @@ pub fn create_image_as(
 ) -> Result<ImageReport> {
     match format {
         ImageFormat::Raw => create_image(src, dest, cancelled, progress),
+        ImageFormat::Aff4 { case_number, examiner, evidence_number, notes } => {
+            let opts = crate::aff4::Aff4Options {
+                case_name: case_number.clone(),
+                examiner: examiner.clone(),
+                notes: notes.clone(),
+                evidence_number: evidence_number.clone(),
+                ..Default::default()
+            };
+            let dest = if dest.extension().map_or(false, |e| e.eq_ignore_ascii_case("aff4")) { dest.to_path_buf() } else { dest.with_extension("aff4") };
+            crate::aff4::write_aff4(src, &dest, &opts, cancelled, progress)
+        }
         ImageFormat::E01 { case_number, description, evidence_number, examiner, notes, segment_mib, compression } => {
             let opts = crate::ewf::E01Options {
                 case_number: case_number.clone(),

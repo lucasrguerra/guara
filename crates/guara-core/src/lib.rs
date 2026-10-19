@@ -3,6 +3,7 @@
 //! Princípio central: a origem é aberta **somente para leitura**; nada neste
 //! crate escreve no dispositivo que está sendo recuperado.
 
+pub mod aff4;
 pub mod assemble;
 pub mod carve;
 pub mod defrag;

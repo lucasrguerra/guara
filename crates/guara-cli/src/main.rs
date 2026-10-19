@@ -61,7 +61,7 @@ enum Cmd {
     Image {
         path: String,
         dest: String,
-        /// Formato da imagem: raw (padrão) ou e01 (Expert Witness, com hash e metadados)
+        /// Formato da imagem: raw (padrão), e01 (Expert Witness) ou aff4 (AFF4 v1.0), com hash e metadados
         #[arg(long, default_value = "raw")]
         format: String,
         /// E01: número do caso
@@ -413,6 +413,25 @@ fn run(cli: Cli) -> Result<(), String> {
             eng.save_session(&job, &session).map_err(s)?;
             Ok(())
         }
+        Cmd::Verify { path } if path.to_ascii_lowercase().ends_with(".aff4") => {
+            let a = guara_core::aff4::Aff4Source::open(std::path::Path::new(&path)).map_err(s)?;
+            println!("Formato: AFF4");
+            for (k, v) in &a.info {
+                println!("{k}: {v}");
+            }
+            eprintln!("Recalculando o hash...");
+            match a.verify_stream_md5().map_err(s)? {
+                Some(true) => {
+                    println!("MD5 gravado e recalculado conferem.");
+                    Ok(())
+                }
+                Some(false) => Err("O MD5 recalculado difere do gravado na imagem.".into()),
+                None => {
+                    println!("Esta imagem não traz MD5 para conferir.");
+                    Ok(())
+                }
+            }
+        }
         Cmd::Verify { path } => {
             let e = guara_core::ewf::EwfSource::open(std::path::Path::new(&path)).map_err(s)?;
             println!("Formato: {}", if e.info.version == 2 { "Ex01 (EnCase 7)" } else { "E01 (EnCase)" });
@@ -445,7 +464,8 @@ fn run(cli: Cli) -> Result<(), String> {
                     segment_mib,
                     compression,
                 },
-                x => return Err(format!("formato de imagem desconhecido: {x} (use raw ou e01)")),
+                "aff4" => guara_core::image::ImageFormat::Aff4 { case_number: case, examiner, evidence_number: evidence, notes },
+                x => return Err(format!("formato de imagem desconhecido: {x} (use raw, e01 ou aff4)")),
             };
             let job = eng.start_image_as(&path, &dest, &fmt).map_err(s)?;
             let st = wait(&eng, &job, None)?;

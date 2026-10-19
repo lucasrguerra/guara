@@ -274,8 +274,13 @@ pub fn open_path(path: &Path) -> io::Result<Arc<dyn Source>> {
     }
     let file = FileSource::open(path)?;
     // Imagens forenses EWF (E01/Ex01) são abertas como o disco que contêm.
-    let mut head = [0u8; 8];
-    if file.read_at(0, &mut head).unwrap_or(0) == 8 && crate::ewf::is_ewf_header(&head) {
+    let mut head = [0u8; 96];
+    let got = file.read_at(0, &mut head).unwrap_or(0);
+    if got >= 4 && head.starts_with(b"PK") && crate::aff4::is_aff4(&head[..got]) {
+        let a = crate::aff4::Aff4Source::open(path).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        return Ok(Arc::new(a));
+    }
+    if got >= 8 && crate::ewf::is_ewf_header(&head) {
         let e = crate::ewf::EwfSource::open(path).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         return Ok(Arc::new(e));
     }
