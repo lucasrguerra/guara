@@ -22,6 +22,7 @@ tiny_http = "0.12"
 bzip2 = "0.6"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 snap = "1"
+ruzstd = "0.7"
 lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode"] }
 aes = "0.8"
 hmac = "0.12"

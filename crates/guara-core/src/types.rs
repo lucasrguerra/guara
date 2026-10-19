@@ -121,13 +121,68 @@ pub enum Part {
     },
     /// Trecho contíguo da origem.
     Run { offset: u64, len: u64 },
+    /// Zeros (buracos de arquivos esparsos).
+    Zeros { len: u64 },
+    /// Extensão comprimida na origem (Btrfs): descompactada ao ler.
+    Packed(Packed),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PackedCodec {
+    Zlib,
+    Zstd,
+    Lzo,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Packed {
+    /// Onde estão os bytes comprimidos na origem.
+    pub offset: u64,
+    pub disk_len: u64,
+    /// Tamanho da extensão depois de descompactada.
+    pub ram_len: u64,
+    /// Bytes a pular no começo da extensão descompactada.
+    pub skip: u64,
+    /// Bytes úteis a partir de `skip`.
+    pub len: u64,
+    pub codec: PackedCodec,
+}
+
+impl Packed {
+    /// Descompacta a extensão e devolve os `len` bytes úteis.
+    pub fn read(&self, src: &dyn crate::source::Source) -> std::io::Result<Vec<u8>> {
+        use std::io::Read;
+        let raw = crate::source::read_vec(src, self.offset, self.disk_len as usize)?;
+        let bad = |m: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("extensão comprimida ilegível ({m})"));
+        let mut data = match self.codec {
+            PackedCodec::Zlib => {
+                let mut v = Vec::with_capacity(self.ram_len as usize);
+                flate2::read::ZlibDecoder::new(&raw[..]).read_to_end(&mut v).map_err(|_| bad("zlib"))?;
+                v
+            }
+            PackedCodec::Zstd => {
+                let mut v = Vec::with_capacity(self.ram_len as usize);
+                ruzstd::StreamingDecoder::new(&raw[..]).map_err(|_| bad("zstd"))?.read_to_end(&mut v).map_err(|_| bad("zstd"))?;
+                v
+            }
+            PackedCodec::Lzo => crate::fs::btrfs::lzo_btrfs(&raw, self.ram_len as usize).ok_or_else(|| bad("lzo"))?,
+        };
+        data.resize(self.ram_len.max(data.len() as u64) as usize, 0);
+        let s = (self.skip as usize).min(data.len());
+        let e = (s + self.len as usize).min(data.len());
+        let mut v = data[s..e].to_vec();
+        v.resize(self.len as usize, 0);
+        Ok(v)
+    }
 }
 
 impl Part {
     pub fn len(&self) -> u64 {
         match self {
             Part::Bytes { bytes } => bytes.len() as u64,
-            Part::Run { len, .. } => *len,
+            Part::Run { len, .. } | Part::Zeros { len } => *len,
+            Part::Packed(p) => p.len,
         }
     }
     pub fn is_empty(&self) -> bool {
@@ -331,7 +386,7 @@ impl FsKind {
     pub fn has_metadata_scanner(self) -> bool {
         matches!(
             self,
-            FsKind::Ntfs | FsKind::Fat12 | FsKind::Fat16 | FsKind::Fat32 | FsKind::Exfat | FsKind::Ext | FsKind::HfsPlus
+            FsKind::Ntfs | FsKind::Fat12 | FsKind::Fat16 | FsKind::Fat32 | FsKind::Exfat | FsKind::Ext | FsKind::HfsPlus | FsKind::Btrfs
         )
     }
 }

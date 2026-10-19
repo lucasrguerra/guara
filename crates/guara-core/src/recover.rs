@@ -382,6 +382,21 @@ pub fn write_file(src: &dyn Source, f: &Found, path: &Path) -> Result<Hashes> {
                         out.write_all(bytes)?;
                         hasher.update(bytes);
                     }
+                    Part::Zeros { len } => {
+                        let z = vec![0u8; (1 << 20).min(*len as usize).max(1)];
+                        let mut left = *len;
+                        while left > 0 {
+                            let n = left.min(z.len() as u64) as usize;
+                            out.write_all(&z[..n])?;
+                            hasher.update(&z[..n]);
+                            left -= n as u64;
+                        }
+                    }
+                    Part::Packed(pk) => {
+                        let v = pk.read(src)?;
+                        out.write_all(&v)?;
+                        hasher.update(&v);
+                    }
                     Part::Run { offset, len } => {
                         let mut done = 0u64;
                         while done < *len {
@@ -461,6 +476,15 @@ pub fn read_found_at(
                             Ok(n)
                         }
                         Part::Run { offset: o, .. } => src.read_at(o + within, &mut buf[..n]),
+                        Part::Zeros { .. } => {
+                            buf[..n].fill(0);
+                            Ok(n)
+                        }
+                        Part::Packed(pk) => {
+                            let v = pk.read(src)?;
+                            buf[..n].copy_from_slice(&v[within as usize..within as usize + n]);
+                            Ok(n)
+                        }
                     };
                 }
                 pos += plen;
