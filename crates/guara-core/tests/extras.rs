@@ -52,6 +52,66 @@ fn smart_saudavel_nvme_desgastado_e_nvme_critico() {
 }
 
 #[test]
+fn smart_ssd_sata_traz_ficha_metricas_e_tabela() {
+    let v = json!({
+        "device": {"protocol": "ATA"},
+        "model_name": "Samsung SSD 860 EVO 500GB", "firmware_version": "RVT04B6Q",
+        "serial_number": "S3Z1NB0K", "sata_version": {"string": "SATA 3.2"},
+        "interface_speed": {"max": {"string": "6.0 Gb/s"}, "current": {"string": "6.0 Gb/s"}},
+        "user_capacity": {"bytes": 500107862016u64}, "logical_block_size": 512, "rotation_rate": 0,
+        "smart_support": {"enabled": true}, "trim": {"supported": true},
+        "smart_status": {"passed": true}, "temperature": {"current": 31},
+        "power_on_time": {"hours": 12034}, "power_cycle_count": 811,
+        "ata_smart_attributes": {"table": [
+            {"id": 5, "name": "Reallocated_Sector_Ct", "value": 100, "worst": 100, "thresh": 10, "raw": {"value": 0, "string": "0"}},
+            {"id": 177, "name": "Wear_Leveling_Count", "value": 92, "worst": 92, "thresh": 0, "raw": {"value": 41, "string": "41"}},
+            {"id": 241, "name": "Total_LBAs_Written", "value": 99, "worst": 99, "thresh": 0, "raw": {"value": 2000000000u64, "string": "2000000000"}}
+        ]}
+    });
+    let h = health::parse_smartctl(&v);
+    assert_eq!(h.status, "ok");
+    assert_eq!(h.health_pct, Some(92));
+    assert_eq!(h.temperature_c, Some(31));
+    assert_eq!(h.power_cycles, Some(811));
+    assert_eq!(h.host_writes, Some(2_000_000_000 * 512));
+    assert!(h
+        .info
+        .iter()
+        .any(|(k, v)| k == "Capacidade" && v == "500,1 GB"));
+    assert!(h
+        .info
+        .iter()
+        .any(|(k, v)| k == "Recursos" && v.contains("TRIM")));
+    assert_eq!(h.attributes.len(), 3);
+    assert_eq!(h.attributes[0].id, "05");
+    assert_eq!(h.attributes[0].name, "Reallocated Sector Ct");
+    assert_eq!(h.attributes[1].id, "B1");
+}
+
+#[test]
+fn smart_atributo_abaixo_do_limite_reprova_e_nvme_vira_tabela() {
+    let v = json!({"smart_status": {"passed": true}, "ata_smart_attributes": {"table": [
+        {"id": 1, "name": "Raw_Read_Error_Rate", "value": 40, "worst": 40, "thresh": 51, "raw": {"value": 9}}
+    ]}});
+    let h = health::parse_smartctl(&v);
+    assert_eq!(h.attributes[0].status, "failing");
+    assert_eq!(h.status, "failing");
+
+    let nv = json!({"smart_status": {"passed": true}, "nvme_smart_health_information_log": {
+        "critical_warning": 0, "temperature": 40, "available_spare": 100, "available_spare_threshold": 10,
+        "percentage_used": 3, "data_units_read": 1000, "data_units_written": 2000,
+        "power_cycles": 50, "power_on_hours": 900, "unsafe_shutdowns": 4, "media_errors": 0}});
+    let h = health::parse_smartctl(&nv);
+    assert_eq!(h.health_pct, Some(97));
+    assert_eq!(h.host_writes, Some(2000 * 512_000));
+    assert_eq!(h.power_cycles, Some(50));
+    assert!(h
+        .attributes
+        .iter()
+        .any(|a| a.id == "0D" && a.name == "Unsafe Shutdowns" && a.raw == "4"));
+}
+
+#[test]
 fn imagem_de_disco_nao_tem_smart() {
     let f = tempfile::NamedTempFile::new().unwrap();
     let h = health::check(f.path().to_str().unwrap());

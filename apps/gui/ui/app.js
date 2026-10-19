@@ -287,15 +287,46 @@ async function openDevice(d) {
   rpc('health', { path: d.path }).then((h) => { if (S.device === d) { S.health = h; paintHealth(); } }).catch(() => {});
 }
 
+const HEALTH_WORD = { ok: 'Bom', warning: 'Atenção', failing: 'Ruim' };
+
 function paintHealth() {
   const el = $('#healthArea');
   const h = S.health;
-  if (!el || !h || !h.available) { if (el) el.innerHTML = ''; return; }
+  if (!el || !h) { if (el) el.innerHTML = ''; return; }
+  if (!h.available) {
+    el.innerHTML = `<div class="section"><h2>Saúde do disco</h2><p class="sub">${esc(h.summary)}</p></div>`;
+    return;
+  }
   const bad = h.status === 'failing' || h.status === 'warning';
-  const rows = (h.details || []).filter(([k]) => bad || ['Modelo', 'Horas ligado', 'Temperatura'].includes(k)).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
-  el.innerHTML = `<div class="notice ${h.status === 'failing' ? 'bad' : h.status === 'warning' ? '' : 'info'}">${warnSvg}<div><b>${esc(h.summary)}</b>
-    ${rows ? `<dl class="kv" style="margin-top:6px">${rows}</dl>` : ''}${(h.advice || []).map((a) => `<div style="margin-top:6px">${esc(a)}</div>`).join('')}
-    ${bad ? '<div class="row" style="margin-top:8px"><button class="btn sm primary" id="healthImg">Criar a imagem primeiro</button></div>' : ''}</div></div>`;
+  const fmtN = (n) => Number(n).toLocaleString(LOC());
+  const tile = (label, value, cls = '') => value == null ? '' : `<div class="h-tile ${cls}"><small>${label}</small><b>${value}</b></div>`;
+  const temp = h.temperature_c;
+  const tiles = [
+    `<div class="h-tile h-status ${esc(h.status)}"><small>Estado</small><b>${HEALTH_WORD[h.status] || '?'}${h.health_pct != null ? ` <span>${h.health_pct}%</span>` : ''}</b></div>`,
+    tile('Temperatura', temp == null ? null : `${temp} °C`, temp >= 60 ? 'failing' : temp >= 50 ? 'warning' : ''),
+    tile('Horas ligado', h.power_on_hours == null ? null : `${fmtN(h.power_on_hours)} h`),
+    tile('Vezes ligado', h.power_cycles == null ? null : fmtN(h.power_cycles)),
+    tile('Total lido', h.host_reads == null ? null : human(h.host_reads)),
+    tile('Total gravado', h.host_writes == null ? null : human(h.host_writes)),
+  ].join('');
+  const info = (h.info || []).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+  const dash = (x) => x == null ? '<span class="dim">–</span>' : x;
+  const attrs = h.attributes || [];
+  const table = attrs.length ? `<details class="adv h-attrs"${bad ? ' open' : ''}><summary>Atributos SMART (${attrs.length})</summary>
+    <div class="h-scroll"><table class="h-table"><thead><tr><th></th><th>ID</th><th>Atributo</th><th>Atual</th><th>Pior</th><th>Limite</th><th>Bruto</th></tr></thead><tbody>
+    ${attrs.map((a) => `<tr><td><span class="h-dot ${esc(a.status)}" title="${HEALTH_WORD[a.status] || ''}"></span></td><td class="mono">${esc(a.id)}</td><td class="mono">${esc(a.name)}</td><td>${dash(a.value)}</td><td>${dash(a.worst)}</td><td>${dash(a.thresh)}</td><td class="mono">${esc(a.raw)}</td></tr>`).join('')}
+    </tbody></table></div></details>` : '';
+  const scope = h.partition ? `<p class="sub">O SMART é do disco inteiro: os dados abaixo são de <span class="mono">${esc(h.disk)}</span>, que contém <span class="mono">${esc(h.partition)}</span>.</p>` : '';
+  // o que motivou o alerta (os campos da ficha já aparecem abaixo)
+  const known = new Set(['Modelo', 'Nº de série', 'Horas ligado', 'Temperatura', 'Autoavaliação SMART', 'Vida útil usada']);
+  const why = (h.details || []).filter(([k]) => !known.has(k)).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+  el.innerHTML = `${bad ? `<div class="notice ${h.status === 'failing' ? 'bad' : ''}">${warnSvg}<div><b>${esc(h.summary)}</b>
+    ${why ? `<dl class="kv" style="margin-top:6px">${why}</dl>` : ''}
+    ${(h.advice || []).map((a) => `<div style="margin-top:6px">${esc(a)}</div>`).join('')}
+    <div class="row" style="margin-top:8px"><button class="btn sm primary" id="healthImg">Criar a imagem primeiro</button></div></div></div>` : ''}
+    <div class="section"><h2>Saúde do disco</h2>${scope}
+    <div class="h-tiles">${tiles}</div>
+    ${info ? `<dl class="kv h-info">${info}</dl>` : ''}${table}</div>`;
   $('#healthImg')?.addEventListener('click', startImage);
 }
 

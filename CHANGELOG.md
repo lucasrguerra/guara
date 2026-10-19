@@ -2,6 +2,17 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [0.6.0] - 2026-10-18
+
+### Adicionado
+- **Saúde do disco no estilo do CrystalDiskInfo:** a tela do dispositivo mostra o estado (Bom, Atenção, Ruim) com a % de vida útil restante em SSD, temperatura, horas ligado, vezes ligado, total lido e total gravado. Também traz a ficha do dispositivo (modelo, firmware, nº de série, interface, modo de transferência, capacidade, rotação, formato e recursos como TRIM) e a tabela completa de atributos SMART, com ID, valor atual, pior, limite e bruto, e um indicador por atributo. Funciona com discos ATA/SATA e NVMe (nos NVMe, os campos do log de saúde viram a tabela).
+- **Partições:** ao abrir uma partição (`/dev/sda1`, `/dev/nvme0n1p2`, `/dev/disk2s1`), o SMART é lido do disco que a contém, e a tela avisa isso.
+- **Comando `guara health`** no terminal, com saída legível ou `--json`.
+
+### Alterado
+- Um atributo SMART com valor normalizado no limite de falha (ou abaixo dele) agora marca o disco como "Ruim", mesmo que a autoavaliação geral ainda passe.
+- **Nova logo:** a cabeça do lobo-guará recortada das trilhas de um disco, inteiras de um lado (recuperado) e quebradas do outro (perdido), nas cores do app. Na interface ela acompanha o tema escolhido (claro ou escuro).
+
 ## [0.5.0] - 2026-10-18
 
 ### Adicionado

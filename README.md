@@ -41,6 +41,7 @@ Ler discos brutos exige privilégios: **administrador** (Windows), `sudo` (Linux
 ```bash
 sudo guara devices                       # discos e pendrives (avisa TRIM e volumes montados)
 sudo guara inspect /dev/sdb              # partições, espaço não particionado, cifragem
+sudo guara health /dev/sdb               # saúde do disco (SMART), requer smartmontools
 sudo guara scan /dev/sdb --session s.json --list      # varredura profunda
 sudo guara scan /dev/sdb --quick         # só metadados (segundos)
 guara scan disco.img --category image,document --min-confidence medium
@@ -116,6 +117,12 @@ Veja [CONTRIBUTING.md](CONTRIBUTING.md). Versões seguem [SemVer](https://semver
 ## Licença
 
 [MIT](LICENSE-MIT) ou [Apache-2.0](LICENSE-APACHE), à sua escolha.
+
+## Novidades da 0.6.0
+
+- Saúde do disco completa, no estilo do CrystalDiskInfo: estado com % de vida útil, temperatura, horas e vezes ligado, total lido e gravado, ficha do dispositivo (modelo, firmware, interface, modo de transferência, rotação, recursos) e a tabela inteira de atributos SMART (ATA e NVMe).
+- Novo comando `guara health` no terminal.
+- Nova logo: a cabeça do guará recortada das trilhas de um disco.
 
 ## Novidades da 0.5.0
 

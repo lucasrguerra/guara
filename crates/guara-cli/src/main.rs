@@ -32,6 +32,13 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Saúde do disco (SMART): estado, temperatura, uso e tabela de atributos
+    Health {
+        /// Dispositivo ou partição (o SMART lido é o do disco que a contém)
+        path: String,
+        #[arg(long)]
+        json: bool,
+    },
     /// Procura arquivos apagados/perdidos (metadados + assinatura)
     Scan(ScanArgs),
     /// Continua uma varredura pausada (Ctrl+C) a partir do arquivo de sessão
@@ -203,6 +210,15 @@ fn run(cli: Cli) -> Result<(), String> {
                 println!("{}", serde_json::to_string_pretty(&v).unwrap());
             } else {
                 print_layout(&v);
+            }
+            Ok(())
+        }
+        Cmd::Health { path, json } => {
+            let v = eng.rpc("health", json!({ "path": path })).map_err(s)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap());
+            } else {
+                print_health(&v);
             }
             Ok(())
         }
@@ -701,4 +717,99 @@ fn paint(code: &str, s: &str) -> String {
 
 fn s<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
+}
+
+fn print_health(v: &Value) {
+    let st = v["status"].as_str().unwrap_or("unknown");
+    if !v["available"].as_bool().unwrap_or(false) {
+        println!("{}", v["summary"].as_str().unwrap_or(""));
+        return;
+    }
+    let word = match st {
+        "ok" => paint("32", "Bom"),
+        "warning" => paint("33", "Atenção"),
+        "failing" => paint("31", "Ruim"),
+        _ => "?".into(),
+    };
+    let pct = v["health_pct"]
+        .as_u64()
+        .map(|p| format!(" ({p}%)"))
+        .unwrap_or_default();
+    println!("Disco: {}", v["disk"].as_str().unwrap_or(""));
+    if let Some(p) = v["partition"].as_str() {
+        println!("  (o SMART é do disco inteiro que contém {p})");
+    }
+    println!(
+        "Estado: {word}{pct}  {}",
+        v["summary"].as_str().unwrap_or("")
+    );
+    let num = |k: &str| v[k].as_i64();
+    let bytes = |k: &str| v[k].as_u64().map(human);
+    let mut m = Vec::new();
+    if let Some(t) = num("temperature_c") {
+        m.push(format!("Temperatura: {t} °C"));
+    }
+    if let Some(h) = num("power_on_hours") {
+        m.push(format!("Horas ligado: {h}"));
+    }
+    if let Some(c) = num("power_cycles") {
+        m.push(format!("Vezes ligado: {c}"));
+    }
+    if let Some(r) = bytes("host_reads") {
+        m.push(format!("Total lido: {r}"));
+    }
+    if let Some(w) = bytes("host_writes") {
+        m.push(format!("Total gravado: {w}"));
+    }
+    if !m.is_empty() {
+        println!("{}", m.join(" · "));
+    }
+    if st != "ok" {
+        for kv in v["details"].as_array().into_iter().flatten() {
+            println!(
+                "  ! {}: {}",
+                kv[0].as_str().unwrap_or(""),
+                kv[1].as_str().unwrap_or("")
+            );
+        }
+    }
+    println!();
+    for kv in v["info"].as_array().into_iter().flatten() {
+        println!(
+            "  {:<24}{}",
+            kv[0].as_str().unwrap_or(""),
+            kv[1].as_str().unwrap_or("")
+        );
+    }
+    let attrs = v["attributes"].as_array().cloned().unwrap_or_default();
+    if !attrs.is_empty() {
+        let o = |x: &Value| {
+            x.as_i64()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "-".into())
+        };
+        println!(
+            "\n     ID  {:<34}{:>6}{:>6}{:>7}  Bruto",
+            "Atributo", "Atual", "Pior", "Limite"
+        );
+        for a in attrs {
+            let dot = match a["status"].as_str() {
+                Some("failing") => paint("31", "●"),
+                Some("warning") => paint("33", "●"),
+                _ => paint("32", "●"),
+            };
+            println!(
+                "  {dot}  {:<3} {:<34}{:>6}{:>6}{:>7}  {}",
+                a["id"].as_str().unwrap_or(""),
+                a["name"].as_str().unwrap_or(""),
+                o(&a["value"]),
+                o(&a["worst"]),
+                o(&a["thresh"]),
+                a["raw"].as_str().unwrap_or("")
+            );
+        }
+    }
+    for adv in v["advice"].as_array().into_iter().flatten() {
+        println!("\n{}", adv.as_str().unwrap_or(""));
+    }
 }
