@@ -79,7 +79,8 @@ fn varredura_rapida_nao_faz_carving() {
             ..Default::default()
         },
     );
-    assert!(res.found.is_empty());
+    // O ext4 agora tem leitor de metadados (inodes e diário), mas a varredura rápida nunca faz carving.
+    assert!(res.found.iter().all(|f| f.origin != Origin::Carved));
     let res = scan_path(
         &dir.join("ntfs.img"),
         &ScanOptions {
