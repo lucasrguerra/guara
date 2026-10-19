@@ -209,6 +209,7 @@ impl Engine {
         let fp = crate::source::fingerprint(raw.as_ref());
         let asm = crate::assemble::assemble_source(raw, &opts.assembly)?;
         opts.extra_parts = asm.extra_parts.clone();
+        opts.covered = asm.covered.clone();
         if opts.assembly.remember_keys {
             opts.assembly.keys = asm.keys.clone();
         }

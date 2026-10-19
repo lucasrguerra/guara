@@ -298,7 +298,7 @@ fn build_ranges(
     let free = merge_extents(free.to_vec());
     let mut out: Vec<Extent> = vec![];
     for p in &layout.partitions {
-        if p.encrypted.is_some() {
+        if p.encrypted.is_some() || opts.covered.contains(&p.start) {
             continue;
         }
         let whole = Extent::new(p.start, p.len.min(disk_size.saturating_sub(p.start)));

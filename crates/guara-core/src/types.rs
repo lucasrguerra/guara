@@ -324,6 +324,9 @@ pub struct ScanOptions {
     /// Partições que não estão na tabela do disco (volumes lógicos, desbloqueados).
     #[serde(default)]
     pub extra_parts: Vec<PartInfo>,
+    /// Partições que só contêm RAID/LVM remontado: a varredura entra pelos volumes virtuais.
+    #[serde(default)]
+    pub covered: Vec<u64>,
 }
 
 fn default_max_carve() -> u64 {
@@ -339,6 +342,7 @@ impl Default for ScanOptions {
             max_carve_size: default_max_carve(),
             assembly: Default::default(),
             extra_parts: vec![],
+            covered: vec![],
         }
     }
 }

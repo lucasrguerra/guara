@@ -12,4 +12,8 @@ for n in bitlk-images fvault2-images; do
   tar xJf "$tmp/$n.tar.xz" -C "$dest"
   rm -rf "$tmp"
 done
+mkdir -p "$dest/dfvfs"
+for f in lvm.raw apfs.raw apfs_encrypted.dmg hfsplus.raw hfs.raw xfs.raw xfs-bigtime.raw ext4.raw ext2.raw fvdetest.qcow2 luks1.raw luks2.raw bdetogo.raw; do
+  [ -f "$dest/dfvfs/$f" ] || curl -fsSL "https://raw.githubusercontent.com/log2timeline/dfvfs/main/test_data/$f" -o "$dest/dfvfs/$f"
+done
 echo "ok: $dest"
