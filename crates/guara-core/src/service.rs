@@ -204,10 +204,25 @@ impl Engine {
 
     // ---------------------------------------------------------------- varredura
 
-    pub fn start_scan(&self, path: &str, opts: ScanOptions) -> Result<String> {
-        let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
-        let fp = crate::source::fingerprint(src.as_ref());
-        let job = self.register(JobKind::Scan, path.to_string(), opts, Some(src));
+    pub fn start_scan(&self, path: &str, mut opts: ScanOptions) -> Result<String> {
+        let raw = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
+        let fp = crate::source::fingerprint(raw.as_ref());
+        let asm = crate::assemble::assemble_source(raw, &opts.assembly)?;
+        opts.extra_parts = asm.extra_parts.clone();
+        if opts.assembly.remember_keys {
+            opts.assembly.keys = asm.keys.clone();
+        }
+        let job = self.register(JobKind::Scan, path.to_string(), opts, Some(asm.source.clone()));
+        {
+            let mut s = job.st.lock().unwrap();
+            for u in &asm.unlocked {
+                s.warnings.push(format!("Volume cifrado aberto na posição {}: {}.", u.start, u.description));
+            }
+            for l in &asm.locked {
+                s.warnings.push(format!("Volume cifrado na posição {} não foi aberto: {}.", l.start, l.reason));
+            }
+            s.warnings.extend(asm.notes.iter().cloned());
+        }
         *job.fingerprint.lock().unwrap() = fp;
         *job.session_file.lock().unwrap() = Some(new_session_path(path));
         spawn_scan(job.clone(), None);
@@ -814,8 +829,8 @@ impl Engine {
         let mut last_err = None;
         for path in &tried {
             match open_path(Path::new(path)) {
-                Ok(src) if crate::reconnect::matches(src.as_ref(), size, fp.as_deref()) => {
-                    *j.src.lock().unwrap() = Some(src);
+                Ok(src) if crate::reconnect::matches(src.as_ref(), if j.opts.assembly.is_plain() { size } else { 0 }, fp.as_deref()) => {
+                    *j.src.lock().unwrap() = Some(finish_source(&j, src));
                     *j.src_path.lock().unwrap() = path.clone();
                     return Ok(None);
                 }
@@ -826,7 +841,7 @@ impl Engine {
         if let Some((path, src)) =
             crate::reconnect::find_matching_source(size, fp.as_deref(), &tried)
         {
-            *j.src.lock().unwrap() = Some(src);
+            *j.src.lock().unwrap() = Some(finish_source(&j, src));
             *j.src_path.lock().unwrap() = path.clone();
             return Ok(Some(path));
         }
@@ -863,7 +878,7 @@ impl Engine {
         if fp.is_none() {
             *j.fingerprint.lock().unwrap() = crate::source::fingerprint(src.as_ref());
         }
-        *j.src.lock().unwrap() = Some(src);
+        *j.src.lock().unwrap() = Some(finish_source(&j, src));
         *j.src_path.lock().unwrap() = path.to_string();
         j.st.lock()
             .unwrap()
@@ -1482,6 +1497,14 @@ impl Engine {
 }
 
 // ---------------------------------------------------------------- sessões automáticas
+
+/// Reaplica ao disco reaberto a montagem (volumes desbloqueados, RAID) da sessão.
+fn finish_source(j: &Job, raw: Arc<dyn Source>) -> Arc<dyn Source> {
+    match crate::assemble::assemble_source(raw.clone(), &j.opts.assembly) {
+        Ok(a) => a.source,
+        Err(_) => raw,
+    }
+}
 
 fn sessions_dir() -> PathBuf {
     crate::settings::config_dir().join("sessoes")

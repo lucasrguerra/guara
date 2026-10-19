@@ -83,6 +83,15 @@ pub fn run(
             l
         }
     };
+    let mut layout = layout;
+    // Volumes lógicos e outros volumes montados que não estão na tabela do disco.
+    for p in &opts.extra_parts {
+        if !layout.partitions.iter().any(|q| q.start == p.start) {
+            let mut p = p.clone();
+            p.index = layout.partitions.len();
+            layout.partitions.push(p);
+        }
+    }
     cp.layout = Some(layout.clone());
 
     // Índices para fusão: primeiro offset -> (id, confiança), e extents de achados por metadados.

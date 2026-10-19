@@ -210,8 +210,17 @@ pub enum FsKind {
     Ext,
     Apfs,
     HfsPlus,
+    Btrfs,
+    Xfs,
+    Refs,
     Bitlocker,
     Luks,
+    /// FileVault 2 (Core Storage).
+    Corestorage,
+    /// Membro de volume LVM (physical volume).
+    Lvm,
+    /// Membro de RAID por software (mdadm).
+    Raid,
     Unknown,
 }
 
@@ -226,8 +235,14 @@ impl FsKind {
             FsKind::Ext => "ext2/3/4",
             FsKind::Apfs => "APFS",
             FsKind::HfsPlus => "HFS+",
+            FsKind::Btrfs => "Btrfs",
+            FsKind::Xfs => "XFS",
+            FsKind::Refs => "ReFS",
             FsKind::Bitlocker => "BitLocker",
             FsKind::Luks => "LUKS",
+            FsKind::Corestorage => "FileVault 2",
+            FsKind::Lvm => "LVM",
+            FsKind::Raid => "RAID (mdadm)",
             FsKind::Unknown => "desconhecido",
         }
     }
@@ -237,6 +252,7 @@ impl FsKind {
         match self {
             FsKind::Bitlocker => Some("BitLocker"),
             FsKind::Luks => Some("LUKS"),
+            FsKind::Corestorage => Some("FileVault 2"),
             _ => None,
         }
     }
@@ -302,6 +318,12 @@ pub struct ScanOptions {
     /// Tamanho máximo aceito para arquivos carved (bytes).
     #[serde(default = "default_max_carve")]
     pub max_carve_size: u64,
+    /// Membros extras (RAID/LVM) e segredos para volumes cifrados.
+    #[serde(default)]
+    pub assembly: crate::assemble::Assembly,
+    /// Partições que não estão na tabela do disco (volumes lógicos, desbloqueados).
+    #[serde(default)]
+    pub extra_parts: Vec<PartInfo>,
 }
 
 fn default_max_carve() -> u64 {
@@ -315,6 +337,8 @@ impl Default for ScanOptions {
             include_allocated: false,
             categories: vec![],
             max_carve_size: default_max_carve(),
+            assembly: Default::default(),
+            extra_parts: vec![],
         }
     }
 }

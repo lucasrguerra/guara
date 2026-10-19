@@ -3,6 +3,7 @@
 //! Princípio central: a origem é aberta **somente para leitura**; nada neste
 //! crate escreve no dispositivo que está sendo recuperado.
 
+pub mod assemble;
 pub mod carve;
 pub mod device;
 pub mod crypt;
@@ -31,6 +32,7 @@ pub mod source;
 pub mod sqlite;
 pub mod thumb;
 pub mod types;
+pub mod volume;
 
 pub use error::{Error, Result};
 pub use types::*;

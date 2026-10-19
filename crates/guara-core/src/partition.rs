@@ -13,7 +13,21 @@ pub fn detect_fs(src: &dyn Source, start: u64) -> Option<(FsKind, Option<u64>)> 
     if b.len() < 1100 {
         return None;
     }
-    detect_fs_in(&b)
+    if let Some(r) = detect_fs_in(&b) {
+        return Some(r);
+    }
+    // Assinaturas mais adiante no volume: Btrfs (64 KiB) e RAID mdadm 1.2 (4 KiB).
+    if let Ok(h) = read_vec(src, start + 0x10000, 0x100) {
+        if h.len() >= 0x80 && &h[0x40..0x48] == b"_BHRfS_M" {
+            return Some((FsKind::Btrfs, Some(u64::from_le_bytes(h[0x70..0x78].try_into().unwrap()))));
+        }
+    }
+    if let Ok(h) = read_vec(src, start + 4096, 16) {
+        if h.len() >= 4 && h[..4] == [0xFC, 0x4E, 0x2B, 0xA9] {
+            return Some((FsKind::Raid, None));
+        }
+    }
+    None
 }
 
 /// Mesma detecção sobre um buffer que começa no setor candidato (>= 1100 bytes).
@@ -34,6 +48,27 @@ pub fn detect_fs_in(b: &[u8]) -> Option<(FsKind, Option<u64>)> {
             let vol = u64::from_le_bytes(b[72..80].try_into().unwrap());
             return Some((FsKind::Exfat, Some(vol << shift)));
         }
+    }
+    if b.len() >= 520 && &b[512..520] == b"LABELONE" {
+        return Some((FsKind::Lvm, None));
+    }
+    if b[..4] == [0xFC, 0x4E, 0x2B, 0xA9] {
+        return Some((FsKind::Raid, None));
+    }
+    if &b[0..4] == b"XFSB" {
+        let bs = u32::from_be_bytes(b[4..8].try_into().unwrap()) as u64;
+        let blocks = u64::from_be_bytes(b[8..16].try_into().unwrap());
+        if bs.is_power_of_two() && (512..=65536).contains(&bs) {
+            return Some((FsKind::Xfs, Some(bs * blocks)));
+        }
+    }
+    if &b[3..7] == b"ReFS" && &b[16..20] == b"FSRS" {
+        let sectors = u64::from_le_bytes(b[24..32].try_into().unwrap());
+        let bps = u32::from_le_bytes(b[32..36].try_into().unwrap()) as u64;
+        return Some((FsKind::Refs, Some(sectors * bps)));
+    }
+    if crate::crypt::filevault::detect(b) {
+        return Some((FsKind::Corestorage, Some(u64::from_le_bytes(b[64..72].try_into().unwrap()))));
     }
     if crate::crypt::bitlocker::detect(b) {
         return Some((FsKind::Bitlocker, None));

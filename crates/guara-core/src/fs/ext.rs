@@ -95,7 +95,6 @@ struct Ext<'a> {
     inodes: u64,
     groups: Vec<Group>,
     journal_inum: u32,
-    incompat: u32,
 }
 
 /// Sequência de (bloco lógico, bloco físico, quantidade, não-inicializado).
@@ -163,7 +162,6 @@ impl<'a> Ext<'a> {
             inodes: le32(&sb, 0) as u64,
             groups,
             journal_inum: le32(&sb, 224),
-            incompat,
         })
     }
 
@@ -323,19 +321,6 @@ impl<'a> Ext<'a> {
             out.push(Extent { offset: self.base + p * self.bs, len: take, sparse: uninit });
             left -= take;
             cur_l = l + n;
-        }
-        out
-    }
-
-    fn read_file(&self, ino: &Inode, max: u64) -> Vec<u8> {
-        let size = ino.size.min(max);
-        let mut out = Vec::with_capacity(size as usize);
-        for e in self.file_extents(ino, size) {
-            if e.sparse {
-                out.extend(std::iter::repeat(0).take(e.len as usize));
-            } else if let Ok(v) = read_vec(self.src, e.offset, e.len as usize) {
-                out.extend(v);
-            }
         }
         out
     }
