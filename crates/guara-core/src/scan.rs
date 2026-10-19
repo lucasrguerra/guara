@@ -84,6 +84,11 @@ pub fn run(
         }
     };
     let mut layout = layout;
+    if opts.skip_primary {
+        layout.partitions.clear();
+        layout.gaps.clear();
+        layout.table = "membro de RAID".into();
+    }
     // Volumes lógicos e outros volumes montados que não estão na tabela do disco.
     for p in &opts.extra_parts {
         if !layout.partitions.iter().any(|q| q.start == p.start) {

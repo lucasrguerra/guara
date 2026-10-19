@@ -210,6 +210,7 @@ impl Engine {
         let asm = crate::assemble::assemble_source(raw, &opts.assembly)?;
         opts.extra_parts = asm.extra_parts.clone();
         opts.covered = asm.covered.clone();
+        opts.skip_primary = asm.skip_primary;
         if opts.assembly.remember_keys {
             opts.assembly.keys = asm.keys.clone();
         }

@@ -121,3 +121,69 @@ fn deleted_file_on_degraded_raid5() {
     let p = if Path::new(p).is_absolute() { Path::new(p).to_path_buf() } else { dest.path().join(p) };
     assert!(std::fs::read(p).unwrap() == doc);
 }
+
+#[test]
+fn raid5_without_metadata_is_detected_and_scanned() {
+    if !(have("mke2fs") && have("debugfs")) {
+        return;
+    }
+    init();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("root");
+    for d in 0..10 {
+        std::fs::create_dir_all(root.join(format!("d{d}"))).unwrap();
+        for f in 0..30 {
+            std::fs::write(root.join(format!("d{d}/f{f}.txt")), vec![b'x'; 500 + f * 50]).unwrap();
+        }
+    }
+    let doc = data(9, 200_000);
+    std::fs::write(root.join("d3/perdido.dat"), &doc).unwrap();
+    let plain = dir.path().join("plain.img");
+    let (n, chunk) = (3usize, 64 * 1024usize);
+    let dd = n - 1;
+    let rows = 160usize;
+    std::fs::File::create(&plain).unwrap().set_len((rows * dd * chunk) as u64).unwrap();
+    assert!(Command::new("mke2fs").args(["-q", "-F", "-t", "ext4", "-d"]).arg(&root).arg(&plain).status().unwrap().success());
+    Command::new("debugfs").arg("-w").arg("-R").arg("rm /d3/perdido.dat").arg(&plain).output().unwrap();
+    let logical = std::fs::read(&plain).unwrap();
+    // left-asymmetric
+    let mut disks = vec![vec![0u8; rows * chunk]; n];
+    for row in 0..rows {
+        let pd = n - 1 - row % n;
+        let mut p = vec![0u8; chunk];
+        for (k, disk) in (0..n).filter(|&i| i != pd).enumerate() {
+            let s = &logical[(row * dd + k) * chunk..(row * dd + k + 1) * chunk];
+            disks[disk][row * chunk..(row + 1) * chunk].copy_from_slice(s);
+            for i in 0..chunk {
+                p[i] ^= s[i];
+            }
+        }
+        disks[pd][row * chunk..(row + 1) * chunk].copy_from_slice(&p);
+    }
+    let order = [1usize, 2, 0]; // fornecidos fora de ordem
+    let mut paths = vec![];
+    for (j, &i) in order.iter().enumerate() {
+        let p = dir.path().join(format!("m{j}.img"));
+        std::fs::write(&p, &disks[i]).unwrap();
+        paths.push(p);
+    }
+    let base: Arc<dyn Source> = Arc::new(FileSource::open(&paths[0]).unwrap());
+    let asm = Assembly {
+        members: paths[1..].iter().map(|p| p.to_string_lossy().to_string()).collect(),
+        raid: Some(guara_core::assemble::RaidSpec::default()),
+        ..Default::default()
+    };
+    let a = assemble_source(base, &asm).unwrap();
+    assert!(a.skip_primary);
+    assert!(a.notes.iter().any(|n| n.contains("descobertos")), "{:?}", a.notes);
+    let opts = ScanOptions { mode: ScanMode::Deep, extra_parts: a.extra_parts.clone(), skip_primary: true, ..Default::default() };
+    let mut sink = Collect::default();
+    let out = scan::run(a.source.as_ref(), &opts, None, &[], &|| false, &mut sink);
+    assert!(matches!(out, Outcome::Completed));
+    let f = sink.found.iter().find(|f| f.name == "perdido.dat").expect("perdido.dat");
+    let dest = tempfile::tempdir().unwrap();
+    let rep = recover::recover(a.source.as_ref(), &[f], dest.path(), &|| false, &mut |_, _, _| {}).unwrap();
+    let p = &rep.recovered[0].path;
+    let p = if Path::new(p).is_absolute() { Path::new(p).to_path_buf() } else { dest.path().join(p) };
+    assert!(std::fs::read(p).unwrap() == doc);
+}

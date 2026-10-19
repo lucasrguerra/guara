@@ -23,6 +23,7 @@ pub mod owner;
 pub mod partition;
 pub mod reconnect;
 pub mod raid;
+pub mod raid_detect;
 pub mod recover;
 pub mod report;
 pub mod scan;

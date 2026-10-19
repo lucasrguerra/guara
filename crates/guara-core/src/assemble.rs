@@ -31,8 +31,22 @@ pub struct SavedKey {
     pub key_hex: String,
 }
 
+/// RAID sem metadados: o que o usuário sabe; o resto é descoberto.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct RaidSpec {
+    pub level: Option<crate::raid::Level>,
+    /// Tamanho da faixa em KiB.
+    pub chunk_kb: Option<u64>,
+    pub layout: Option<crate::raid::Layout>,
+    /// Ordem dos discos: índice 0 é o alvo principal, depois `members` na ordem dada.
+    pub order: Option<Vec<usize>>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Assembly {
+    /// Trata o alvo e `members` como discos de um RAID sem metadados (parâmetros descobertos).
+    #[serde(default)]
+    pub raid: Option<RaidSpec>,
     /// Outros discos ou imagens do mesmo conjunto (RAID/LVM), além do alvo principal.
     #[serde(default)]
     pub members: Vec<String>,
@@ -48,7 +62,7 @@ pub struct Assembly {
 
 impl Assembly {
     pub fn is_plain(&self) -> bool {
-        self.members.is_empty() && self.secrets.is_empty() && self.keys.is_empty()
+        self.members.is_empty() && self.secrets.is_empty() && self.keys.is_empty() && self.raid.is_none()
     }
 }
 
@@ -77,6 +91,8 @@ pub struct Assembled {
     pub extra_parts: Vec<PartInfo>,
     /// Partições reais que são só contêineres (membros de RAID/LVM já remontados).
     pub covered: Vec<u64>,
+    /// O disco principal é só um membro de RAID: não varrer o disco cru.
+    pub skip_primary: bool,
     pub notes: Vec<String>,
 }
 
@@ -168,6 +184,7 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
         keys: vec![],
         extra_parts: vec![],
         covered: vec![],
+        skip_primary: false,
         notes: vec![],
     };
     let mut members: Vec<Arc<dyn Source>> = vec![];
@@ -175,6 +192,16 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
         members.push(open_path(Path::new(m)).map_err(|e| Error::msg(format!("{m}: {e}")))?);
     }
     let mut next_virtual = base.size().div_ceil(MIB) * MIB + MIB;
+    if let Some(spec) = &asm.raid {
+        let mut disks: Vec<Arc<dyn Source>> = vec![base.clone()];
+        disks.extend(members.iter().cloned());
+        let params = pick_raid(&disks, spec, &mut out.notes)?;
+        let src: Arc<dyn Source> = Arc::new(crate::raid::RaidSource::new(params).map_err(Error::msg)?);
+        out.notes.push(format!("RAID montado a partir de {} disco(s) sem metadados.", disks.len()));
+        out.skip_primary = true;
+        members.clear();
+        add_virtual(&mut regions, &mut next_virtual, &mut out, src, "RAID".into());
+    }
     let mut done_containers: std::collections::BTreeSet<String> = Default::default();
     let mut tried_pool = false;
     // Rodadas: o que foi aberto/montado pode conter outro volume cifrado, RAID ou LVM.
@@ -367,4 +394,34 @@ fn add_virtual(regions: &mut Vec<Region>, next: &mut u64, out: &mut Assembled, s
         }
     }
     regions.push(Region { start, len, src, label });
+}
+
+/// Escolhe os parâmetros do RAID: o que o usuário deu manda; o resto vem da detecção.
+fn pick_raid(disks: &[Arc<dyn Source>], spec: &RaidSpec, notes: &mut Vec<String>) -> Result<crate::raid::RaidParams> {
+    use crate::raid::{Member, RaidParams};
+    if let (Some(level), Some(chunk), Some(layout), Some(order)) = (spec.level, spec.chunk_kb, spec.layout, spec.order.clone()) {
+        if order.len() == disks.len() && order.iter().all(|&i| i < disks.len()) {
+            let members = order.iter().map(|&i| Some(Member { src: disks[i].clone(), data_offset: 0 })).collect();
+            return Ok(RaidParams::simple(level, chunk * 1024, layout, members));
+        }
+    }
+    let cands = crate::raid_detect::detect(disks, &|| false);
+    let c = cands
+        .into_iter()
+        .find(|c| {
+            spec.level.map_or(true, |l| c.level == l)
+                && spec.chunk_kb.map_or(true, |k| c.chunk == k * 1024)
+                && spec.layout.map_or(true, |l| c.layout == l)
+                && spec.order.as_ref().map_or(true, |o| *o == c.order)
+        })
+        .ok_or_else(|| Error::msg("não foi possível descobrir os parâmetros do RAID (nenhuma combinação produziu um sistema de arquivos coerente)"))?;
+    notes.push(format!(
+        "Parâmetros do RAID descobertos: {}, faixa de {} KiB, layout {:?}, ordem dos discos {:?} (pontuação {:.1}).",
+        c.level.name(),
+        c.chunk / 1024,
+        c.layout,
+        c.order,
+        c.score
+    ));
+    Ok(c.params(disks))
 }

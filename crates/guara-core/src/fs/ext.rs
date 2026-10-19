@@ -831,3 +831,60 @@ fn remnant_extents(ext: &Ext, block: &[u8; 60]) -> ExtentList {
     }
     out
 }
+
+/// Quão coerente é a estrutura do volume: fração das entradas de diretório cujo inode confere
+/// com o tipo declarado. Serve para escolher parâmetros de RAID sem metadados.
+pub fn consistency_score(src: &dyn Source, base: u64) -> Option<f64> {
+    let ext = Ext::open(src, base)?;
+    let mut queue = vec![2u64];
+    let mut seen = HashSet::new();
+    let (mut ok, mut total) = (0u32, 0u32);
+    let (mut dots_ok, mut dots_total) = (0u32, 0u32);
+    while let Some(d) = queue.pop() {
+        if !seen.insert(d) || total >= 600 {
+            continue;
+        }
+        let Some(ino) = ext.read_inode(d).filter(|i| i.is_dir()) else { continue };
+        let mut ents = vec![];
+        for e in ext.file_extents(&ino, ino.size.min(1 << 20)) {
+            if e.sparse {
+                continue;
+            }
+            let mut o = 0;
+            while o < e.len {
+                if let Ok(b) = read_vec(ext.src, e.offset + o, ext.bs as usize) {
+                    if b.len() as u64 == ext.bs {
+                        parse_dir_block(&b, ext.inodes, &mut ents);
+                    }
+                }
+                o += ext.bs;
+            }
+        }
+        // A entrada "." de um diretório aponta para ele mesmo: só confere se inode e bloco
+        // vieram do lugar certo.
+        dots_total += 1;
+        if ents.iter().any(|e| e.live && e.name == "." && e.ino == d) {
+            dots_ok += 1;
+        }
+        for en in ents.iter().filter(|e| e.live && e.name != "." && e.name != "..") {
+            total += 1;
+            if let Some(i) = ext.read_inode(en.ino) {
+                if i.mode != 0 && i.links > 0 {
+                    ok += 1;
+                    if i.is_dir() {
+                        queue.push(en.ino);
+                    }
+                }
+            }
+            if total >= 600 {
+                break;
+            }
+        }
+    }
+    if total == 0 {
+        return None;
+    }
+    let a = ok as f64 / total as f64;
+    let b = if dots_total > 0 { dots_ok as f64 / dots_total as f64 } else { 0.0 };
+    Some(1.0 + 5.0 * a + 5.0 * b)
+}

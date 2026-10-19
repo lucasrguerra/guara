@@ -327,6 +327,9 @@ pub struct ScanOptions {
     /// Partições que só contêm RAID/LVM remontado: a varredura entra pelos volumes virtuais.
     #[serde(default)]
     pub covered: Vec<u64>,
+    /// O disco principal é só membro de RAID sem metadados: varre apenas os volumes virtuais.
+    #[serde(default)]
+    pub skip_primary: bool,
 }
 
 fn default_max_carve() -> u64 {
@@ -343,6 +346,7 @@ impl Default for ScanOptions {
             assembly: Default::default(),
             extra_parts: vec![],
             covered: vec![],
+            skip_primary: false,
         }
     }
 }
