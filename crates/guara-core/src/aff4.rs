@@ -298,10 +298,14 @@ impl Aff4Source {
         let mut entries = HashMap::new();
         for i in 0..zip.len() {
             let f = zip.by_index_raw(i).map_err(|e| Error::msg(e.to_string()))?;
+            let name = f.name().map_err(zerr)?.into_owned();
+            let data_start = f
+                .data_start()
+                .ok_or_else(|| Error::msg(format!("AFF4: entrada sem início de dados: {name}")))?;
             entries.insert(
-                f.name().to_string(),
+                name,
                 Loc {
-                    data_start: f.data_start(),
+                    data_start,
                     size: f.compressed_size(),
                 },
             );

@@ -723,7 +723,7 @@ fn decode(codec: u8, raw: &[u8], ram: usize) -> Option<Vec<u8>> {
         }
         2 => {
             use std::io::Read;
-            let mut dec = ruzstd::StreamingDecoder::new(raw).ok()?;
+            let mut dec = ruzstd::decoding::StreamingDecoder::new(raw).ok()?;
             let mut v = Vec::with_capacity(ram);
             dec.read_to_end(&mut v).ok()?;
             Some(v)

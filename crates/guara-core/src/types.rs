@@ -170,7 +170,7 @@ impl Packed {
             }
             PackedCodec::Zstd => {
                 let mut v = Vec::with_capacity(self.ram_len as usize);
-                ruzstd::StreamingDecoder::new(&raw[..])
+                ruzstd::decoding::StreamingDecoder::new(&raw[..])
                     .map_err(|_| bad("zstd"))?
                     .read_to_end(&mut v)
                     .map_err(|_| bad("zstd"))?;
