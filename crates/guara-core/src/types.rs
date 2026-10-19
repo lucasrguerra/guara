@@ -114,7 +114,30 @@ pub enum Origin {
     Ntfs,
     Fat,
     Exfat,
+    Ext,
+    Btrfs,
+    Xfs,
+    Hfs,
+    Apfs,
+    Refs,
     Carved,
+}
+
+impl Origin {
+    pub fn label(self) -> &'static str {
+        match self {
+            Origin::Carved => "assinatura",
+            Origin::Ntfs => "NTFS",
+            Origin::Fat => "FAT",
+            Origin::Exfat => "exFAT",
+            Origin::Ext => "ext4",
+            Origin::Btrfs => "Btrfs",
+            Origin::Xfs => "XFS",
+            Origin::Hfs => "HFS+",
+            Origin::Apfs => "APFS",
+            Origin::Refs => "ReFS",
+        }
+    }
 }
 
 /// Um arquivo encontrado (apagado, perdido ou reconstruído por assinatura).

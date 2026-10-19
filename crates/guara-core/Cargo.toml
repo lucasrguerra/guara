@@ -20,6 +20,11 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 thiserror = "2"
 tiny_http = "0.12"
 bzip2 = "0.6"
+aes = "0.8"
+hmac = "0.12"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+ripemd = "0.1"
+argon2 = "0.5"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

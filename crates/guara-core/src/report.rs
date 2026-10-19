@@ -292,12 +292,7 @@ footer{margin-top:34px;color:#5b6f6d;font-size:12px}@media print{body{background
             human(f.size),
             iso(f.modified),
             iso(f.created),
-            match f.origin {
-                Origin::Carved => "assinatura",
-                Origin::Ntfs => "NTFS",
-                Origin::Fat => "FAT",
-                Origin::Exfat => "exFAT",
-            },
+            f.origin.label(),
             f.first_offset().map(|o| o.to_string()).unwrap_or_default()
         ));
     }

@@ -35,7 +35,7 @@ pub fn detect_fs_in(b: &[u8]) -> Option<(FsKind, Option<u64>)> {
             return Some((FsKind::Exfat, Some(vol << shift)));
         }
     }
-    if &b[3..11] == b"-FVE-FS-" {
+    if crate::crypt::bitlocker::detect(b) {
         return Some((FsKind::Bitlocker, None));
     }
     if b.starts_with(b"LUKS\xBA\xBE") {

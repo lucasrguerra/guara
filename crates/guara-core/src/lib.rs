@@ -5,6 +5,7 @@
 
 pub mod carve;
 pub mod device;
+pub mod crypt;
 pub mod error;
 pub mod ewf;
 pub mod explorer;
