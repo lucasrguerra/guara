@@ -9,6 +9,7 @@ pub mod exfat;
 pub mod ext;
 pub mod fat;
 pub mod hfsplus;
+pub mod xfs;
 pub mod ntfs;
 
 use crate::signatures::{category_for_ext, matches_ext};
