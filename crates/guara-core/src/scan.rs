@@ -149,6 +149,7 @@ pub fn run(
                     FsKind::HfsPlus => Some(fs::hfsplus::scan(&mut ctx, p.start, p.len)),
                     FsKind::Btrfs => Some(fs::btrfs::scan(&mut ctx, p.start, p.len)),
                     FsKind::Xfs => Some(fs::xfs::scan(&mut ctx, p.start, p.len)),
+                    FsKind::Apfs => Some(fs::apfs::scan(&mut ctx, p.start, p.len)),
                     _ => None,
                 };
                 let _ = progress_phase;

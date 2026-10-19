@@ -4,6 +4,7 @@
 //! devolve os extents ainda alocados ("live") para o carving pular e, quando
 //! possível, os trechos livres.
 
+pub mod apfs;
 pub mod btrfs;
 pub mod exfat;
 pub mod ext;
