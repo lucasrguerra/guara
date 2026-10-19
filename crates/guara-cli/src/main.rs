@@ -31,6 +31,8 @@ enum Cmd {
         path: String,
         #[arg(long)]
         json: bool,
+        #[command(flatten)]
+        asm: AsmArgs,
     },
     /// Saúde do disco (SMART): estado, temperatura, uso e tabela de atributos
     Health {
@@ -56,7 +58,36 @@ enum Cmd {
         filter: FilterArgs,
     },
     /// Cria uma imagem do disco (tolerante a setores ruins) para trabalhar na cópia
-    Image { path: String, dest: String },
+    Image {
+        path: String,
+        dest: String,
+        /// Formato da imagem: raw (padrão) ou e01 (Expert Witness, com hash e metadados)
+        #[arg(long, default_value = "raw")]
+        format: String,
+        /// E01: número do caso
+        #[arg(long, default_value = "")]
+        case: String,
+        /// E01: examinador
+        #[arg(long, default_value = "")]
+        examiner: String,
+        /// E01: descrição da evidência
+        #[arg(long, default_value = "")]
+        description: String,
+        /// E01: número da evidência
+        #[arg(long, default_value = "")]
+        evidence: String,
+        /// E01: observações
+        #[arg(long, default_value = "")]
+        notes: String,
+        /// E01: tamanho máximo de cada segmento em MiB (0 = um arquivo só)
+        #[arg(long, default_value_t = 1500)]
+        segment_mib: u64,
+        /// E01: compressão 0 (nenhuma) a 9
+        #[arg(long, default_value_t = 1)]
+        compression: u32,
+    },
+    /// Confere uma imagem E01/Ex01: recalcula o MD5 e compara com o gravado na própria imagem
+    Verify { path: String },
     /// Exporta os achados de uma sessão para CSV (abre no Excel)
     Export {
         session: String,
@@ -140,6 +171,111 @@ struct OutArgs {
     json: bool,
 }
 
+/// Montagem do disco: volumes cifrados, RAID e LVM.
+#[derive(clap::Args, Clone, Default)]
+struct AsmArgs {
+    /// Senha de volume cifrado (BitLocker, LUKS, FileVault 2). Prefira --ask-password ou GUARA_PASSWORD
+    #[arg(long = "password")]
+    passwords: Vec<String>,
+    /// Pergunta a senha no terminal, sem mostrar o que é digitado
+    #[arg(long)]
+    ask_password: bool,
+    /// Chave de recuperação numérica do BitLocker (8 grupos de 6 dígitos)
+    #[arg(long = "recovery-key")]
+    recovery_keys: Vec<String>,
+    /// Arquivo de chave (.BEK do BitLocker ou keyfile do LUKS)
+    #[arg(long = "key-file")]
+    key_files: Vec<String>,
+    /// Chave do volume em hexadecimal (a que o Guará mostra ao abrir um volume)
+    #[arg(long = "volume-key")]
+    volume_keys: Vec<String>,
+    /// Outro disco ou imagem do mesmo conjunto (RAID/LVM). Pode repetir; "-" marca um disco ausente
+    #[arg(long = "member")]
+    members: Vec<String>,
+    /// Os discos (alvo + --member, nesta ordem) formam um RAID sem metadados: descobre sozinho nível, faixa e layout
+    #[arg(long)]
+    raid: bool,
+    /// Fixa o nível do RAID: 0, 5, 6, 1
+    #[arg(long)]
+    raid_level: Option<String>,
+    /// Fixa o tamanho da faixa do RAID em KiB
+    #[arg(long)]
+    raid_chunk_kb: Option<u64>,
+    /// Fixa o layout: left-symmetric, left-asymmetric, right-symmetric, right-asymmetric
+    #[arg(long)]
+    raid_layout: Option<String>,
+    /// Ordem dos discos no RAID (índices; 0 = alvo)
+    #[arg(long, value_delimiter = ',')]
+    raid_order: Vec<usize>,
+    /// Guarda na sessão as chaves dos volumes abertos (a senha nunca é guardada)
+    #[arg(long)]
+    remember_keys: bool,
+    /// Vídeo íntegro da mesma câmera/drone para refazer o índice de MP4 sem moov (pode repetir)
+    #[arg(long = "reference")]
+    references: Vec<String>,
+}
+
+impl AsmArgs {
+    fn assembly(&self) -> Result<guara_core::assemble::Assembly, String> {
+        use guara_core::assemble::{Assembly, RaidSpec, SecretInput};
+        let mut secrets = vec![];
+        for p in &self.passwords {
+            secrets.push(SecretInput::Password { value: p.clone() });
+        }
+        if let Ok(p) = std::env::var("GUARA_PASSWORD") {
+            if !p.is_empty() {
+                secrets.push(SecretInput::Password { value: p });
+            }
+        }
+        if self.ask_password {
+            let p = rpassword::prompt_password("Senha do volume: ").map_err(s)?;
+            secrets.push(SecretInput::Password { value: p });
+        }
+        for r in &self.recovery_keys {
+            secrets.push(SecretInput::Recovery { value: r.clone() });
+        }
+        for k in &self.key_files {
+            secrets.push(SecretInput::Keyfile { path: k.clone() });
+        }
+        for k in &self.volume_keys {
+            secrets.push(SecretInput::Key { hex: k.clone() });
+        }
+        let raid = if self.raid || self.raid_level.is_some() || self.raid_chunk_kb.is_some() || self.raid_layout.is_some() || !self.raid_order.is_empty() {
+            let level = match self.raid_level.as_deref() {
+                None => None,
+                Some("0") => Some(guara_core::raid::Level::R0),
+                Some("1") => Some(guara_core::raid::Level::R1),
+                Some("5") => Some(guara_core::raid::Level::R5),
+                Some("6") => Some(guara_core::raid::Level::R6),
+                Some(x) => return Err(format!("nível de RAID não suportado: {x} (use 0, 1, 5 ou 6)")),
+            };
+            let layout = match self.raid_layout.as_deref() {
+                None => None,
+                Some("left-symmetric") => Some(guara_core::raid::Layout::LeftSymmetric),
+                Some("left-asymmetric") => Some(guara_core::raid::Layout::LeftAsymmetric),
+                Some("right-symmetric") => Some(guara_core::raid::Layout::RightSymmetric),
+                Some("right-asymmetric") => Some(guara_core::raid::Layout::RightAsymmetric),
+                Some(x) => return Err(format!("layout desconhecido: {x}")),
+            };
+            Some(RaidSpec {
+                level,
+                chunk_kb: self.raid_chunk_kb,
+                layout,
+                order: (!self.raid_order.is_empty()).then(|| self.raid_order.clone()),
+            })
+        } else {
+            None
+        };
+        Ok(Assembly {
+            raid,
+            members: self.members.iter().filter(|m| *m != "-").cloned().collect(),
+            secrets,
+            remember_keys: self.remember_keys,
+            keys: vec![],
+        })
+    }
+}
+
 #[derive(clap::Args)]
 struct ScanArgs {
     /// Dispositivo ou imagem
@@ -153,6 +289,8 @@ struct ScanArgs {
     /// Recupera tudo que casar com os filtros para esta pasta ao terminar
     #[arg(long)]
     recover: Option<String>,
+    #[command(flatten)]
+    asm: AsmArgs,
     #[command(flatten)]
     filter: FilterArgs,
     #[command(flatten)]
@@ -204,8 +342,9 @@ fn run(cli: Cli) -> Result<(), String> {
             }
             Ok(())
         }
-        Cmd::Inspect { path, json } => {
-            let v = eng.rpc("inspect", json!({ "path": path })).map_err(s)?;
+        Cmd::Inspect { path, json, asm } => {
+            let a = asm.assembly()?;
+            let v = eng.rpc("inspect", json!({ "path": path, "assembly": serde_json::to_value(&a).map_err(s)?})).map_err(s)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&v).unwrap());
             } else {
@@ -231,6 +370,8 @@ fn run(cli: Cli) -> Result<(), String> {
                 },
                 include_allocated: a.include_allocated,
                 categories: parse_cats(&a.filter.category)?,
+                assembly: a.asm.assembly()?,
+                references: a.asm.references.clone(),
                 ..Default::default()
             };
             let job = eng.start_scan(&a.path, opts).map_err(s)?;
@@ -272,8 +413,41 @@ fn run(cli: Cli) -> Result<(), String> {
             eng.save_session(&job, &session).map_err(s)?;
             Ok(())
         }
-        Cmd::Image { path, dest } => {
-            let job = eng.start_image(&path, &dest).map_err(s)?;
+        Cmd::Verify { path } => {
+            let e = guara_core::ewf::EwfSource::open(std::path::Path::new(&path)).map_err(s)?;
+            println!("Formato: {}", if e.info.version == 2 { "Ex01 (EnCase 7)" } else { "E01 (EnCase)" });
+            println!("Segmentos: {}", e.info.segments);
+            for (k, v) in &e.info.fields {
+                println!("{k}: {v}");
+            }
+            eprintln!("Recalculando o hash...");
+            match e.verify().map_err(s)? {
+                Some(true) => {
+                    println!("MD5 gravado e recalculado conferem: {}", e.info.md5.clone().unwrap_or_default());
+                    Ok(())
+                }
+                Some(false) => Err("O MD5 recalculado difere do gravado na imagem: ela está corrompida ou foi alterada.".into()),
+                None => {
+                    println!("Esta imagem não traz hash gravado para conferir.");
+                    Ok(())
+                }
+            }
+        }
+        Cmd::Image { path, dest, format, case, examiner, description, evidence, notes, segment_mib, compression } => {
+            let fmt = match format.as_str() {
+                "raw" => guara_core::image::ImageFormat::Raw,
+                "e01" => guara_core::image::ImageFormat::E01 {
+                    case_number: case,
+                    description,
+                    evidence_number: evidence,
+                    examiner,
+                    notes,
+                    segment_mib,
+                    compression,
+                },
+                x => return Err(format!("formato de imagem desconhecido: {x} (use raw ou e01)")),
+            };
+            let job = eng.start_image_as(&path, &dest, &fmt).map_err(s)?;
             let st = wait(&eng, &job, None)?;
             if st["status"] == "error" {
                 return Err(st["error"].as_str().unwrap_or("falha").to_string());
@@ -813,3 +987,4 @@ fn print_health(v: &Value) {
         println!("\n{}", adv.as_str().unwrap_or(""));
     }
 }
+

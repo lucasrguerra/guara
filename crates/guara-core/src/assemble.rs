@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SecretInput {
     Password { value: String },
@@ -50,8 +50,8 @@ pub struct Assembly {
     /// Outros discos ou imagens do mesmo conjunto (RAID/LVM), além do alvo principal.
     #[serde(default)]
     pub members: Vec<String>,
-    /// Senhas e chaves: nunca vão para o disco junto com a sessão.
-    #[serde(default, skip_serializing)]
+    /// Senhas e chaves: o `snapshot` da sessão as descarta antes de gravar.
+    #[serde(default)]
     pub secrets: Vec<SecretInput>,
     /// Guarda as chaves de volume derivadas na sessão, para reabrir sem pedir a senha de novo.
     #[serde(default)]

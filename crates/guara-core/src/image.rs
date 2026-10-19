@@ -24,6 +24,69 @@ pub struct ImageReport {
 const BLOCK: usize = 1 << 20;
 const SECTOR: usize = 512;
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ImageFormat {
+    #[default]
+    Raw,
+    /// Expert Witness (EnCase 6): `.E01`, dividido em segmentos.
+    E01 {
+        #[serde(default)]
+        case_number: String,
+        #[serde(default)]
+        description: String,
+        #[serde(default)]
+        evidence_number: String,
+        #[serde(default)]
+        examiner: String,
+        #[serde(default)]
+        notes: String,
+        /// Tamanho máximo de cada segmento em MiB (0 = um arquivo só).
+        #[serde(default = "default_segment_mib")]
+        segment_mib: u64,
+        /// 0 = sem compressão, 1 a 9 = deflate.
+        #[serde(default = "default_compression")]
+        compression: u32,
+    },
+}
+
+fn default_segment_mib() -> u64 {
+    1500
+}
+fn default_compression() -> u32 {
+    1
+}
+
+pub fn create_image_as(
+    src: &dyn Source,
+    dest: &Path,
+    format: &ImageFormat,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<ImageReport> {
+    match format {
+        ImageFormat::Raw => create_image(src, dest, cancelled, progress),
+        ImageFormat::E01 { case_number, description, evidence_number, examiner, notes, segment_mib, compression } => {
+            let opts = crate::ewf::E01Options {
+                case_number: case_number.clone(),
+                description: description.clone(),
+                evidence_number: evidence_number.clone(),
+                examiner: examiner.clone(),
+                notes: notes.clone(),
+                segment_size: segment_mib * 1024 * 1024,
+                compression: *compression,
+                ..Default::default()
+            };
+            // O destino pode vir com ou sem a extensão .E01.
+            let base = match dest.extension().and_then(|e| e.to_str()) {
+                Some(e) if e.eq_ignore_ascii_case("e01") => dest.with_extension(""),
+                _ => dest.to_path_buf(),
+            };
+            crate::ewf::write_e01(src, &base, &opts, cancelled, progress)
+        }
+    }
+}
+
 pub fn create_image(
     src: &dyn Source,
     dest: &Path,

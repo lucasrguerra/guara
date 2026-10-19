@@ -548,6 +548,12 @@ impl Engine {
     // ---------------------------------------------------------------- imagem
 
     pub fn start_image(&self, path: &str, dest: &str) -> Result<String> {
+        self.start_image_as(path, dest, &image::ImageFormat::Raw)
+    }
+
+    /// Cria a imagem em bruto ou em outro formato forense (E01 ou AFF4).
+    pub fn start_image_as(&self, path: &str, dest: &str, format: &image::ImageFormat) -> Result<String> {
+        let format = format.clone();
         let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
         recover::check_destination(
             Some(Path::new(path)),
@@ -570,7 +576,7 @@ impl Engine {
                     total: t,
                 };
             };
-            let res = image::create_image(src.as_ref(), &dest, &cancelled, &mut prog);
+            let res = image::create_image_as(src.as_ref(), &dest, &format, &cancelled, &mut prog);
             let mut s = j2.st.lock().unwrap();
             match res {
                 Ok(rep) => {
@@ -990,8 +996,35 @@ impl Engine {
             "devices" => json!(device::list_devices()),
             "inspect" => {
                 let path = s("path")?;
-                let src = open_path(Path::new(&path)).map_err(|e| open_error(&path, e))?;
-                json!(partition::analyze(src.as_ref(), false))
+                let asm: crate::assemble::Assembly = p
+                    .get("assembly")
+                    .cloned()
+                    .map(serde_json::from_value)
+                    .transpose()?
+                    .unwrap_or_default();
+                let raw = open_path(Path::new(&path)).map_err(|e| open_error(&path, e))?;
+                let a = crate::assemble::assemble_source(raw, &asm)?;
+                let mut layout = partition::analyze(a.source.as_ref(), false);
+                if a.skip_primary {
+                    layout.partitions.clear();
+                    layout.gaps.clear();
+                    layout.table = "membro de RAID".into();
+                }
+                for pi in &a.extra_parts {
+                    if !layout.partitions.iter().any(|q| q.start == pi.start) {
+                        let mut pi = pi.clone();
+                        pi.index = layout.partitions.len();
+                        layout.partitions.push(pi);
+                    }
+                }
+                layout.warnings.extend(a.notes.iter().cloned());
+                for u in &a.unlocked {
+                    layout.warnings.push(format!("Volume aberto em {}: {}.", u.start, u.description));
+                }
+                for l in &a.locked {
+                    layout.warnings.push(format!("Volume cifrado em {} continua fechado: {}.", l.start, l.reason));
+                }
+                json!(layout)
             }
             "scan_start" => {
                 let opts: ScanOptions = p
@@ -1124,7 +1157,15 @@ impl Engine {
                     .unwrap_or_default();
                 json!({ "job": self.start_recover(&s("job")?, ids, filter, &s("dest")?, layout)? })
             }
-            "image_start" => json!({ "job": self.start_image(&s("path")?, &s("dest")?)? }),
+            "image_start" => {
+                let format: image::ImageFormat = p
+                    .get("format")
+                    .cloned()
+                    .map(serde_json::from_value)
+                    .transpose()?
+                    .unwrap_or(image::ImageFormat::Raw);
+                json!({ "job": self.start_image_as(&s("path")?, &s("dest")?, &format)? })
+            }
             "session_save" => {
                 self.save_session(&s("job")?, &s("path")?)?;
                 json!({})
@@ -1546,10 +1587,16 @@ fn new_session_path(target: &str) -> PathBuf {
 
 fn snapshot(j: &Job) -> SessionFile {
     let s = j.st.lock().unwrap();
+    // Senhas e chaves nunca vão para o arquivo de sessão (só as chaves de volume, se o usuário pediu).
+    let mut options = j.opts.clone();
+    options.assembly.secrets.clear();
+    if !options.assembly.remember_keys {
+        options.assembly.keys.clear();
+    }
     SessionFile {
         version: 1,
         target: j.target.clone(),
-        options: j.opts.clone(),
+        options,
         found: s.found.clone(),
         checkpoint: s.checkpoint.clone(),
         layout: s.layout.clone(),

@@ -248,7 +248,7 @@ pub fn analyze(src: &dyn Source, search_lost: bool) -> DiskLayout {
     for p in &layout.partitions {
         if let Some(e) = &p.encrypted {
             layout.warnings.push(format!(
-                "Partição {} está cifrada com {}: o Guará só detecta cifragem na v1 e não varre esse volume sem a chave.",
+                "Partição {} está cifrada com {}: informe a senha, a chave de recuperação ou o arquivo de chave para abrir e varrer o conteúdo.",
                 p.index + 1,
                 e
             ));
