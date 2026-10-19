@@ -13,6 +13,7 @@ pub mod error;
 pub mod ewf;
 pub mod explorer;
 pub mod external;
+pub mod formats;
 pub mod fs;
 pub mod hashing;
 pub mod health;

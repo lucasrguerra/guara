@@ -18,15 +18,15 @@ pub struct Hit {
 pub fn category_for_ext(ext: &str) -> Category {
     match ext.to_ascii_lowercase().as_str() {
         "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "heic" | "avif" | "tif" | "tiff"
-        | "psd" | "svg" | "ico" | "cr2" | "nef" | "dng" => Category::Image,
+        | "psd" | "svg" | "ico" | "cr2" | "nef" | "dng" | "jp2" => Category::Image,
         "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "odt" | "ods" | "odp"
-        | "txt" | "rtf" | "epub" | "md" | "csv" | "html" | "xml" | "json" => Category::Document,
-        "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "wmv" | "flv" | "mpg" | "mpeg" | "3gp" => {
+        | "txt" | "rtf" | "epub" | "md" | "csv" | "html" | "xml" | "json" | "swf" => Category::Document,
+        "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "wmv" | "flv" | "mpg" | "mpeg" | "3gp" | "ts" => {
             Category::Video
         }
-        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "wma" | "opus" => Category::Audio,
-        "zip" | "rar" | "7z" | "gz" | "tar" | "bz2" | "xz" | "jar" | "apk" => Category::Archive,
-        "sqlite" | "db" | "sqlite3" | "mdb" | "accdb" => Category::Database,
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "wma" | "opus" | "mid" | "aif" => Category::Audio,
+        "zip" | "rar" | "7z" | "gz" | "tar" | "bz2" | "xz" | "jar" | "apk" | "zst" | "cab" | "deb" => Category::Archive,
+        "sqlite" | "db" | "sqlite3" | "mdb" | "accdb" | "pst" | "dat" | "evtx" => Category::Database,
         _ => Category::Other,
     }
 }
@@ -60,6 +60,21 @@ pub fn matches_ext(ext: &str, head: &[u8]) -> Option<bool> {
         "mkv" | "webm" => starts(&[0x1A, 0x45, 0xDF, 0xA3]),
         "sqlite" | "sqlite3" | "db" => starts(b"SQLite format 3\0"),
         "exe" | "dll" => starts(b"MZ"),
+        "bz2" => starts(b"BZh"),
+        "zst" => starts(&[0x28, 0xB5, 0x2F, 0xFD]),
+        "cab" => starts(b"MSCF"),
+        "deb" => starts(b"!<arch>"),
+        "elf" => starts(&[0x7F, b'E', b'L', b'F']),
+        "tif" | "tiff" => starts(&[b'I', b'I', 42, 0]) || starts(&[b'M', b'M', 0, 42]),
+        "ico" => starts(&[0, 0, 1, 0]),
+        "rtf" => starts(b"{\\rtf"),
+        "swf" => starts(b"FWS") || starts(b"CWS"),
+        "flv" => starts(b"FLV"),
+        "pst" => starts(b"!BDN"),
+        "evtx" => starts(b"ElfFile"),
+        "mid" => starts(b"MThd"),
+        "pcap" => starts(&[0xD4, 0xC3, 0xB2, 0xA1]) || starts(&[0xA1, 0xB2, 0xC3, 0xD4]),
+        "wmv" | "wma" => starts(&[0x30, 0x26, 0xB2, 0x75]),
         _ => return None,
     };
     Some(r)
@@ -68,7 +83,8 @@ pub fn matches_ext(ext: &str, head: &[u8]) -> Option<bool> {
 /// Tabela de primeiros bytes -> detectores candidatos.
 /// O carving consulta `candidates(first_byte)` e chama `detect`.
 pub fn might_start(b0: u8) -> bool {
-    matches!(
+    crate::formats::might_start(b0)
+        || matches!(
         b0,
         0xFF | 0x89
             | b'G'
@@ -135,7 +151,7 @@ pub fn detect(src: &dyn Source, off: u64, head: &[u8], max_size: u64) -> Option<
     if h.starts_with(b"MZ") {
         return pe(src, off, max_size);
     }
-    None
+    crate::formats::detect(src, off, h, max_size)
 }
 
 // ---------------------------------------------------------------- JPEG
