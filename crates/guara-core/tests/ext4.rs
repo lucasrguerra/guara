@@ -17,7 +17,13 @@ fn have(tool: &str) -> bool {
 fn debugfs(img: &Path, cmds: &[&str]) -> String {
     let mut out = String::new();
     for c in cmds {
-        let o = Command::new("debugfs").arg("-w").arg("-R").arg(c).arg(img).output().unwrap();
+        let o = Command::new("debugfs")
+            .arg("-w")
+            .arg("-R")
+            .arg(c)
+            .arg(img)
+            .output()
+            .unwrap();
         out.push_str(&String::from_utf8_lossy(&o.stdout));
         out.push_str(&String::from_utf8_lossy(&o.stderr));
     }
@@ -26,7 +32,10 @@ fn debugfs(img: &Path, cmds: &[&str]) -> String {
 
 fn inode_of(img: &Path, path: &str) -> u64 {
     let o = debugfs(img, &[&format!("stat {path}")]);
-    let l = o.lines().find(|l| l.starts_with("Inode:")).unwrap_or_else(|| panic!("{o}"));
+    let l = o
+        .lines()
+        .find(|l| l.starts_with("Inode:"))
+        .unwrap_or_else(|| panic!("{o}"));
     l.split_whitespace().nth(1).unwrap().parse().unwrap()
 }
 
@@ -76,13 +85,24 @@ fn build(opts: &[&str]) -> Option<Img> {
         .arg(&img)
         .output()
         .unwrap();
-    assert!(st.status.success(), "{}", String::from_utf8_lossy(&st.stderr));
-    Some(Img { _dir: dir, img, files })
+    assert!(
+        st.status.success(),
+        "{}",
+        String::from_utf8_lossy(&st.stderr)
+    );
+    Some(Img {
+        _dir: dir,
+        img,
+        files,
+    })
 }
 
 fn deep(img: &Path) -> common::Collect {
     init();
-    let opts = ScanOptions { mode: ScanMode::Deep, ..ScanOptions::default() };
+    let opts = ScanOptions {
+        mode: ScanMode::Deep,
+        ..ScanOptions::default()
+    };
     scan_path(img, &opts)
 }
 
@@ -91,30 +111,60 @@ fn recovered(img: &Path, f: &Found) -> Vec<u8> {
     let rep = recover_all(img, std::slice::from_ref(f), d.path());
     assert!(rep.failed.is_empty(), "{:?}", rep.failed);
     let p = &rep.recovered[0].path;
-    let p = if Path::new(p).is_absolute() { PathBuf::from(p) } else { d.path().join(p) };
+    let p = if Path::new(p).is_absolute() {
+        PathBuf::from(p)
+    } else {
+        d.path().join(p)
+    };
     std::fs::read(p).unwrap()
 }
 
 #[test]
 fn deleted_by_debugfs_keeps_extents_and_name() {
-    let Some(i) = build(&["-t", "ext4"]) else { return };
+    let Some(i) = build(&["-t", "ext4"]) else {
+        return;
+    };
     debugfs(&i.img, &["rm /docs/relatorio.dat", "rm /fotos/viagem.dat"]);
     let c = deep(&i.img);
-    for (p, data) in i.files.iter().filter(|f| f.0 == "docs/relatorio.dat" || f.0 == "fotos/viagem.dat") {
+    for (p, data) in i
+        .files
+        .iter()
+        .filter(|f| f.0 == "docs/relatorio.dat" || f.0 == "fotos/viagem.dat")
+    {
         let name = p.rsplit('/').next().unwrap();
-        let f = c.found.iter().find(|f| f.name == name && f.origin == Origin::Ext).unwrap_or_else(|| panic!("{name} não encontrado: {:?}", c.found.iter().map(|f| (&f.name, f.origin)).collect::<Vec<_>>()));
+        let f = c
+            .found
+            .iter()
+            .find(|f| f.name == name && f.origin == Origin::Ext)
+            .unwrap_or_else(|| {
+                panic!(
+                    "{name} não encontrado: {:?}",
+                    c.found
+                        .iter()
+                        .map(|f| (&f.name, f.origin))
+                        .collect::<Vec<_>>()
+                )
+            });
         assert_eq!(f.size, data.len() as u64);
-        assert_eq!(f.dir.as_deref(), Some(&format!("/{}", p.rsplit_once('/').unwrap().0)[..]));
+        assert_eq!(
+            f.dir.as_deref(),
+            Some(&format!("/{}", p.rsplit_once('/').unwrap().0)[..])
+        );
         assert!(recovered(&i.img, f) == *data, "{name}");
     }
     // O arquivo que não foi apagado não aparece.
-    assert!(!c.found.iter().any(|f| f.name == "fica.dat" && f.origin == Origin::Ext));
+    assert!(!c
+        .found
+        .iter()
+        .any(|f| f.name == "fica.dat" && f.origin == Origin::Ext));
 }
 
 #[test]
 fn truncated_inode_recovered_by_remnant_extents() {
     // Simula o que o kernel faz ao apagar: tamanho zerado e contagem de extents zerada.
-    let Some(i) = build(&["-t", "ext4"]) else { return };
+    let Some(i) = build(&["-t", "ext4"]) else {
+        return;
+    };
     let ino = inode_of(&i.img, "/docs/sub/contrato.dat");
     debugfs(
         &i.img,
@@ -125,7 +175,11 @@ fn truncated_inode_recovered_by_remnant_extents() {
         ],
     );
     let c = deep(&i.img);
-    let f = c.found.iter().find(|f| f.name == "contrato.dat").expect("contrato.dat");
+    let f = c
+        .found
+        .iter()
+        .find(|f| f.name == "contrato.dat")
+        .expect("contrato.dat");
     assert_eq!(f.origin, Origin::Ext);
     // Tamanho exato é perdido: recupera todos os blocos (9000 bytes arredondados para 3 blocos de 4K).
     assert_eq!(f.size, 12288);
@@ -138,7 +192,9 @@ fn journal_copy_restores_exact_size() {
     if !have("debugfs") {
         return;
     }
-    let Some(i) = build(&["-t", "ext4", "-O", "has_journal"]) else { return };
+    let Some(i) = build(&["-t", "ext4", "-O", "has_journal"]) else {
+        return;
+    };
     // Bloco da tabela de inodes que contém o inode do arquivo.
     let ino = inode_of(&i.img, "/fotos/viagem.dat");
     let o = debugfs(&i.img, &["stats"]);
@@ -157,9 +213,23 @@ fn journal_copy_restores_exact_size() {
     let bin = i.img.with_extension("blk");
     std::fs::write(&bin, old).unwrap();
     let script = i.img.with_extension("cmds");
-    std::fs::write(&script, format!("jo\njw -b {blk} {}\njc\njc\n", bin.display())).unwrap();
-    let o = Command::new("debugfs").arg("-w").arg("-f").arg(&script).arg(&i.img).output().unwrap();
-    let j = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+    std::fs::write(
+        &script,
+        format!("jo\njw -b {blk} {}\njc\njc\n", bin.display()),
+    )
+    .unwrap();
+    let o = Command::new("debugfs")
+        .arg("-w")
+        .arg("-f")
+        .arg(&script)
+        .arg(&i.img)
+        .output()
+        .unwrap();
+    let j = format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    );
     if j.contains("Unknown request") || j.contains("not supported") {
         eprintln!("SKIP: debugfs sem suporte a escrita no diário: {j}");
         return;
@@ -174,7 +244,16 @@ fn journal_copy_restores_exact_size() {
         ],
     );
     let c = deep(&i.img);
-    let f = c.found.iter().find(|f| f.name == "viagem.dat").unwrap_or_else(|| panic!("sem viagem.dat: {:?}", c.found.iter().map(|f| &f.name).collect::<Vec<_>>()));
+    let f = c
+        .found
+        .iter()
+        .find(|f| f.name == "viagem.dat")
+        .unwrap_or_else(|| {
+            panic!(
+                "sem viagem.dat: {:?}",
+                c.found.iter().map(|f| &f.name).collect::<Vec<_>>()
+            )
+        });
     assert_eq!(f.size, 700_000, "{:?}", f.note);
     assert!(recovered(&i.img, f) == i.files[2].1);
 }
@@ -183,7 +262,9 @@ fn journal_copy_restores_exact_size() {
 fn ext2_blockmap_deleted_is_not_invented() {
     // ext2 zera os ponteiros ao apagar; sem diário não há o que recuperar por metadados,
     // mas a varredura não pode falhar nem listar o arquivo que continua existindo.
-    let Some(i) = build(&["-t", "ext2"]) else { return };
+    let Some(i) = build(&["-t", "ext2"]) else {
+        return;
+    };
     let c = deep(&i.img);
     assert!(!c.found.iter().any(|f| f.origin == Origin::Ext));
 }

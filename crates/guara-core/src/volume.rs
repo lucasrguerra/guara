@@ -25,8 +25,17 @@ pub struct Overlay {
 impl Overlay {
     pub fn new(base: Arc<dyn Source>, mut regions: Vec<Region>) -> Self {
         regions.sort_by_key(|r| r.start);
-        let size = regions.iter().map(|r| r.start + r.len).max().unwrap_or(0).max(base.size());
-        Self { base, regions, size }
+        let size = regions
+            .iter()
+            .map(|r| r.start + r.len)
+            .max()
+            .unwrap_or(0)
+            .max(base.size());
+        Self {
+            base,
+            regions,
+            size,
+        }
     }
     pub fn regions(&self) -> &[Region] {
         &self.regions

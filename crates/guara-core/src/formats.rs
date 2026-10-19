@@ -7,28 +7,64 @@ use crate::source::{read_vec, Source};
 use crate::types::Confidence;
 
 fn u16le(b: &[u8], o: usize) -> u64 {
-    b.get(o..o + 2).map(|s| u16::from_le_bytes([s[0], s[1]]) as u64).unwrap_or(0)
+    b.get(o..o + 2)
+        .map(|s| u16::from_le_bytes([s[0], s[1]]) as u64)
+        .unwrap_or(0)
 }
 fn u32le(b: &[u8], o: usize) -> u64 {
-    b.get(o..o + 4).map(|s| u32::from_le_bytes(s.try_into().unwrap()) as u64).unwrap_or(0)
+    b.get(o..o + 4)
+        .map(|s| u32::from_le_bytes(s.try_into().unwrap()) as u64)
+        .unwrap_or(0)
 }
 fn u64le(b: &[u8], o: usize) -> u64 {
-    b.get(o..o + 8).map(|s| u64::from_le_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 8)
+        .map(|s| u64::from_le_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 fn u32be(b: &[u8], o: usize) -> u64 {
-    b.get(o..o + 4).map(|s| u32::from_be_bytes(s.try_into().unwrap()) as u64).unwrap_or(0)
+    b.get(o..o + 4)
+        .map(|s| u32::from_be_bytes(s.try_into().unwrap()) as u64)
+        .unwrap_or(0)
 }
 fn u16be(b: &[u8], o: usize) -> u64 {
-    b.get(o..o + 2).map(|s| u16::from_be_bytes([s[0], s[1]]) as u64).unwrap_or(0)
+    b.get(o..o + 2)
+        .map(|s| u16::from_be_bytes([s[0], s[1]]) as u64)
+        .unwrap_or(0)
 }
 
 fn hit(len: u64, ext: &'static str, confidence: Confidence) -> Option<Hit> {
-    Some(Hit { len, ext, confidence })
+    Some(Hit {
+        len,
+        ext,
+        confidence,
+    })
 }
 
 /// Primeiros bytes que disparam os detectores deste módulo.
 pub fn might_start(b0: u8) -> bool {
-    matches!(b0, 0x1F | b'B' | 0x1A | b'O' | b'R' | 0x7F | b'I' | b'M' | 0x00 | b'r' | b'E' | 0x47 | b'!' | b'F' | b'C' | b'Z' | 0x30 | b'{' | 0x28 | 0xD4 | 0x0A)
+    matches!(
+        b0,
+        0x1F | b'B'
+            | 0x1A
+            | b'O'
+            | b'R'
+            | 0x7F
+            | b'I'
+            | b'M'
+            | 0x00
+            | b'r'
+            | b'E'
+            | 0x47
+            | b'!'
+            | b'F'
+            | b'C'
+            | b'Z'
+            | 0x30
+            | b'{'
+            | 0x28
+            | 0xD4
+            | 0x0A
+    )
 }
 
 /// Tenta os formatos adicionais. `h` são os primeiros bytes (>= 12) lidos em `off`.
@@ -36,7 +72,10 @@ pub fn detect(src: &dyn Source, off: u64, h: &[u8], max: u64) -> Option<Hit> {
     if h.starts_with(&[0x1F, 0x8B, 0x08]) {
         return gzip(src, off, max);
     }
-    if h.starts_with(b"BZh") && (b'1'..=b'9').contains(&h[3]) && h[4..10] == [0x31, 0x41, 0x59, 0x26, 0x53, 0x59] {
+    if h.starts_with(b"BZh")
+        && (b'1'..=b'9').contains(&h[3])
+        && h[4..10] == [0x31, 0x41, 0x59, 0x26, 0x53, 0x59]
+    {
         return bzip2(src, off, max);
     }
     if h.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
@@ -68,7 +107,9 @@ pub fn detect(src: &dyn Source, off: u64, h: &[u8], max: u64) -> Option<Hit> {
     }
     if h.starts_with(b"MSCF") {
         let len = u32le(h, 8);
-        return (len > 36 && len <= max).then(|| ()).and_then(|_| hit(len, "cab", Confidence::High));
+        return (len > 36 && len <= max)
+            .then_some(())
+            .and_then(|_| hit(len, "cab", Confidence::High));
     }
     if h.starts_with(b"!<arch>\n") {
         return ar(src, off, max);
@@ -96,7 +137,9 @@ pub fn detect(src: &dyn Source, off: u64, h: &[u8], max: u64) -> Option<Hit> {
     }
     if h.starts_with(b"FORM") && matches!(&h[8..12], b"AIFF" | b"AIFC") {
         let len = u32be(h, 4) + 8;
-        return (len <= max).then(|| ()).and_then(|_| hit(len, "aif", Confidence::High));
+        return (len <= max)
+            .then_some(())
+            .and_then(|_| hit(len, "aif", Confidence::High));
     }
     if h.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
         return zstd(src, off, max);
@@ -113,7 +156,13 @@ pub fn detect(src: &dyn Source, off: u64, h: &[u8], max: u64) -> Option<Hit> {
 // -------------------------------------------------------------- compactadores
 
 /// Alimenta um descompactador com blocos de `src` até o fim do fluxo; devolve (bytes lidos, saída crc32 opcional).
-fn inflate_len(src: &dyn Source, start: u64, max: u64, raw: bool, zlib_header: bool) -> Option<(u64, u32, u64)> {
+fn inflate_len(
+    src: &dyn Source,
+    start: u64,
+    max: u64,
+    raw: bool,
+    zlib_header: bool,
+) -> Option<(u64, u32, u64)> {
     let mut d = flate2::Decompress::new(zlib_header && !raw);
     let mut pos = start;
     let mut out = vec![0u8; 1 << 16];
@@ -132,13 +181,19 @@ fn inflate_len(src: &dyn Source, start: u64, max: u64, raw: bool, zlib_header: b
         while consumed < n {
             let before_in = d.total_in();
             let before_out = d.total_out();
-            let status = d.decompress(&buf[consumed..n], &mut out, flate2::FlushDecompress::None).ok()?;
+            let status = d
+                .decompress(&buf[consumed..n], &mut out, flate2::FlushDecompress::None)
+                .ok()?;
             let used = (d.total_in() - before_in) as usize;
             let produced = (d.total_out() - before_out) as usize;
             for &b in &out[..produced] {
                 crc ^= b as u32;
                 for _ in 0..8 {
-                    crc = if crc & 1 != 0 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+                    crc = if crc & 1 != 0 {
+                        (crc >> 1) ^ 0xEDB8_8320
+                    } else {
+                        crc >> 1
+                    };
                 }
             }
             total_out += produced as u64;
@@ -178,7 +233,15 @@ fn gzip(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
         return None;
     }
     let ok = u32le(&trailer, 0) as u32 == crc && u32le(&trailer, 4) == out_len & 0xFFFF_FFFF;
-    hit(p as u64 + consumed + 8, "gz", if ok { Confidence::High } else { Confidence::Medium })
+    hit(
+        p as u64 + consumed + 8,
+        "gz",
+        if ok {
+            Confidence::High
+        } else {
+            Confidence::Medium
+        },
+    )
 }
 
 fn bzip2(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
@@ -286,8 +349,13 @@ fn matroska(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
     let h = read_vec(src, off, 4096).ok()?;
     let (hs, hl, _) = vint(&h[4..])?;
     let mut p = 4 + hl + hs as usize;
-    let doctype = String::from_utf8_lossy(&h[4 + hl..(4 + hl + hs as usize).min(h.len())]).to_string();
-    let ext = if doctype.contains("webm") { "webm" } else { "mkv" };
+    let doctype =
+        String::from_utf8_lossy(&h[4 + hl..(4 + hl + hs as usize).min(h.len())]).to_string();
+    let ext = if doctype.contains("webm") {
+        "webm"
+    } else {
+        "mkv"
+    };
     if h.get(p..p + 4)? != [0x18, 0x53, 0x80, 0x67] {
         return None;
     }
@@ -307,9 +375,13 @@ fn matroska(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
         if e.len() < 6 {
             break;
         }
-        let Some((id, idl, _)) = (e[0] >= 0x10).then(|| vint_id(&e)).flatten() else { break };
+        let Some((id, idl, _)) = (e[0] >= 0x10).then(|| vint_id(&e)).flatten() else {
+            break;
+        };
         let _ = id;
-        let Some((size, sl2, unk)) = vint(&e[idl..]) else { break };
+        let Some((size, sl2, unk)) = vint(&e[idl..]) else {
+            break;
+        };
         if unk {
             break;
         }
@@ -370,7 +442,17 @@ fn ogg(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
             break;
         }
     }
-    (pages >= 2).then(|| ()).and_then(|_| hit(pos - off, "ogg", if eos { Confidence::High } else { Confidence::Low }))
+    (pages >= 2).then_some(()).and_then(|_| {
+        hit(
+            pos - off,
+            "ogg",
+            if eos {
+                Confidence::High
+            } else {
+                Confidence::Low
+            },
+        )
+    })
 }
 
 fn mpegts(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
@@ -396,7 +478,9 @@ fn mpegts(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
         }
     }
     let len = n_packets * 188;
-    (n_packets >= 16).then(|| ()).and_then(|_| hit(len, "ts", Confidence::Medium))
+    (n_packets >= 16)
+        .then_some(())
+        .and_then(|_| hit(len, "ts", Confidence::Medium))
 }
 
 fn flv(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
@@ -420,14 +504,16 @@ fn flv(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
             return None;
         }
     }
-    (tags > 3).then(|| ()).and_then(|_| hit(pos + 4 - off, "flv", Confidence::Medium))
+    (tags > 3)
+        .then_some(())
+        .and_then(|_| hit(pos + 4 - off, "flv", Confidence::Medium))
 }
 
 fn asf(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
     let h = read_vec(src, off, 30).ok()?;
     let hdr_size = u64le(&h, 16);
     let n_objs = u32le(&h, 24);
-    if hdr_size < 30 || hdr_size > 1 << 24 {
+    if !(30..=1 << 24).contains(&hdr_size) {
         return None;
     }
     let all = read_vec(src, off + 30, (hdr_size - 30) as usize).ok()?;
@@ -437,7 +523,12 @@ fn asf(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
             break;
         }
         let size = u64le(&all, p + 16) as usize;
-        if all[p..p + 16] == [0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11, 0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65] {
+        if all[p..p + 16]
+            == [
+                0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11, 0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20,
+                0x53, 0x65,
+            ]
+        {
             let fsize = u64le(&all, p + 40);
             if fsize >= hdr_size && fsize <= max {
                 return hit(fsize, "wmv", Confidence::High);
@@ -596,7 +687,9 @@ fn ar(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
             return None;
         }
     }
-    (members >= 2).then(|| ()).and_then(|_| hit(pos - off, "deb", Confidence::Medium))
+    (members >= 2)
+        .then_some(())
+        .and_then(|_| hit(pos - off, "deb", Confidence::Medium))
 }
 
 fn swf(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
@@ -606,11 +699,21 @@ fn swf(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
         return None;
     }
     if h[0] == b'F' {
-        return (len > 21 && len <= max).then(|| ()).and_then(|_| hit(len, "swf", Confidence::High));
+        return (len > 21 && len <= max)
+            .then_some(())
+            .and_then(|_| hit(len, "swf", Confidence::High));
     }
     // CWS: corpo em zlib a partir do byte 8
     let (consumed, _, out) = inflate_len(src, off + 8, max, false, true)?;
-    hit(8 + consumed, "swf", if out + 8 == len { Confidence::High } else { Confidence::Medium })
+    hit(
+        8 + consumed,
+        "swf",
+        if out + 8 == len {
+            Confidence::High
+        } else {
+            Confidence::Medium
+        },
+    )
 }
 
 // ---------------------------------------------------------- binários e dados
@@ -635,9 +738,23 @@ fn elf(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
         return None;
     }
     let (shoff, shentsize, shnum, phoff, phentsize, phnum) = if is64 {
-        (rd(40, 8), rd(58, 2), rd(60, 2), rd(32, 8), rd(54, 2), rd(56, 2))
+        (
+            rd(40, 8),
+            rd(58, 2),
+            rd(60, 2),
+            rd(32, 8),
+            rd(54, 2),
+            rd(56, 2),
+        )
     } else {
-        (rd(32, 4), rd(46, 2), rd(48, 2), rd(28, 4), rd(42, 2), rd(44, 2))
+        (
+            rd(32, 4),
+            rd(46, 2),
+            rd(48, 2),
+            rd(28, 4),
+            rd(42, 2),
+            rd(44, 2),
+        )
     };
     let mut end = shoff + shentsize * shnum;
     // Segmentos de programa podem ir além (binários sem tabela de seções).
@@ -653,11 +770,27 @@ fn elf(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
                 }
                 v
             };
-            let (po, fs) = if is64 { (rd2(8, 8), rd2(32, 8)) } else { (rd2(4, 4), rd2(16, 4)) };
+            let (po, fs) = if is64 {
+                (rd2(8, 8), rd2(32, 8))
+            } else {
+                (rd2(4, 4), rd2(16, 4))
+            };
             end = end.max(po + fs);
         }
     }
-    (end > 64 && end <= max.min(4 << 30)).then(|| ()).and_then(|_| hit(end, "elf", if shoff > 0 { Confidence::High } else { Confidence::Medium }))
+    (end > 64 && end <= max.min(4 << 30))
+        .then_some(())
+        .and_then(|_| {
+            hit(
+                end,
+                "elf",
+                if shoff > 0 {
+                    Confidence::High
+                } else {
+                    Confidence::Medium
+                },
+            )
+        })
 }
 
 fn tiff(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
@@ -665,11 +798,22 @@ fn tiff(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
     let le = h[0] == b'I';
     let r16 = |b: &[u8], o: usize| -> u64 {
         let s = b.get(o..o + 2).unwrap_or(&[0, 0]);
-        if le { u16::from_le_bytes([s[0], s[1]]) as u64 } else { u16::from_be_bytes([s[0], s[1]]) as u64 }
+        if le {
+            u16::from_le_bytes([s[0], s[1]]) as u64
+        } else {
+            u16::from_be_bytes([s[0], s[1]]) as u64
+        }
     };
     let r32 = |b: &[u8], o: usize| -> u64 {
-        let s: [u8; 4] = b.get(o..o + 4).and_then(|x| x.try_into().ok()).unwrap_or([0; 4]);
-        if le { u32::from_le_bytes(s) as u64 } else { u32::from_be_bytes(s) as u64 }
+        let s: [u8; 4] = b
+            .get(o..o + 4)
+            .and_then(|x| x.try_into().ok())
+            .unwrap_or([0; 4]);
+        if le {
+            u32::from_le_bytes(s) as u64
+        } else {
+            u32::from_be_bytes(s) as u64
+        }
     };
     let mut ifd = r32(&h, 4);
     let mut end = 8u64;
@@ -714,7 +858,11 @@ fn tiff(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
                 if count == 0 || count > 1 << 20 {
                     return out;
                 }
-                let bytes: Vec<u8> = if total <= 4 { en[8..8 + total as usize].to_vec() } else { read_vec(src, off + value_off, total as usize).unwrap_or_default() };
+                let bytes: Vec<u8> = if total <= 4 {
+                    en[8..8 + total as usize].to_vec()
+                } else {
+                    read_vec(src, off + value_off, total as usize).unwrap_or_default()
+                };
                 for k in 0..count as usize {
                     let v = match sz {
                         2 => r16(&bytes, k * 2),
@@ -726,8 +874,20 @@ fn tiff(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
                 out
             };
             match tag {
-                273 | 324 | 513 => strip_off = if tag == 513 { vec![r32(en, 8)] } else { read_vals(count) },
-                279 | 325 | 514 => strip_cnt = if tag == 514 { vec![r32(en, 8)] } else { read_vals(count) },
+                273 | 324 | 513 => {
+                    strip_off = if tag == 513 {
+                        vec![r32(en, 8)]
+                    } else {
+                        read_vals(count)
+                    }
+                }
+                279 | 325 | 514 => {
+                    strip_cnt = if tag == 514 {
+                        vec![r32(en, 8)]
+                    } else {
+                        read_vals(count)
+                    }
+                }
                 330 | 34665 | 34853 | 40965 => {
                     if ty == 4 && count == 1 {
                         subs.push(value_off);
@@ -739,7 +899,10 @@ fn tiff(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
                 }
                 _ => {}
             }
-            if (tag == 273 || tag == 324 || tag == 513) && !strip_off.is_empty() && !strip_cnt.is_empty() {
+            if (tag == 273 || tag == 324 || tag == 513)
+                && !strip_off.is_empty()
+                && !strip_cnt.is_empty()
+            {
                 for (o, c) in strip_off.iter().zip(&strip_cnt) {
                     end = end.max(o + c);
                 }
@@ -749,13 +912,23 @@ fn tiff(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
             end = end.max(o + c);
         }
         seen += 1;
-        ifd = if let Some(s) = subs.pop() { s } else { r32(&e, n * 12) };
+        ifd = if let Some(s) = subs.pop() {
+            s
+        } else {
+            r32(&e, n * 12)
+        };
         if end > max {
             return None;
         }
     }
-    let ext = if h.get(8..10) == Some(b"CR") { "cr2" } else { "tif" };
-    (end > 16).then(|| ()).and_then(|_| hit(end, ext, Confidence::Medium))
+    let ext = if h.get(8..10) == Some(b"CR") {
+        "cr2"
+    } else {
+        "tif"
+    };
+    (end > 16)
+        .then_some(())
+        .and_then(|_| hit(end, ext, Confidence::Medium))
 }
 
 fn ico(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
@@ -795,7 +968,17 @@ fn regf(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
     }
     let ok = x == u32le(&h, 0x1FC) as u32;
     let len = 4096 + u32le(&h, 0x28);
-    (len > 4096 && len <= max).then(|| ()).and_then(|_| hit(len, "dat", if ok { Confidence::High } else { Confidence::Medium }))
+    (len > 4096 && len <= max).then_some(()).and_then(|_| {
+        hit(
+            len,
+            "dat",
+            if ok {
+                Confidence::High
+            } else {
+                Confidence::Medium
+            },
+        )
+    })
 }
 
 fn evtx(src: &dyn Source, off: u64) -> Option<Hit> {
@@ -817,8 +1000,14 @@ fn pst(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
         return None;
     }
     let ver = u16le(&h, 10);
-    let len = if ver >= 23 { u64le(&h, 0xB8) } else { u32le(&h, 0xA8) };
-    (len > 0x200 && len <= max).then(|| ()).and_then(|_| hit(len, "pst", Confidence::High))
+    let len = if ver >= 23 {
+        u64le(&h, 0xB8)
+    } else {
+        u32le(&h, 0xA8)
+    };
+    (len > 0x200 && len <= max)
+        .then_some(())
+        .and_then(|_| hit(len, "pst", Confidence::High))
 }
 
 fn rtf(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
@@ -863,7 +1052,11 @@ fn pcap(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
     let le = h[0] == 0xD4;
     let r32 = |b: &[u8], o: usize| -> u64 {
         let s: [u8; 4] = b[o..o + 4].try_into().unwrap();
-        if le { u32::from_le_bytes(s) as u64 } else { u32::from_be_bytes(s) as u64 }
+        if le {
+            u32::from_le_bytes(s) as u64
+        } else {
+            u32::from_be_bytes(s) as u64
+        }
     };
     let snaplen = r32(&h, 16);
     if snaplen == 0 || snaplen > 1 << 20 {
@@ -896,7 +1089,9 @@ fn pcap(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
             return None;
         }
     }
-    (n > 0).then(|| ()).and_then(|_| hit(pos - off, "pcap", Confidence::Medium))
+    (n > 0)
+        .then_some(())
+        .and_then(|_| hit(pos - off, "pcap", Confidence::Medium))
 }
 
 fn pcapng(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
@@ -908,7 +1103,11 @@ fn pcapng(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
     };
     let r32 = |b: &[u8], o: usize| -> u64 {
         let s: [u8; 4] = b[o..o + 4].try_into().unwrap();
-        if le { u32::from_le_bytes(s) as u64 } else { u32::from_be_bytes(s) as u64 }
+        if le {
+            u32::from_le_bytes(s) as u64
+        } else {
+            u32::from_be_bytes(s) as u64
+        }
     };
     let mut pos = off;
     let mut blocks = 0;
@@ -931,5 +1130,7 @@ fn pcapng(src: &dyn Source, off: u64, max: u64) -> Option<Hit> {
             return None;
         }
     }
-    (blocks >= 2).then(|| ()).and_then(|_| hit(pos - off, "pcapng", Confidence::Medium))
+    (blocks >= 2)
+        .then_some(())
+        .and_then(|_| hit(pos - off, "pcapng", Confidence::Medium))
 }

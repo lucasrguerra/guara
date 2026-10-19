@@ -18,13 +18,19 @@ const EXT_MAGIC: u16 = 0xF30A;
 const JBD2_MAGIC: u32 = 0xC03B_3998;
 
 fn le16(b: &[u8], o: usize) -> u16 {
-    b.get(o..o + 2).map(|s| u16::from_le_bytes([s[0], s[1]])).unwrap_or(0)
+    b.get(o..o + 2)
+        .map(|s| u16::from_le_bytes([s[0], s[1]]))
+        .unwrap_or(0)
 }
 fn le32(b: &[u8], o: usize) -> u32 {
-    b.get(o..o + 4).map(|s| u32::from_le_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 4)
+        .map(|s| u32::from_le_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 fn be32(b: &[u8], o: usize) -> u32 {
-    b.get(o..o + 4).map(|s| u32::from_be_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 4)
+        .map(|s| u32::from_be_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 
 #[derive(Clone, Copy, Default)]
@@ -102,7 +108,9 @@ type ExtentList = Vec<(u64, u64, u64, bool)>;
 
 impl<'a> Ext<'a> {
     fn open(src: &'a dyn Source, base: u64) -> Option<Self> {
-        let sb = read_vec(src, base + 1024, 1024).ok().filter(|s| s.len() == 1024)?;
+        let sb = read_vec(src, base + 1024, 1024)
+            .ok()
+            .filter(|s| s.len() == 1024)?;
         if le16(&sb, 56) != 0xEF53 {
             return None;
         }
@@ -125,7 +133,11 @@ impl<'a> Ext<'a> {
         if !(128..=4096).contains(&inode_size) {
             return None;
         }
-        let desc_size = if is64 { (le16(&sb, 254) as u64).max(64) } else { 32 };
+        let desc_size = if is64 {
+            (le16(&sb, 254) as u64).max(64)
+        } else {
+            32
+        };
         let ngroups = blocks.saturating_sub(first_data).div_ceil(bpg);
         let gdt_block = first_data + 1;
         let gdt = read_vec(src, base + gdt_block * bs, (ngroups * desc_size) as usize).ok()?;
@@ -190,7 +202,13 @@ impl<'a> Ext<'a> {
     }
 
     /// Extents de uma árvore ext4 (raiz em `node`, 60 bytes ou um bloco).
-    fn walk_extent_node(&self, node: &[u8], depth_limit: u32, out: &mut ExtentList, strict: bool) -> bool {
+    fn walk_extent_node(
+        &self,
+        node: &[u8],
+        depth_limit: u32,
+        out: &mut ExtentList,
+        strict: bool,
+    ) -> bool {
         if node.len() < 12 || le16(node, 0) != EXT_MAGIC {
             return false;
         }
@@ -219,7 +237,9 @@ impl<'a> Ext<'a> {
                 out.push((lblk, start, len, uninit));
             } else {
                 let child = ((le16(e, 8) as u64) << 32) | le32(e, 4) as u64;
-                let Some(b) = self.read_block(child) else { return false };
+                let Some(b) = self.read_block(child) else {
+                    return false;
+                };
                 if !self.walk_extent_node(&b, depth - 1, out, true) {
                     return false;
                 }
@@ -249,14 +269,12 @@ impl<'a> Ext<'a> {
             v.truncate(max_blocks as usize);
         } else {
             ind(ptr(12), &mut v);
-            if (v.len() as u64) < max_blocks {
-                if ptr(13) != 0 {
-                    if let Some(d) = self.read_block(ptr(13)) {
-                        for i in 0..ppb as usize {
-                            ind(le32(&d, i * 4) as u64, &mut v);
-                            if v.len() as u64 >= max_blocks {
-                                break;
-                            }
+            if (v.len() as u64) < max_blocks && ptr(13) != 0 {
+                if let Some(d) = self.read_block(ptr(13)) {
+                    for i in 0..ppb as usize {
+                        ind(le32(&d, i * 4) as u64, &mut v);
+                        if v.len() as u64 >= max_blocks {
+                            break;
                         }
                     }
                 }
@@ -311,14 +329,22 @@ impl<'a> Ext<'a> {
             }
             if l > cur_l {
                 let hole = ((l - cur_l) * self.bs).min(left);
-                out.push(Extent { offset: 0, len: hole, sparse: true });
+                out.push(Extent {
+                    offset: 0,
+                    len: hole,
+                    sparse: true,
+                });
                 left -= hole;
                 if left == 0 {
                     break;
                 }
             }
             let take = (n * self.bs).min(left);
-            out.push(Extent { offset: self.base + p * self.bs, len: take, sparse: uninit });
+            out.push(Extent {
+                offset: self.base + p * self.bs,
+                len: take,
+                sparse: uninit,
+            });
             left -= take;
             cur_l = l + n;
         }
@@ -340,9 +366,13 @@ impl<'a> Ext<'a> {
             if gr.flags & 0x2 != 0 {
                 used_bits.fill(false);
                 free.push(Extent::new(self.base + gstart * self.bs, gblocks * self.bs));
-            } else if let Some(bm) = read_vec(self.src, self.base + gr.block_bitmap * self.bs, gblocks.div_ceil(8) as usize)
-                .ok()
-                .filter(|b| b.len() as u64 == gblocks.div_ceil(8))
+            } else if let Some(bm) = read_vec(
+                self.src,
+                self.base + gr.block_bitmap * self.bs,
+                gblocks.div_ceil(8) as usize,
+            )
+            .ok()
+            .filter(|b| b.len() as u64 == gblocks.div_ceil(8))
             {
                 let mut run: Option<u64> = None;
                 for i in 0..gblocks {
@@ -351,14 +381,20 @@ impl<'a> Ext<'a> {
                     match (used, run) {
                         (false, None) => run = Some(i),
                         (true, Some(s)) => {
-                            free.push(Extent::new(self.base + (gstart + s) * self.bs, (i - s) * self.bs));
+                            free.push(Extent::new(
+                                self.base + (gstart + s) * self.bs,
+                                (i - s) * self.bs,
+                            ));
                             run = None;
                         }
                         _ => {}
                     }
                 }
                 if let Some(s) = run {
-                    free.push(Extent::new(self.base + (gstart + s) * self.bs, (gblocks - s) * self.bs));
+                    free.push(Extent::new(
+                        self.base + (gstart + s) * self.bs,
+                        (gblocks - s) * self.bs,
+                    ));
                 }
             }
             allocated_all.extend(used_bits);
@@ -395,7 +431,11 @@ fn parse_dir_block(b: &[u8], max_ino: u64, out: &mut Vec<DirEnt>) {
         let real = (8 + nlen).div_ceil(4) * 4;
         if ino != 0 && nlen > 0 && ino <= max_ino {
             let name = String::from_utf8_lossy(&b[off + 8..off + 8 + nlen]).to_string();
-            out.push(DirEnt { ino, name, live: true });
+            out.push(DirEnt {
+                ino,
+                name,
+                live: true,
+            });
         }
         // Folga: entradas apagadas ficam coladas depois do fim "real" desta.
         let mut s = off + if ino != 0 || nlen > 0 { real } else { 8 };
@@ -413,7 +453,9 @@ fn parse_dir_block(b: &[u8], max_ino: u64, out: &mut Vec<DirEnt>) {
                 && drec >= 8 + dn
                 && drec % 4 == 0
                 && s + drec <= end
-                && b[s + 8..s + 8 + dn].iter().all(|&c| c >= 0x20 && c != b'/' && c != 0x7f);
+                && b[s + 8..s + 8 + dn]
+                    .iter()
+                    .all(|&c| c >= 0x20 && c != b'/' && c != 0x7f);
             if !ok {
                 s += 4;
                 continue;
@@ -437,16 +479,22 @@ struct Names {
 }
 
 fn walk_dirs(ext: &Ext, ctx: &Ctx) -> Names {
-    let mut names = Names { live: HashMap::new(), dead: HashMap::new() };
+    let mut names = Names {
+        live: HashMap::new(),
+        dead: HashMap::new(),
+    };
     let mut queue: Vec<(u64, String)> = vec![(2, String::new())];
     let mut seen: HashSet<u64> = HashSet::new();
     let mut visited = 0usize;
     while let Some((dino, path)) = queue.pop() {
-        if !seen.insert(dino) || (visited % 256 == 255 && (ctx.cancelled)()) || visited > 2_000_000 {
+        if !seen.insert(dino) || (visited % 256 == 255 && (ctx.cancelled)()) || visited > 2_000_000
+        {
             continue;
         }
         visited += 1;
-        let Some(ino) = ext.read_inode(dino).filter(|i| i.is_dir()) else { continue };
+        let Some(ino) = ext.read_inode(dino).filter(|i| i.is_dir()) else {
+            continue;
+        };
         let mut ents = vec![];
         for e in ext.file_extents(&ino, ino.size.min(64 << 20)) {
             if e.sparse {
@@ -467,10 +515,16 @@ fn walk_dirs(ext: &Ext, ctx: &Ctx) -> Names {
                 continue;
             }
             if en.live {
-                names.live.entry(en.ino).or_insert_with(|| (path.clone(), en.name.clone()));
+                names
+                    .live
+                    .entry(en.ino)
+                    .or_insert_with(|| (path.clone(), en.name.clone()));
                 queue.push((en.ino, format!("{}/{}", path, en.name)));
             } else {
-                names.dead.entry(en.ino).or_insert_with(|| (path.clone(), en.name));
+                names
+                    .dead
+                    .entry(en.ino)
+                    .or_insert_with(|| (path.clone(), en.name));
             }
         }
     }
@@ -485,7 +539,9 @@ fn journal_inodes(ext: &Ext, ctx: &Ctx) -> HashMap<u64, Vec<Vec<u8>>> {
     if ext.journal_inum == 0 {
         return out;
     }
-    let Some(jino) = ext.read_inode(ext.journal_inum as u64) else { return out };
+    let Some(jino) = ext.read_inode(ext.journal_inum as u64) else {
+        return out;
+    };
     let jext = ext.file_extents(&jino, jino.size.min(1 << 30));
     // Blocos físicos do diário em ordem lógica.
     let mut jblocks: Vec<u64> = vec![];
@@ -500,7 +556,9 @@ fn journal_inodes(ext: &Ext, ctx: &Ctx) -> HashMap<u64, Vec<Vec<u8>>> {
     if jblocks.len() < 4 {
         return out;
     }
-    let Some(jsb) = ext.read_block(jblocks[0]) else { return out };
+    let Some(jsb) = ext.read_block(jblocks[0]) else {
+        return out;
+    };
     if be32(&jsb, 0) != JBD2_MAGIC {
         return out;
     }
@@ -512,13 +570,21 @@ fn journal_inodes(ext: &Ext, ctx: &Ctx) -> HashMap<u64, Vec<Vec<u8>>> {
     let is64 = incompat & 0x2 != 0;
     let csum_v3 = incompat & 0x10 != 0;
     let csum_v2 = incompat & 0x8 != 0;
-    let tag_bytes = if csum_v3 { 16 } else { 8 + if is64 { 4 } else { 0 } };
+    let tag_bytes = if csum_v3 {
+        16
+    } else {
+        8 + if is64 { 4 } else { 0 }
+    };
     let have_csum = csum_v2 || csum_v3;
     // Tabela de inodes: faixa de blocos de cada grupo.
     let itable_blocks = (ext.ipg * ext.inode_size).div_ceil(ext.bs);
     let mut tables: Vec<(u64, u64, u64)> = vec![]; // (início, fim, primeiro inode)
     for (g, gr) in ext.groups.iter().enumerate() {
-        tables.push((gr.inode_table, gr.inode_table + itable_blocks, g as u64 * ext.ipg + 1));
+        tables.push((
+            gr.inode_table,
+            gr.inode_table + itable_blocks,
+            g as u64 * ext.ipg + 1,
+        ));
     }
     let n = jblocks.len();
     let first = (be32(&jsb, 20) as usize).clamp(1, n);
@@ -540,7 +606,9 @@ fn journal_inodes(ext: &Ext, ctx: &Ctx) -> HashMap<u64, Vec<Vec<u8>>> {
     }
     seqs.sort_by_key(|s| s.0);
     for (_seq, didx) in seqs {
-        let Some(d) = ext.read_block(jblocks[didx]) else { continue };
+        let Some(d) = ext.read_block(jblocks[didx]) else {
+            continue;
+        };
         let limit = d.len() - if have_csum { 4 } else { 0 };
         let mut off = 12usize;
         let mut data_idx = didx + 1;
@@ -552,14 +620,21 @@ fn journal_inodes(ext: &Ext, ctx: &Ctx) -> HashMap<u64, Vec<Vec<u8>>> {
             let (flags, hi) = if csum_v3 {
                 (be32(&d, off + 4), be32(&d, off + 8))
             } else {
-                (u16::from_be_bytes([d[off + 6], d[off + 7]]) as u32, if is64 { be32(&d, off + 8) } else { 0 })
+                (
+                    u16::from_be_bytes([d[off + 6], d[off + 7]]) as u32,
+                    if is64 { be32(&d, off + 8) } else { 0 },
+                )
             };
             blk |= (hi as u64) << 32;
             off += tag_bytes;
             if flags & 2 == 0 {
                 off += 16;
             }
-            let di = if data_idx >= n { first + (data_idx - n) } else { data_idx };
+            let di = if data_idx >= n {
+                first + (data_idx - n)
+            } else {
+                data_idx
+            };
             data_idx += 1;
             if flags & 4 == 0 {
                 if let Some(t) = tables.iter().position(|t| blk >= t.0 && blk < t.1) {
@@ -570,9 +645,12 @@ fn journal_inodes(ext: &Ext, ctx: &Ctx) -> HashMap<u64, Vec<Vec<u8>>> {
                         let per_block = (ext.bs / ext.inode_size) as usize;
                         let first_ino = tables[t].2 + (blk - tables[t].0) * per_block as u64;
                         for k in 0..per_block {
-                            let rec = &data[k * ext.inode_size as usize..(k + 1) * ext.inode_size as usize];
+                            let rec = &data
+                                [k * ext.inode_size as usize..(k + 1) * ext.inode_size as usize];
                             if rec[..128].iter().any(|&x| x != 0) {
-                                out.entry(first_ino + k as u64).or_default().push(rec.to_vec());
+                                out.entry(first_ino + k as u64)
+                                    .or_default()
+                                    .push(rec.to_vec());
                             }
                         }
                     }
@@ -612,13 +690,20 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
             continue; // INODE_UNINIT
         }
         let used = ext.ipg.saturating_sub(gr.itable_unused as u64).min(ext.ipg);
-        let Some(table) = read_vec(ext.src, ext.base + gr.inode_table * ext.bs, (used * ext.inode_size) as usize).ok() else {
+        let Some(table) = read_vec(
+            ext.src,
+            ext.base + gr.inode_table * ext.bs,
+            (used * ext.inode_size) as usize,
+        )
+        .ok() else {
             continue;
         };
         for i in 0..(table.len() as u64 / ext.inode_size) {
             let ino_no = g as u64 * ext.ipg + i + 1;
             let raw = &table[(i * ext.inode_size) as usize..((i + 1) * ext.inode_size) as usize];
-            let Some(ino) = Inode::parse(raw) else { continue };
+            let Some(ino) = Inode::parse(raw) else {
+                continue;
+            };
             if names.live.contains_key(&ino_no) || ino_no < 11 || ino.mode == 0 {
                 continue;
             }
@@ -645,7 +730,16 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
                 cand = Some((ino.clone(), "inode"));
             }
             if let Some((c, src_kind)) = cand {
-                if emit_inode(ctx, &ext, &alloc, &names, ino_no, &c, src_kind, &mut seen_extents) {
+                if emit_inode(
+                    ctx,
+                    &ext,
+                    &alloc,
+                    &names,
+                    ino_no,
+                    &c,
+                    src_kind,
+                    &mut seen_extents,
+                ) {
                     emitted.insert(ino_no);
                 }
             }
@@ -662,15 +756,31 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
         }
         let cur = ext.read_inode(*ino_no);
         // Se o inode atual está vivo e é outro arquivo, não mexe.
-        if cur.as_ref().map(|c| c.dtime == 0 && c.links > 0 && c.mode != 0).unwrap_or(false) {
+        if cur
+            .as_ref()
+            .map(|c| c.dtime == 0 && c.links > 0 && c.mode != 0)
+            .unwrap_or(false)
+        {
             continue;
         }
         for raw in snaps.iter().rev() {
             if let Some(j) = Inode::parse(raw) {
-                if j.is_reg() && j.size > 0 && j.dtime == 0 && j.links > 0 {
-                    if emit_inode(ctx, &ext, &alloc, &names, *ino_no, &j, "diário", &mut seen_extents) {
-                        break;
-                    }
+                if j.is_reg()
+                    && j.size > 0
+                    && j.dtime == 0
+                    && j.links > 0
+                    && emit_inode(
+                        ctx,
+                        &ext,
+                        &alloc,
+                        &names,
+                        *ino_no,
+                        &j,
+                        "diário",
+                        &mut seen_extents,
+                    )
+                {
+                    break;
                 }
             }
         }
@@ -716,7 +826,11 @@ fn emit_inode(
     if extents.is_empty() || extents.iter().all(|e| e.sparse) {
         return false;
     }
-    let first = extents.iter().find(|e| !e.sparse).map(|e| (e.offset, e.len)).unwrap();
+    let first = extents
+        .iter()
+        .find(|e| !e.sparse)
+        .map(|e| (e.offset, e.len))
+        .unwrap();
     if !seen.insert((first.0, first.1)) {
         return false;
     }
@@ -735,8 +849,14 @@ fn emit_inode(
     let mut note = Some(format!("recuperado do {src_kind} do ext4"));
     let mut conf = Confidence::High;
     if reused > 0 {
-        conf = if reused * 2 > total_blocks { Confidence::Low } else { Confidence::Medium };
-        note = Some(format!("{reused} de {total_blocks} blocos já foram reaproveitados por outros arquivos"));
+        conf = if reused * 2 > total_blocks {
+            Confidence::Low
+        } else {
+            Confidence::Medium
+        };
+        note = Some(format!(
+            "{reused} de {total_blocks} blocos já foram reaproveitados por outros arquivos"
+        ));
     }
     if estimated {
         // Tamanho desconhecido: tenta achar o fim real pelo conteúdo.
@@ -754,7 +874,8 @@ fn emit_inode(
         }
         if estimated {
             conf = conf.min(Confidence::Medium);
-            note = Some("tamanho exato perdido na exclusão; usando todos os blocos do arquivo".into());
+            note =
+                Some("tamanho exato perdido na exclusão; usando todos os blocos do arquivo".into());
         }
     }
     let (dir, name) = match names.dead.get(&ino_no).or_else(|| names.live.get(&ino_no)) {
@@ -789,14 +910,22 @@ fn layout_from_list(ext: &Ext, list: &ExtentList, size: u64) -> Vec<Extent> {
         }
         if l > cur {
             let hole = ((l - cur) * ext.bs).min(left);
-            out.push(Extent { offset: 0, len: hole, sparse: true });
+            out.push(Extent {
+                offset: 0,
+                len: hole,
+                sparse: true,
+            });
             left -= hole;
             if left == 0 {
                 break;
             }
         }
         let take = (n * ext.bs).min(left);
-        out.push(Extent { offset: ext.base + p * ext.bs, len: take, sparse: uninit });
+        out.push(Extent {
+            offset: ext.base + p * ext.bs,
+            len: take,
+            sparse: uninit,
+        });
         left -= take;
         cur = l + n;
     }
@@ -841,7 +970,9 @@ pub fn consistency_score(src: &dyn Source, base: u64) -> Option<f64> {
         if !seen.insert(d) || total >= 600 {
             continue;
         }
-        let Some(ino) = ext.read_inode(d).filter(|i| i.is_dir()) else { continue };
+        let Some(ino) = ext.read_inode(d).filter(|i| i.is_dir()) else {
+            continue;
+        };
         let mut ents = vec![];
         for e in ext.file_extents(&ino, ino.size.min(1 << 20)) {
             if e.sparse {
@@ -863,7 +994,10 @@ pub fn consistency_score(src: &dyn Source, base: u64) -> Option<f64> {
         if ents.iter().any(|e| e.live && e.name == "." && e.ino == d) {
             dots_ok += 1;
         }
-        for en in ents.iter().filter(|e| e.live && e.name != "." && e.name != "..") {
+        for en in ents
+            .iter()
+            .filter(|e| e.live && e.name != "." && e.name != "..")
+        {
             total += 1;
             if let Some(i) = ext.read_inode(en.ino) {
                 if i.mode != 0 && i.links > 0 {
@@ -882,6 +1016,10 @@ pub fn consistency_score(src: &dyn Source, base: u64) -> Option<f64> {
         return None;
     }
     let a = ok as f64 / total as f64;
-    let b = if dots_total > 0 { dots_ok as f64 / dots_total as f64 } else { 0.0 };
+    let b = if dots_total > 0 {
+        dots_ok as f64 / dots_total as f64
+    } else {
+        0.0
+    };
     Some(1.0 + 5.0 * a + 5.0 * b)
 }

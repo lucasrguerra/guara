@@ -19,7 +19,10 @@ pub fn detect_fs(src: &dyn Source, start: u64) -> Option<(FsKind, Option<u64>)> 
     // Assinaturas mais adiante no volume: Btrfs (64 KiB) e RAID mdadm 1.2 (4 KiB).
     if let Ok(h) = read_vec(src, start + 0x10000, 0x100) {
         if h.len() >= 0x80 && &h[0x40..0x48] == b"_BHRfS_M" {
-            return Some((FsKind::Btrfs, Some(u64::from_le_bytes(h[0x70..0x78].try_into().unwrap()))));
+            return Some((
+                FsKind::Btrfs,
+                Some(u64::from_le_bytes(h[0x70..0x78].try_into().unwrap())),
+            ));
         }
     }
     if let Ok(h) = read_vec(src, start + 4096, 16) {
@@ -68,7 +71,10 @@ pub fn detect_fs_in(b: &[u8]) -> Option<(FsKind, Option<u64>)> {
         return Some((FsKind::Refs, Some(sectors * bps)));
     }
     if crate::crypt::filevault::detect(b) {
-        return Some((FsKind::Corestorage, Some(u64::from_le_bytes(b[64..72].try_into().unwrap()))));
+        return Some((
+            FsKind::Corestorage,
+            Some(u64::from_le_bytes(b[64..72].try_into().unwrap())),
+        ));
     }
     if crate::crypt::bitlocker::detect(b) {
         return Some((FsKind::Bitlocker, None));

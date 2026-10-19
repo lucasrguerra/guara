@@ -20,7 +20,10 @@ fn reads_the_live_tree_of_the_reference_image() {
     eprintln!("{files:#?}");
     assert!(!files.is_empty());
     let names: Vec<&str> = files.iter().map(|f| f.0.as_str()).collect();
-    assert!(names.iter().any(|n| n.ends_with("passwords.txt")), "{names:?}");
+    assert!(
+        names.iter().any(|n| n.ends_with("passwords.txt")),
+        "{names:?}"
+    );
 }
 
 #[test]
@@ -28,16 +31,31 @@ fn checksum_matches_real_blocks() {
     let Some(p) = img() else { return };
     let d = std::fs::read(p).unwrap();
     let b = &d[0..4096];
-    assert_eq!(fletcher64(&b[8..]), u64::from_le_bytes(b[0..8].try_into().unwrap()));
+    assert_eq!(
+        fletcher64(&b[8..]),
+        u64::from_le_bytes(b[0..8].try_into().unwrap())
+    );
 }
 
 #[test]
 fn quick_scan_is_clean_on_pristine_volume() {
     let Some(p) = img() else { return };
     init();
-    let c = scan_path(&p, &ScanOptions { mode: ScanMode::Quick, ..Default::default() });
+    let c = scan_path(
+        &p,
+        &ScanOptions {
+            mode: ScanMode::Quick,
+            ..Default::default()
+        },
+    );
     assert_eq!(c.layout.as_ref().unwrap().partitions[0].fs, FsKind::Apfs);
-    eprintln!("{:?}", c.found.iter().map(|f| (&f.name, &f.dir, f.size)).collect::<Vec<_>>());
+    eprintln!(
+        "{:?}",
+        c.found
+            .iter()
+            .map(|f| (&f.name, &f.dir, f.size))
+            .collect::<Vec<_>>()
+    );
 }
 
 // --- manipulação bruta de nós (independente do módulo) ---
@@ -65,7 +83,10 @@ fn read_node(b: &[u8]) -> (u16, Vec<Entry>) {
     for i in 0..n {
         let o = 56 + toc_off + i * 8;
         let (ko, kl, vo, vl) = (le16(b, o), le16(b, o + 2), le16(b, o + 4), le16(b, o + 6));
-        out.push((b[key_base + ko..key_base + ko + kl].to_vec(), b[val_end - vo..val_end - vo + vl].to_vec()));
+        out.push((
+            b[key_base + ko..key_base + ko + kl].to_vec(),
+            b[val_end - vo..val_end - vo + vl].to_vec(),
+        ));
     }
     (flags, out)
 }
@@ -131,7 +152,12 @@ fn file_removed_from_the_current_tree_survives_in_the_old_node() {
         c
     });
     let vol_oid = le64(&nx, 184);
-    let vol_paddr = cont_entries.iter().filter(|(k, _)| le64(k, 0) == vol_oid).map(|(_, v)| le64(v, 8)).last().unwrap();
+    let vol_paddr = cont_entries
+        .iter()
+        .filter(|(k, _)| le64(k, 0) == vol_oid)
+        .map(|(_, v)| le64(v, 8))
+        .next_back()
+        .unwrap();
     let vsb = blk(&d, vol_paddr);
     let (vol_omap_paddr, root_oid) = (le64(&vsb, 128), le64(&vsb, 136));
     let vol_omap = blk(&d, vol_omap_paddr);
@@ -140,23 +166,39 @@ fn file_removed_from_the_current_tree_survives_in_the_old_node() {
     let vt_orig = vt.clone();
     fixed_to_var(&mut vt);
     let (_, omap_entries) = read_node(&vt);
-    let (root_idx, root_paddr) = omap_entries.iter().enumerate().filter(|(_, (k, _))| le64(k, 0) == root_oid).map(|(i, (_, v))| (i, le64(v, 8))).last().unwrap();
+    let (root_idx, root_paddr) = omap_entries
+        .iter()
+        .enumerate()
+        .filter(|(_, (k, _))| le64(k, 0) == root_oid)
+        .map(|(i, (_, v))| (i, le64(v, 8)))
+        .next_back()
+        .unwrap();
     let root = blk(&d, root_paddr);
     assert_eq!(le16(&root, 34), 0, "raiz deveria ser folha nesta imagem");
     let (_, recs) = read_node(&root);
     // inode do arquivo
     let victim = b"passwords.txt";
-    let ino = recs.iter().find_map(|(k, v)| {
-        let hdr = le64(k, 0);
-        ((hdr >> 60) == 9 && k.len() > 12 && k[12..].starts_with(victim)).then(|| le64(v, 0))
-    }).expect("entrada de diretório");
-    let private_id = recs.iter().find_map(|(k, v)| ((le64(k, 0) >> 60) == 3 && (le64(k, 0) & 0x0FFF_FFFF_FFFF_FFFF) == ino).then(|| le64(v, 8))).unwrap();
+    let ino = recs
+        .iter()
+        .find_map(|(k, v)| {
+            let hdr = le64(k, 0);
+            ((hdr >> 60) == 9 && k.len() > 12 && k[12..].starts_with(victim)).then(|| le64(v, 0))
+        })
+        .expect("entrada de diretório");
+    let private_id = recs
+        .iter()
+        .find_map(|(k, v)| {
+            ((le64(k, 0) >> 60) == 3 && (le64(k, 0) & 0x0FFF_FFFF_FFFF_FFFF) == ino)
+                .then(|| le64(v, 8))
+        })
+        .unwrap();
     let kept: Vec<Entry> = recs
         .iter()
         .filter(|(k, v)| {
             let hdr = le64(k, 0);
             let (id, ty) = (hdr & 0x0FFF_FFFF_FFFF_FFFF, hdr >> 60);
-            let drec_of_victim = ty == 9 && k.len() > 12 && k[12..].starts_with(victim) && le64(v, 0) == ino;
+            let drec_of_victim =
+                ty == 9 && k.len() > 12 && k[12..].starts_with(victim) && le64(v, 0) == ino;
             !(id == ino && ty != 9 || id == private_id && ty == 8 || drec_of_victim)
         })
         .cloned()
@@ -164,7 +206,9 @@ fn file_removed_from_the_current_tree_survives_in_the_old_node() {
     assert!(kept.len() < recs.len());
     let newnode = write_node(&root, &kept);
     // bloco livre para a nova versão
-    let free = (10..d.len() / bs).find(|&n| d[n * bs..(n + 1) * bs].iter().all(|&x| x == 0) && n != vol_tree_paddr as usize).expect("bloco livre");
+    let free = (10..d.len() / bs)
+        .find(|&n| d[n * bs..(n + 1) * bs].iter().all(|&x| x == 0) && n != vol_tree_paddr as usize)
+        .expect("bloco livre");
     d[free * bs..(free + 1) * bs].copy_from_slice(&newnode);
     // aponta o mapa de objetos para a nova versão (mesmo xid), editando o valor da entrada
     let toc_off = le16(&vt_orig, 40);
@@ -185,8 +229,26 @@ fn file_removed_from_the_current_tree_survives_in_the_old_node() {
     let src = FileSource::open(&p2).unwrap();
     assert!(!live_paths(&src, 0).iter().any(|f| f.0 == "passwords.txt"));
     init();
-    let c = scan_path(&p2, &ScanOptions { mode: ScanMode::Deep, ..Default::default() });
-    let f = c.found.iter().find(|f| f.origin == Origin::Apfs && f.name == "passwords.txt").unwrap_or_else(|| panic!("{:?}", c.found.iter().map(|f| (&f.name, f.origin)).collect::<Vec<_>>()));
+    let c = scan_path(
+        &p2,
+        &ScanOptions {
+            mode: ScanMode::Deep,
+            ..Default::default()
+        },
+    );
+    let f = c
+        .found
+        .iter()
+        .find(|f| f.origin == Origin::Apfs && f.name == "passwords.txt")
+        .unwrap_or_else(|| {
+            panic!(
+                "{:?}",
+                c.found
+                    .iter()
+                    .map(|f| (&f.name, f.origin))
+                    .collect::<Vec<_>>()
+            )
+        });
     assert_eq!(f.size, 116);
     let out = dir.path().join("out");
     let rep = recover_all(&p2, std::slice::from_ref(f), &out);
@@ -194,7 +256,12 @@ fn file_removed_from_the_current_tree_survives_in_the_old_node() {
     let rp = PathBuf::from(&rep.recovered[0].path);
     let got = std::fs::read(if rp.is_absolute() { rp } else { out.join(rp) }).unwrap();
     assert_eq!(got.len(), 116);
-    assert!(String::from_utf8_lossy(&got).chars().all(|c| !c.is_control() || c == '\n' || c == '\r' || c == '\t'), "{got:?}");
+    assert!(
+        String::from_utf8_lossy(&got)
+            .chars()
+            .all(|c| !c.is_control() || c == '\n' || c == '\r' || c == '\t'),
+        "{got:?}"
+    );
 }
 
 /// Converte a tabela de entradas fixas (4 bytes) de um nó de omap para o formato variável (8 bytes) em memória.
@@ -212,7 +279,10 @@ fn fixed_to_var(b: &mut Vec<u8>) {
     for i in 0..n {
         let o = 56 + toc_off + i * 4;
         let (ko, vo) = (le16(b, o), le16(b, o + 2));
-        entries.push((b[key_base + ko..key_base + ko + 16].to_vec(), b[val_end - vo..val_end - vo + 16].to_vec()));
+        entries.push((
+            b[key_base + ko..key_base + ko + 16].to_vec(),
+            b[val_end - vo..val_end - vo + 16].to_vec(),
+        ));
     }
     let mut nb = b.clone();
     nb[32..34].copy_from_slice(&(flags & !4).to_le_bytes());

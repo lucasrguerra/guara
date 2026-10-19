@@ -15,12 +15,20 @@ use std::sync::Arc;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SecretInput {
-    Password { value: String },
-    Recovery { value: String },
+    Password {
+        value: String,
+    },
+    Recovery {
+        value: String,
+    },
     /// Caminho de um arquivo de chave (.BEK do BitLocker, keyfile do LUKS).
-    Keyfile { path: String },
+    Keyfile {
+        path: String,
+    },
     /// Chave do volume em hexadecimal.
-    Key { hex: String },
+    Key {
+        hex: String,
+    },
 }
 
 /// Chave de volume guardada na sessão (só quando o usuário pede para lembrar).
@@ -62,7 +70,10 @@ pub struct Assembly {
 
 impl Assembly {
     pub fn is_plain(&self) -> bool {
-        self.members.is_empty() && self.secrets.is_empty() && self.keys.is_empty() && self.raid.is_none()
+        self.members.is_empty()
+            && self.secrets.is_empty()
+            && self.keys.is_empty()
+            && self.raid.is_none()
     }
 }
 
@@ -102,11 +113,14 @@ fn to_secrets(a: &Assembly) -> Result<Vec<Secret>> {
         v.push(match s {
             SecretInput::Password { value } => Secret::Password(value.clone()),
             SecretInput::Recovery { value } => Secret::RecoveryKey(value.clone()),
-            SecretInput::Keyfile { path } => Secret::KeyFile(
-                std::fs::read(path).map_err(|e| Error::msg(format!("não foi possível ler o arquivo de chave {path}: {e}")))?,
-            ),
+            SecretInput::Keyfile { path } => Secret::KeyFile(std::fs::read(path).map_err(|e| {
+                Error::msg(format!(
+                    "não foi possível ler o arquivo de chave {path}: {e}"
+                ))
+            })?),
             SecretInput::Key { hex } => Secret::VolumeKey(
-                crypt::from_hex(hex).ok_or_else(|| Error::msg("chave do volume em hexadecimal inválida"))?,
+                crypt::from_hex(hex)
+                    .ok_or_else(|| Error::msg("chave do volume em hexadecimal inválida"))?,
             ),
         });
     }
@@ -142,8 +156,16 @@ const MIB: u64 = 1 << 20;
 /// Coloca `src` em `start`; se cair dentro de uma região virtual, a substitui por dentro.
 fn patch(regions: &mut Vec<Region>, start: u64, src: Arc<dyn Source>, label: String) {
     let len = src.size();
-    if let Some(r) = regions.iter_mut().find(|r| r.start <= start && start < r.start + r.len) {
-        let inner = Region { start: start - r.start, len, src, label: label.clone() };
+    if let Some(r) = regions
+        .iter_mut()
+        .find(|r| r.start <= start && start < r.start + r.len)
+    {
+        let inner = Region {
+            start: start - r.start,
+            len,
+            src,
+            label: label.clone(),
+        };
         let wrapped = Overlay::new(r.src.clone(), vec![inner]);
         if start == r.start {
             r.len = r.len.max(len);
@@ -151,7 +173,12 @@ fn patch(regions: &mut Vec<Region>, start: u64, src: Arc<dyn Source>, label: Str
         r.src = Arc::new(wrapped);
         return;
     }
-    regions.push(Region { start, len, src, label });
+    regions.push(Region {
+        start,
+        len,
+        src,
+        label,
+    });
 }
 
 /// Candidato a membro de RAID/LVM: uma janela de disco (inteiro ou partição).
@@ -162,10 +189,17 @@ struct Window {
 }
 
 fn windows_of(src: &Arc<dyn Source>, primary: bool) -> Vec<Window> {
-    let mut v = vec![Window { src: src.clone(), primary_start: primary.then_some(0) }];
+    let mut v = vec![Window {
+        src: src.clone(),
+        primary_start: primary.then_some(0),
+    }];
     let layout = partition::analyze(src.as_ref(), false);
     for p in &layout.partitions {
-        let len = if p.len == 0 { src.size().saturating_sub(p.start) } else { p.len };
+        let len = if p.len == 0 {
+            src.size().saturating_sub(p.start)
+        } else {
+            p.len
+        };
         v.push(Window {
             src: Arc::new(SubSource::new(src.clone(), p.start, len)),
             primary_start: primary.then_some(p.start),
@@ -196,11 +230,21 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
         let mut disks: Vec<Arc<dyn Source>> = vec![base.clone()];
         disks.extend(members.iter().cloned());
         let params = pick_raid(&disks, spec, &mut out.notes)?;
-        let src: Arc<dyn Source> = Arc::new(crate::raid::RaidSource::new(params).map_err(Error::msg)?);
-        out.notes.push(format!("RAID montado a partir de {} disco(s) sem metadados.", disks.len()));
+        let src: Arc<dyn Source> =
+            Arc::new(crate::raid::RaidSource::new(params).map_err(Error::msg)?);
+        out.notes.push(format!(
+            "RAID montado a partir de {} disco(s) sem metadados.",
+            disks.len()
+        ));
         out.skip_primary = true;
         members.clear();
-        add_virtual(&mut regions, &mut next_virtual, &mut out, src, "RAID".into());
+        add_virtual(
+            &mut regions,
+            &mut next_virtual,
+            &mut out,
+            src,
+            "RAID".into(),
+        );
     }
     let mut done_containers: std::collections::BTreeSet<String> = Default::default();
     let mut tried_pool = false;
@@ -219,11 +263,21 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
         // 1) RAID e LVM: reúne janelas do disco principal e dos membros extras.
         if round == 0 || !tried_pool || !out.extra_parts.is_empty() {
             let mut pool: Vec<Window> = vec![];
-            pool.push(Window { src: current.clone(), primary_start: Some(0) });
+            pool.push(Window {
+                src: current.clone(),
+                primary_start: Some(0),
+            });
             for p in &all_parts {
                 if matches!(p.fs, FsKind::Raid | FsKind::Lvm) {
-                    let len = if p.len == 0 { current.size().saturating_sub(p.start) } else { p.len };
-                    pool.push(Window { src: Arc::new(SubSource::new(current.clone(), p.start, len)), primary_start: Some(p.start) });
+                    let len = if p.len == 0 {
+                        current.size().saturating_sub(p.start)
+                    } else {
+                        p.len
+                    };
+                    pool.push(Window {
+                        src: Arc::new(SubSource::new(current.clone(), p.start, len)),
+                        primary_start: Some(p.start),
+                    });
                 }
             }
             for m in &members {
@@ -241,7 +295,12 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
                     md.push((w.src.clone(), sup));
                 }
             }
-            let new_md: Vec<_> = md.into_iter().filter(|(_, s)| !done_containers.contains(&format!("md{}", crypt::to_hex(&s.uuid)))).collect();
+            let new_md: Vec<_> = md
+                .into_iter()
+                .filter(|(_, s)| {
+                    !done_containers.contains(&format!("md{}", crypt::to_hex(&s.uuid)))
+                })
+                .collect();
             if !new_md.is_empty() {
                 for (_, s) in &new_md {
                     done_containers.insert(format!("md{}", crypt::to_hex(&s.uuid)));
@@ -249,13 +308,30 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
                 for res in crate::raid::assemble_md(new_md) {
                     match res {
                         Ok(a) => {
-                            let label = format!("{} {}", a.info.level.name(), if a.name.is_empty() { a.uuid.clone() } else { a.name.clone() });
+                            let label = format!(
+                                "{} {}",
+                                a.info.level.name(),
+                                if a.name.is_empty() {
+                                    a.uuid.clone()
+                                } else {
+                                    a.name.clone()
+                                }
+                            );
                             if a.missing > 0 {
-                                out.notes.push(format!("{label}: montado sem {} membro(s) (modo degradado).", a.missing));
+                                out.notes.push(format!(
+                                    "{label}: montado sem {} membro(s) (modo degradado).",
+                                    a.missing
+                                ));
                             } else {
                                 out.notes.push(format!("{label} montado."));
                             }
-                            add_virtual(&mut regions, &mut next_virtual, &mut out, a.source.clone(), label);
+                            add_virtual(
+                                &mut regions,
+                                &mut next_virtual,
+                                &mut out,
+                                a.source.clone(),
+                                label,
+                            );
                             progress = true;
                         }
                         Err(e) => out.notes.push(format!("RAID não montado: {e}")),
@@ -267,7 +343,10 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
             let mut pvs: Vec<(Arc<dyn Source>, crate::lvm::PvInfo)> = vec![];
             let mut pv_primary: Vec<u64> = vec![];
             let md_srcs: Vec<Arc<dyn Source>> = regions.iter().map(|r| r.src.clone()).collect();
-            let mut lvm_pool: Vec<(Arc<dyn Source>, Option<u64>)> = pool.iter().map(|w| (w.src.clone(), w.primary_start)).collect();
+            let mut lvm_pool: Vec<(Arc<dyn Source>, Option<u64>)> = pool
+                .iter()
+                .map(|w| (w.src.clone(), w.primary_start))
+                .collect();
             for (r, s) in regions.iter().zip(md_srcs) {
                 lvm_pool.push((s, Some(r.start)));
             }
@@ -288,7 +367,13 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
                         out.notes.push(format!("LVM {}: {w}", vg.name));
                     }
                     for (name, lv) in vg.lvs {
-                        add_virtual(&mut regions, &mut next_virtual, &mut out, lv, format!("LVM {}/{}", vg.name, name));
+                        add_virtual(
+                            &mut regions,
+                            &mut next_virtual,
+                            &mut out,
+                            lv,
+                            format!("LVM {}/{}", vg.name, name),
+                        );
                         progress = true;
                     }
                 }
@@ -310,7 +395,11 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
             if p.encrypted.is_none() || out.unlocked.iter().any(|u| u.start == p.start) {
                 continue;
             }
-            let len = if p.len == 0 { current.size().saturating_sub(p.start) } else { p.len };
+            let len = if p.len == 0 {
+                current.size().saturating_sub(p.start)
+            } else {
+                p.len
+            };
             let window: Arc<dyn Source> = Arc::new(SubSource::new(current.clone(), p.start, len));
             let mut all = secrets.clone();
             for k in asm.keys.iter().filter(|k| k.start == p.start) {
@@ -366,7 +455,13 @@ pub fn assemble_source(base: Arc<dyn Source>, asm: &Assembly) -> Result<Assemble
 }
 
 /// Anexa um volume virtual depois do fim do disco e registra as partições que ele contém.
-fn add_virtual(regions: &mut Vec<Region>, next: &mut u64, out: &mut Assembled, src: Arc<dyn Source>, label: String) {
+fn add_virtual(
+    regions: &mut Vec<Region>,
+    next: &mut u64,
+    out: &mut Assembled,
+    src: Arc<dyn Source>,
+    label: String,
+) {
     let start = *next;
     let len = src.size();
     if len == 0 {
@@ -393,15 +488,34 @@ fn add_virtual(regions: &mut Vec<Region>, next: &mut u64, out: &mut Assembled, s
             out.extra_parts.push(q);
         }
     }
-    regions.push(Region { start, len, src, label });
+    regions.push(Region {
+        start,
+        len,
+        src,
+        label,
+    });
 }
 
 /// Escolhe os parâmetros do RAID: o que o usuário deu manda; o resto vem da detecção.
-fn pick_raid(disks: &[Arc<dyn Source>], spec: &RaidSpec, notes: &mut Vec<String>) -> Result<crate::raid::RaidParams> {
+fn pick_raid(
+    disks: &[Arc<dyn Source>],
+    spec: &RaidSpec,
+    notes: &mut Vec<String>,
+) -> Result<crate::raid::RaidParams> {
     use crate::raid::{Member, RaidParams};
-    if let (Some(level), Some(chunk), Some(layout), Some(order)) = (spec.level, spec.chunk_kb, spec.layout, spec.order.clone()) {
+    if let (Some(level), Some(chunk), Some(layout), Some(order)) =
+        (spec.level, spec.chunk_kb, spec.layout, spec.order.clone())
+    {
         if order.len() == disks.len() && order.iter().all(|&i| i < disks.len()) {
-            let members = order.iter().map(|&i| Some(Member { src: disks[i].clone(), data_offset: 0 })).collect();
+            let members = order
+                .iter()
+                .map(|&i| {
+                    Some(Member {
+                        src: disks[i].clone(),
+                        data_offset: 0,
+                    })
+                })
+                .collect();
             return Ok(RaidParams::simple(level, chunk * 1024, layout, members));
         }
     }

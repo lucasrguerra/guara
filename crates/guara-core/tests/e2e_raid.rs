@@ -11,7 +11,11 @@ use std::process::Command;
 use std::sync::Arc;
 
 fn have(t: &str) -> bool {
-    Command::new("sh").args(["-c", &format!("command -v {t}")]).output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new("sh")
+        .args(["-c", &format!("command -v {t}")])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 fn data(seed: u64, n: usize) -> Vec<u8> {
@@ -67,9 +71,24 @@ fn deleted_file_on_degraded_raid5() {
     let dd = n - 1;
     let rows = 40usize;
     let logical_len = rows * dd * CHUNK;
-    std::fs::File::create(&plain).unwrap().set_len(logical_len as u64).unwrap();
-    assert!(Command::new("mke2fs").args(["-q", "-F", "-t", "ext4", "-d"]).arg(&root).arg(&plain).status().unwrap().success());
-    Command::new("debugfs").arg("-w").arg("-R").arg("rm /fotos/ferias.dat").arg(&plain).output().unwrap();
+    std::fs::File::create(&plain)
+        .unwrap()
+        .set_len(logical_len as u64)
+        .unwrap();
+    assert!(Command::new("mke2fs")
+        .args(["-q", "-F", "-t", "ext4", "-d"])
+        .arg(&root)
+        .arg(&plain)
+        .status()
+        .unwrap()
+        .success());
+    Command::new("debugfs")
+        .arg("-w")
+        .arg("-R")
+        .arg("rm /fotos/ferias.dat")
+        .arg(&plain)
+        .output()
+        .unwrap();
     let logical = std::fs::read(&plain).unwrap();
 
     // RAID 5 left-symmetric
@@ -101,24 +120,56 @@ fn deleted_file_on_degraded_raid5() {
     }
     let base: Arc<dyn Source> = Arc::new(FileSource::open(&paths[0]).unwrap());
     let asm = Assembly {
-        members: paths[1..].iter().map(|p| p.to_string_lossy().to_string()).collect(),
+        members: paths[1..]
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect(),
         ..Default::default()
     };
     let a = assemble_source(base, &asm).unwrap();
-    assert!(a.notes.iter().any(|n| n.contains("degradado")), "{:?}", a.notes);
+    assert!(
+        a.notes.iter().any(|n| n.contains("degradado")),
+        "{:?}",
+        a.notes
+    );
     assert_eq!(a.extra_parts.len(), 1);
     assert_eq!(a.extra_parts[0].fs, FsKind::Ext);
-    let opts = ScanOptions { mode: ScanMode::Deep, extra_parts: a.extra_parts.clone(), covered: a.covered.clone(), ..Default::default() };
+    let opts = ScanOptions {
+        mode: ScanMode::Deep,
+        extra_parts: a.extra_parts.clone(),
+        covered: a.covered.clone(),
+        ..Default::default()
+    };
     let mut sink = Collect::default();
     let out = scan::run(a.source.as_ref(), &opts, None, &[], &|| false, &mut sink);
     assert!(matches!(out, Outcome::Completed));
-    let f = sink.found.iter().find(|f| f.name == "ferias.dat").unwrap_or_else(|| panic!("{:?}", sink.found.iter().map(|f| &f.name).collect::<Vec<_>>()));
+    let f = sink
+        .found
+        .iter()
+        .find(|f| f.name == "ferias.dat")
+        .unwrap_or_else(|| {
+            panic!(
+                "{:?}",
+                sink.found.iter().map(|f| &f.name).collect::<Vec<_>>()
+            )
+        });
     assert_eq!(f.size, 300_000);
     let dest = tempfile::tempdir().unwrap();
-    let rep = recover::recover(a.source.as_ref(), &[f], dest.path(), &|| false, &mut |_, _, _| {}).unwrap();
+    let rep = recover::recover(
+        a.source.as_ref(),
+        &[f],
+        dest.path(),
+        &|| false,
+        &mut |_, _, _| {},
+    )
+    .unwrap();
     assert!(rep.failed.is_empty(), "{:?}", rep.failed);
     let p = &rep.recovered[0].path;
-    let p = if Path::new(p).is_absolute() { Path::new(p).to_path_buf() } else { dest.path().join(p) };
+    let p = if Path::new(p).is_absolute() {
+        Path::new(p).to_path_buf()
+    } else {
+        dest.path().join(p)
+    };
     assert!(std::fs::read(p).unwrap() == doc);
 }
 
@@ -133,7 +184,11 @@ fn raid5_without_metadata_is_detected_and_scanned() {
     for d in 0..10 {
         std::fs::create_dir_all(root.join(format!("d{d}"))).unwrap();
         for f in 0..30 {
-            std::fs::write(root.join(format!("d{d}/f{f}.txt")), vec![b'x'; 500 + f * 50]).unwrap();
+            std::fs::write(
+                root.join(format!("d{d}/f{f}.txt")),
+                vec![b'x'; 500 + f * 50],
+            )
+            .unwrap();
         }
     }
     let doc = data(9, 200_000);
@@ -142,9 +197,24 @@ fn raid5_without_metadata_is_detected_and_scanned() {
     let (n, chunk) = (3usize, 64 * 1024usize);
     let dd = n - 1;
     let rows = 160usize;
-    std::fs::File::create(&plain).unwrap().set_len((rows * dd * chunk) as u64).unwrap();
-    assert!(Command::new("mke2fs").args(["-q", "-F", "-t", "ext4", "-d"]).arg(&root).arg(&plain).status().unwrap().success());
-    Command::new("debugfs").arg("-w").arg("-R").arg("rm /d3/perdido.dat").arg(&plain).output().unwrap();
+    std::fs::File::create(&plain)
+        .unwrap()
+        .set_len((rows * dd * chunk) as u64)
+        .unwrap();
+    assert!(Command::new("mke2fs")
+        .args(["-q", "-F", "-t", "ext4", "-d"])
+        .arg(&root)
+        .arg(&plain)
+        .status()
+        .unwrap()
+        .success());
+    Command::new("debugfs")
+        .arg("-w")
+        .arg("-R")
+        .arg("rm /d3/perdido.dat")
+        .arg(&plain)
+        .output()
+        .unwrap();
     let logical = std::fs::read(&plain).unwrap();
     // left-asymmetric
     let mut disks = vec![vec![0u8; rows * chunk]; n];
@@ -169,21 +239,48 @@ fn raid5_without_metadata_is_detected_and_scanned() {
     }
     let base: Arc<dyn Source> = Arc::new(FileSource::open(&paths[0]).unwrap());
     let asm = Assembly {
-        members: paths[1..].iter().map(|p| p.to_string_lossy().to_string()).collect(),
+        members: paths[1..]
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect(),
         raid: Some(guara_core::assemble::RaidSpec::default()),
         ..Default::default()
     };
     let a = assemble_source(base, &asm).unwrap();
     assert!(a.skip_primary);
-    assert!(a.notes.iter().any(|n| n.contains("descobertos")), "{:?}", a.notes);
-    let opts = ScanOptions { mode: ScanMode::Deep, extra_parts: a.extra_parts.clone(), skip_primary: true, ..Default::default() };
+    assert!(
+        a.notes.iter().any(|n| n.contains("descobertos")),
+        "{:?}",
+        a.notes
+    );
+    let opts = ScanOptions {
+        mode: ScanMode::Deep,
+        extra_parts: a.extra_parts.clone(),
+        skip_primary: true,
+        ..Default::default()
+    };
     let mut sink = Collect::default();
     let out = scan::run(a.source.as_ref(), &opts, None, &[], &|| false, &mut sink);
     assert!(matches!(out, Outcome::Completed));
-    let f = sink.found.iter().find(|f| f.name == "perdido.dat").expect("perdido.dat");
+    let f = sink
+        .found
+        .iter()
+        .find(|f| f.name == "perdido.dat")
+        .expect("perdido.dat");
     let dest = tempfile::tempdir().unwrap();
-    let rep = recover::recover(a.source.as_ref(), &[f], dest.path(), &|| false, &mut |_, _, _| {}).unwrap();
+    let rep = recover::recover(
+        a.source.as_ref(),
+        &[f],
+        dest.path(),
+        &|| false,
+        &mut |_, _, _| {},
+    )
+    .unwrap();
     let p = &rep.recovered[0].path;
-    let p = if Path::new(p).is_absolute() { Path::new(p).to_path_buf() } else { dest.path().join(p) };
+    let p = if Path::new(p).is_absolute() {
+        Path::new(p).to_path_buf()
+    } else {
+        dest.path().join(p)
+    };
     assert!(std::fs::read(p).unwrap() == doc);
 }

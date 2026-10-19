@@ -60,7 +60,12 @@ impl Layout {
         }
     }
     pub fn all_raid5() -> [Layout; 4] {
-        [Layout::LeftSymmetric, Layout::LeftAsymmetric, Layout::RightSymmetric, Layout::RightAsymmetric]
+        [
+            Layout::LeftSymmetric,
+            Layout::LeftAsymmetric,
+            Layout::RightSymmetric,
+            Layout::RightAsymmetric,
+        ]
     }
 }
 
@@ -89,7 +94,16 @@ pub struct RaidParams {
 
 impl RaidParams {
     pub fn simple(level: Level, chunk: u64, layout: Layout, members: Vec<Option<Member>>) -> Self {
-        Self { level, chunk, layout, members, near: 2, far: 1, far_offset: false, per_member: 0 }
+        Self {
+            level,
+            chunk,
+            layout,
+            members,
+            near: 2,
+            far: 1,
+            far_offset: false,
+            per_member: 0,
+        }
     }
 }
 
@@ -149,7 +163,11 @@ impl RaidSource {
         let present: Vec<&Member> = p.members.iter().flatten().collect();
         let min = |f: &dyn Fn(&Member) -> u64| present.iter().map(|m| f(m)).min().unwrap_or(0);
         let avail = min(&|m| m.src.size().saturating_sub(m.data_offset));
-        let mut per_member = if p.per_member > 0 { p.per_member.min(avail) } else { avail };
+        let mut per_member = if p.per_member > 0 {
+            p.per_member.min(avail)
+        } else {
+            avail
+        };
         if p.level != Level::Linear {
             per_member = per_member / p.chunk.max(512) * p.chunk.max(512);
         }
@@ -162,7 +180,10 @@ impl RaidSource {
             Level::R10 => (p.near.max(1) as usize).saturating_sub(1).min(1),
         };
         if missing > need && p.level != Level::R10 {
-            return Err(format!("faltam {missing} membro(s); {} tolera no máximo {need}", p.level.name()));
+            return Err(format!(
+                "faltam {missing} membro(s); {} tolera no máximo {need}",
+                p.level.name()
+            ));
         }
         if matches!(p.level, Level::R4 | Level::R5) && n < 3 || p.level == Level::R6 && n < 4 {
             return Err("poucos membros para o nível".into());
@@ -171,14 +192,21 @@ impl RaidSource {
             return Err("parâmetros de RAID 10 inválidos".into());
         }
         let size = match p.level {
-            Level::Linear => present.iter().map(|m| m.src.size().saturating_sub(m.data_offset)).sum(),
+            Level::Linear => present
+                .iter()
+                .map(|m| m.src.size().saturating_sub(m.data_offset))
+                .sum(),
             Level::R0 => per_member * n as u64,
             Level::R1 => per_member,
             Level::R4 | Level::R5 => per_member * (n as u64 - 1),
             Level::R6 => per_member * (n as u64 - 2),
             Level::R10 => per_member * n as u64 / (p.near.max(1) * p.far.max(1)) as u64,
         };
-        Ok(Self { p, size, per_member })
+        Ok(Self {
+            p,
+            size,
+            per_member,
+        })
     }
 
     pub fn params(&self) -> &RaidParams {
@@ -186,10 +214,14 @@ impl RaidSource {
     }
 
     fn read_member(&self, i: usize, off: u64, buf: &mut [u8]) -> io::Result<()> {
-        let m = self.p.members[i].as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "membro ausente"))?;
+        let m = self.p.members[i]
+            .as_ref()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "membro ausente"))?;
         let mut done = 0;
         while done < buf.len() {
-            let n = m.src.read_at(m.data_offset + off + done as u64, &mut buf[done..])?;
+            let n = m
+                .src
+                .read_at(m.data_offset + off + done as u64, &mut buf[done..])?;
             if n == 0 {
                 buf[done..].fill(0);
                 break;
@@ -206,12 +238,24 @@ impl RaidSource {
         match self.p.layout {
             Layout::LeftAsymmetric | Layout::LeftSymmetric => {
                 let pd = n - 1 - r;
-                let disk = if self.p.layout == Layout::LeftSymmetric { (pd + 1 + d) % n } else if d >= pd { d + 1 } else { d };
+                let disk = if self.p.layout == Layout::LeftSymmetric {
+                    (pd + 1 + d) % n
+                } else if d >= pd {
+                    d + 1
+                } else {
+                    d
+                };
                 (pd, disk)
             }
             Layout::RightAsymmetric | Layout::RightSymmetric => {
                 let pd = r;
-                let disk = if self.p.layout == Layout::RightSymmetric { (pd + 1 + d) % n } else if d >= pd { d + 1 } else { d };
+                let disk = if self.p.layout == Layout::RightSymmetric {
+                    (pd + 1 + d) % n
+                } else if d >= pd {
+                    d + 1
+                } else {
+                    d
+                };
                 (pd, disk)
             }
             Layout::ParityFirst => (0, d + 1),
@@ -273,11 +317,13 @@ impl RaidSource {
             }
             Level::R1 => {
                 for i in 0..n {
-                    if self.p.members[i].is_some() && self.read_member(i, chunk_idx * c + within, buf).is_ok() {
+                    if self.p.members[i].is_some()
+                        && self.read_member(i, chunk_idx * c + within, buf).is_ok()
+                    {
                         return Ok(());
                     }
                 }
-                Err(io::Error::new(io::ErrorKind::Other, "nenhuma cópia legível"))
+                Err(io::Error::other("nenhuma cópia legível"))
             }
             Level::R4 | Level::R5 => {
                 let dd = n - 1;
@@ -322,7 +368,8 @@ impl RaidSource {
                         }
                     }
                 }
-                Err(last.unwrap_or_else(|| io::Error::new(io::ErrorKind::NotFound, "cópias ausentes")))
+                Err(last
+                    .unwrap_or_else(|| io::Error::new(io::ErrorKind::NotFound, "cópias ausentes")))
             }
         }
     }
@@ -338,7 +385,11 @@ impl RaidSource {
         if self.p.far_offset {
             stripe *= far;
         }
-        let stride = if self.p.far_offset { c } else { (self.per_member / far) / c * c };
+        let stride = if self.p.far_offset {
+            c
+        } else {
+            (self.per_member / far) / c * c
+        };
         let mut out = vec![];
         let mut d = dev;
         let mut off = stripe * c;
@@ -367,7 +418,9 @@ impl RaidSource {
         let len = buf.len();
         // Estado de cada dado da linha.
         let disks: Vec<usize> = (0..dd).map(|k| self.raid6_map(row, k).2).collect();
-        let missing_data: Vec<usize> = (0..dd).filter(|&k| self.p.members[disks[k]].is_none()).collect();
+        let missing_data: Vec<usize> = (0..dd)
+            .filter(|&k| self.p.members[disks[k]].is_none())
+            .collect();
         let p_ok = self.p.members[pd].is_some();
         let q_ok = self.p.members[qd].is_some();
         let mut data: Vec<Option<Vec<u8>>> = vec![None; dd];
@@ -437,7 +490,9 @@ impl RaidSource {
             }
             return Ok(());
         }
-        Err(io::Error::new(io::ErrorKind::Other, "RAID 6 sem redundância suficiente nesta linha"))
+        Err(io::Error::other(
+            "RAID 6 sem redundância suficiente nesta linha",
+        ))
     }
 }
 
@@ -467,7 +522,9 @@ impl Source for RaidSource {
                 if offset + done as u64 >= base && offset + (done as u64) < base + len {
                     let rel = offset + done as u64 - base;
                     let n = ((len - rel) as usize).min(want - done);
-                    let got = m.src.read_at(m.data_offset + rel, &mut buf[done..done + n])?;
+                    let got = m
+                        .src
+                        .read_at(m.data_offset + rel, &mut buf[done..done + n])?;
                     if got == 0 {
                         break;
                     }
@@ -541,7 +598,9 @@ pub fn read_md_super(src: &dyn Source) -> Option<MdSuper> {
         cands.push(((size & !4095) - 8192, "1.0"));
     }
     for (off, ver) in cands {
-        let Ok(b) = read_vec(src, off, 4096) else { continue };
+        let Ok(b) = read_vec(src, off, 4096) else {
+            continue;
+        };
         if b.len() < 4096 || le32(&b, 0) != 0xA92B_4EFC || le32(&b, 4) != 1 {
             continue;
         }
@@ -556,7 +615,9 @@ pub fn read_md_super(src: &dyn Source) -> Option<MdSuper> {
         };
         let mut uuid = [0u8; 16];
         uuid.copy_from_slice(&b[16..32]);
-        let name = String::from_utf8_lossy(&b[32..64]).trim_end_matches('\0').to_string();
+        let name = String::from_utf8_lossy(&b[32..64])
+            .trim_end_matches('\0')
+            .to_string();
         let data_offset = le64(&b, 128) * 512;
         let data_size = le64(&b, 136) * 512;
         let raid_disks = le32(&b, 92);
@@ -661,12 +722,20 @@ pub fn assemble_md(members: Vec<(Arc<dyn Source>, MdSuper)>) -> Vec<Result<Found
                         stale += 1;
                         continue;
                     }
-                    slots[r as usize] = Some(Member { src: s.clone(), data_offset: m.data_offset });
+                    slots[r as usize] = Some(Member {
+                        src: s.clone(),
+                        data_offset: m.data_offset,
+                    });
                 }
             }
         }
         let missing = slots.iter().filter(|s| s.is_none()).count();
-        let mut p = RaidParams::simple(top.level, top.chunk.max(512), Layout::from_md(top.layout), slots);
+        let mut p = RaidParams::simple(
+            top.level,
+            top.chunk.max(512),
+            Layout::from_md(top.layout),
+            slots,
+        );
         if top.level == Level::R10 {
             p.near = top.layout & 0xff;
             p.far = (top.layout >> 8) & 0xff;

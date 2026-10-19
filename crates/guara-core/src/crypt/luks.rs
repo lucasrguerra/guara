@@ -89,9 +89,13 @@ pub fn af_merge(src: &[u8], block: usize, stripes: usize, h: Hash) -> Vec<u8> {
 
 /// Cifra descrita por texto como "aes-xts-plain64" ou "aes-cbc-essiv:sha256".
 pub fn parse_cipher(spec: &str, key: &[u8]) -> std::result::Result<SectorCipher, UnlockError> {
-    let (alg, rest) = spec.split_once('-').ok_or_else(|| UnlockError::Unsupported(spec.into()))?;
+    let (alg, rest) = spec
+        .split_once('-')
+        .ok_or_else(|| UnlockError::Unsupported(spec.into()))?;
     if !alg.eq_ignore_ascii_case("aes") {
-        return Err(UnlockError::Unsupported(format!("cifra {alg} (apenas AES)")));
+        return Err(UnlockError::Unsupported(format!(
+            "cifra {alg} (apenas AES)"
+        )));
     }
     let (mode, ivs) = rest.split_once('-').unwrap_or((rest, "plain"));
     let bad = || UnlockError::Unsupported(format!("chave inválida para {spec}"));
@@ -102,7 +106,8 @@ pub fn parse_cipher(spec: &str, key: &[u8]) -> std::result::Result<SectorCipher,
             "plain" | "plain32" => Iv::Plain32,
             "plain64be" => Iv::Plain64Be,
             s if s.starts_with("essiv:") => {
-                let h = Hash::parse(&s[6..]).ok_or_else(|| UnlockError::Unsupported(spec.into()))?;
+                let h =
+                    Hash::parse(&s[6..]).ok_or_else(|| UnlockError::Unsupported(spec.into()))?;
                 Iv::Essiv(AesAny::new(&h.digest(&[k])).ok_or_else(bad)?)
             }
             _ => return Err(UnlockError::Unsupported(format!("IV {ivs}"))),
@@ -181,7 +186,8 @@ fn unlock_v1(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
     }
     let cipher_name = cstr(&h[8..40]);
     let cipher_mode = cstr(&h[40..72]);
-    let hash = Hash::parse(&cstr(&h[72..104])).ok_or_else(|| UnlockError::Unsupported(format!("hash {}", cstr(&h[72..104]))))?;
+    let hash = Hash::parse(&cstr(&h[72..104]))
+        .ok_or_else(|| UnlockError::Unsupported(format!("hash {}", cstr(&h[72..104]))))?;
     let payload = be32(&h, 104) as u64 * 512;
     let key_bytes = be32(&h, 108) as usize;
     let mk_digest = &h[112..132];
@@ -221,7 +227,9 @@ fn unlock_v1(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
             continue;
         }
         let km_len = (key_bytes * stripes).div_ceil(512) * 512;
-        let Ok(mut km) = read_vec(src.as_ref(), km_off, km_len) else { continue };
+        let Ok(mut km) = read_vec(src.as_ref(), km_off, km_len) else {
+            continue;
+        };
         if km.len() < km_len {
             continue;
         }
@@ -284,25 +292,38 @@ fn unlock_v2(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
     }
     let hdr_size = u64::from_be_bytes(h[8..16].try_into().unwrap());
     if !(16384..=(4 << 20)).contains(&hdr_size) {
-        return Err(UnlockError::Corrupt("tamanho de cabeçalho LUKS2 inválido".into()));
+        return Err(UnlockError::Corrupt(
+            "tamanho de cabeçalho LUKS2 inválido".into(),
+        ));
     }
-    let area = read_vec(src.as_ref(), 4096, (hdr_size - 4096) as usize).map_err(|e| UnlockError::Corrupt(e.to_string()))?;
+    let area = read_vec(src.as_ref(), 4096, (hdr_size - 4096) as usize)
+        .map_err(|e| UnlockError::Corrupt(e.to_string()))?;
     let end = area.iter().position(|&c| c == 0).unwrap_or(area.len());
-    let json: serde_json::Value = serde_json::from_slice(&area[..end]).map_err(|e| UnlockError::Corrupt(format!("JSON: {e}")))?;
-    let segments = json.get("segments").and_then(|s| s.as_object()).ok_or_else(|| UnlockError::Corrupt("sem segments".into()))?;
+    let json: serde_json::Value = serde_json::from_slice(&area[..end])
+        .map_err(|e| UnlockError::Corrupt(format!("JSON: {e}")))?;
+    let segments = json
+        .get("segments")
+        .and_then(|s| s.as_object())
+        .ok_or_else(|| UnlockError::Corrupt("sem segments".into()))?;
     let (_, seg) = segments
         .iter()
         .find(|(_, s)| jstr(s, "type") == Some("crypt"))
         .ok_or_else(|| UnlockError::Unsupported("sem segmento cifrado".into()))?;
-    let seg_off = jnum(seg, "offset").ok_or_else(|| UnlockError::Corrupt("offset do segmento".into()))?;
+    let seg_off =
+        jnum(seg, "offset").ok_or_else(|| UnlockError::Corrupt("offset do segmento".into()))?;
     let seg_len = match seg.get("size").and_then(|s| s.as_str()) {
         Some("dynamic") | None => src.size().saturating_sub(seg_off),
         Some(n) => n.parse().unwrap_or(0),
     };
-    let seg_enc = jstr(seg, "encryption").unwrap_or("aes-xts-plain64").to_string();
+    let seg_enc = jstr(seg, "encryption")
+        .unwrap_or("aes-xts-plain64")
+        .to_string();
     let sector = jnum(seg, "sector_size").unwrap_or(512);
     let iv_tweak = jnum(seg, "iv_tweak").unwrap_or(0);
-    let digests = json.get("digests").and_then(|d| d.as_object()).ok_or_else(|| UnlockError::Corrupt("sem digests".into()))?;
+    let digests = json
+        .get("digests")
+        .and_then(|d| d.as_object())
+        .ok_or_else(|| UnlockError::Corrupt("sem digests".into()))?;
 
     let check = |vk: &[u8]| -> bool {
         for (_, d) in digests {
@@ -325,7 +346,8 @@ fn unlock_v2(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
     };
     let finish = |vk: Vec<u8>| -> UnlockResult {
         let cipher = parse_cipher(&seg_enc, &vk)?;
-        let cs = CryptSource::new(src.clone(), cipher, seg_off, seg_len, sector).with_iv_tweak(iv_tweak);
+        let cs =
+            CryptSource::new(src.clone(), cipher, seg_off, seg_len, sector).with_iv_tweak(iv_tweak);
         Ok(Unlocked {
             source: Arc::new(cs),
             description: format!("LUKS2 ({seg_enc})"),
@@ -338,7 +360,10 @@ fn unlock_v2(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
         }
     }
     let pws = passwords(secrets);
-    let slots = json.get("keyslots").and_then(|d| d.as_object()).ok_or_else(|| UnlockError::Corrupt("sem keyslots".into()))?;
+    let slots = json
+        .get("keyslots")
+        .and_then(|d| d.as_object())
+        .ok_or_else(|| UnlockError::Corrupt("sem keyslots".into()))?;
     let mut unsupported: Option<String> = None;
     for (_, slot) in slots {
         if jstr(slot, "type") != Some("luks2") {
@@ -347,10 +372,20 @@ fn unlock_v2(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
         let key_size = jnum(slot, "key_size").unwrap_or(0) as usize;
         let af = slot.get("af");
         let stripes = af.and_then(|a| jnum(a, "stripes")).unwrap_or(4000) as usize;
-        let af_hash = af.and_then(|a| jstr(a, "hash")).and_then(Hash::parse).unwrap_or(Hash::Sha256);
+        let af_hash = af
+            .and_then(|a| jstr(a, "hash"))
+            .and_then(Hash::parse)
+            .unwrap_or(Hash::Sha256);
         let ar = slot.get("area");
-        let (Some(a_off), Some(a_size)) = (ar.and_then(|a| jnum(a, "offset")), ar.and_then(|a| jnum(a, "size"))) else { continue };
-        let a_enc = ar.and_then(|a| jstr(a, "encryption")).unwrap_or("aes-xts-plain64");
+        let (Some(a_off), Some(a_size)) = (
+            ar.and_then(|a| jnum(a, "offset")),
+            ar.and_then(|a| jnum(a, "size")),
+        ) else {
+            continue;
+        };
+        let a_enc = ar
+            .and_then(|a| jstr(a, "encryption"))
+            .unwrap_or("aes-xts-plain64");
         let a_ksize = ar.and_then(|a| jnum(a, "key_size")).unwrap_or(64) as usize;
         let kdf = slot.get("kdf");
         let Some(kdf) = kdf else { continue };
@@ -359,18 +394,31 @@ fn unlock_v2(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
         if key_size == 0 || stripes == 0 || km_len as u64 > a_size {
             continue;
         }
-        let Ok(km) = read_vec(src.as_ref(), a_off, km_len) else { continue };
+        let Ok(km) = read_vec(src.as_ref(), a_off, km_len) else {
+            continue;
+        };
         if km.len() < km_len {
             continue;
         }
         for pw in &pws {
             let dk: Vec<u8> = match jstr(kdf, "type") {
                 Some("pbkdf2") => {
-                    let hh = jstr(kdf, "hash").and_then(Hash::parse).unwrap_or(Hash::Sha256);
-                    hh.pbkdf2(pw, &salt, jnum(kdf, "iterations").unwrap_or(1000) as u32, a_ksize)
+                    let hh = jstr(kdf, "hash")
+                        .and_then(Hash::parse)
+                        .unwrap_or(Hash::Sha256);
+                    hh.pbkdf2(
+                        pw,
+                        &salt,
+                        jnum(kdf, "iterations").unwrap_or(1000) as u32,
+                        a_ksize,
+                    )
                 }
                 Some(t @ ("argon2i" | "argon2id")) => {
-                    let alg = if t == "argon2i" { argon2::Algorithm::Argon2i } else { argon2::Algorithm::Argon2id };
+                    let alg = if t == "argon2i" {
+                        argon2::Algorithm::Argon2i
+                    } else {
+                        argon2::Algorithm::Argon2id
+                    };
                     let params = match argon2::Params::new(
                         jnum(kdf, "memory").unwrap_or(65536) as u32,
                         jnum(kdf, "time").unwrap_or(4) as u32,
@@ -384,7 +432,10 @@ fn unlock_v2(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
                         }
                     };
                     let mut out = vec![0u8; a_ksize];
-                    if argon2::Argon2::new(alg, argon2::Version::V0x13, params).hash_password_into(pw, &salt, &mut out).is_err() {
+                    if argon2::Argon2::new(alg, argon2::Version::V0x13, params)
+                        .hash_password_into(pw, &salt, &mut out)
+                        .is_err()
+                    {
                         continue;
                     }
                     out
@@ -413,6 +464,11 @@ fn unlock_v2(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
 }
 
 /// Atalho: abre uma janela da origem como LUKS.
-pub fn unlock_window(base: Arc<dyn Source>, start: u64, len: u64, secrets: &[Secret]) -> UnlockResult {
+pub fn unlock_window(
+    base: Arc<dyn Source>,
+    start: u64,
+    len: u64,
+    secrets: &[Secret],
+) -> UnlockResult {
     unlock(Arc::new(SubSource::new(base, start, len)), secrets)
 }

@@ -22,13 +22,19 @@ const METADATA_ITEM: u8 = 169;
 const CHUNK_ITEM: u8 = 228;
 
 fn le16(b: &[u8], o: usize) -> u16 {
-    b.get(o..o + 2).map(|s| u16::from_le_bytes([s[0], s[1]])).unwrap_or(0)
+    b.get(o..o + 2)
+        .map(|s| u16::from_le_bytes([s[0], s[1]]))
+        .unwrap_or(0)
 }
 fn le32(b: &[u8], o: usize) -> u32 {
-    b.get(o..o + 4).map(|s| u32::from_le_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 4)
+        .map(|s| u32::from_le_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 fn le64(b: &[u8], o: usize) -> u64 {
-    b.get(o..o + 8).map(|s| u64::from_le_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 8)
+        .map(|s| u64::from_le_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 
 pub fn crc32c(data: &[u8]) -> u32 {
@@ -38,7 +44,11 @@ pub fn crc32c(data: &[u8]) -> u32 {
         for i in 0..256u32 {
             let mut c = i;
             for _ in 0..8 {
-                c = if c & 1 != 0 { (c >> 1) ^ 0x82F6_3B78 } else { c >> 1 };
+                c = if c & 1 != 0 {
+                    (c >> 1) ^ 0x82F6_3B78
+                } else {
+                    c >> 1
+                };
             }
             t[i as usize] = c;
         }
@@ -59,7 +69,11 @@ pub struct Key {
 }
 
 fn key_at(b: &[u8], o: usize) -> Key {
-    Key { objectid: le64(b, o), ty: b.get(o + 8).copied().unwrap_or(0), offset: le64(b, o + 9) }
+    Key {
+        objectid: le64(b, o),
+        ty: b.get(o + 8).copied().unwrap_or(0),
+        offset: le64(b, o + 9),
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -108,7 +122,10 @@ impl<'a> Fs<'a> {
         }
         let nodesize = le32(&sb, 148) as u64;
         let sectorsize = le32(&sb, 144) as u64;
-        if !nodesize.is_power_of_two() || !(4096..=65536).contains(&nodesize) || !sectorsize.is_power_of_two() {
+        if !nodesize.is_power_of_two()
+            || !(4096..=65536).contains(&nodesize)
+            || !sectorsize.is_power_of_two()
+        {
             return None;
         }
         let mut fsid = [0u8; 16];
@@ -156,9 +173,17 @@ impl<'a> Fs<'a> {
     }
 
     fn phys(&self, logical: u64) -> Option<u64> {
-        let i = self.chunks.partition_point(|c| c.logical + c.len <= logical);
+        let i = self
+            .chunks
+            .partition_point(|c| c.logical + c.len <= logical);
         let c = self.chunks.get(i)?;
-        (c.logical <= logical).then(|| c.phys.first().map(|p| self.base + p + (logical - c.logical))).flatten()
+        (c.logical <= logical)
+            .then(|| {
+                c.phys
+                    .first()
+                    .map(|p| self.base + p + (logical - c.logical))
+            })
+            .flatten()
     }
 
     fn read_node(&self, logical: u64) -> Option<Node> {
@@ -172,7 +197,7 @@ impl<'a> Fs<'a> {
             return None;
         }
         let bytenr = le64(raw, 48);
-        if expect.map_or(false, |e| e != bytenr) {
+        if expect.is_some_and(|e| e != bytenr) {
             return None;
         }
         if crc32c(&raw[32..]) != le32(raw, 0) {
@@ -208,7 +233,12 @@ impl<'a> Fs<'a> {
             }
             NodeKind::Internal(ptrs)
         };
-        Some(Node { bytenr, generation: le64(raw, 80), owner: le64(raw, 88), kind })
+        Some(Node {
+            bytenr,
+            generation: le64(raw, 80),
+            owner: le64(raw, 88),
+            kind,
+        })
     }
 
     /// Percorre uma árvore em ordem, chamando `f` para cada item de folha.
@@ -222,7 +252,14 @@ impl<'a> Fs<'a> {
         self.walk_inner(root, f, &mut seen, nodes, 0);
     }
 
-    fn walk_inner(&self, at: u64, f: &mut dyn FnMut(&Key, &[u8]), seen: &mut HashSet<u64>, nodes: &mut dyn FnMut(&Node), depth: u32) {
+    fn walk_inner(
+        &self,
+        at: u64,
+        f: &mut dyn FnMut(&Key, &[u8]),
+        seen: &mut HashSet<u64>,
+        nodes: &mut dyn FnMut(&Node),
+        depth: u32,
+    ) {
         if depth > 10 || !seen.insert(at) {
             return;
         }
@@ -254,7 +291,15 @@ fn parse_chunk(d: &[u8], logical: u64) -> Option<(Chunk, usize)> {
         return None;
     }
     let phys = (0..nstripes).map(|i| le64(d, 48 + i * 32 + 8)).collect();
-    Some((Chunk { logical, len, ty, phys }, 48 + nstripes * 32))
+    Some((
+        Chunk {
+            logical,
+            len,
+            ty,
+            phys,
+        },
+        48 + nstripes * 32,
+    ))
 }
 
 // ---------------------------------------------------------------- inodes
@@ -293,7 +338,11 @@ fn add_item(files: &mut Files, owner: u64, gen: u64, k: &Key, d: &[u8]) {
         INODE_REF if d.len() >= 10 => {
             let nlen = le16(d, 8) as usize;
             if let Some(n) = d.get(10..10 + nlen) {
-                files.entry((owner, k.objectid)).or_default().refs.insert(k.offset, String::from_utf8_lossy(n).to_string());
+                files
+                    .entry((owner, k.objectid))
+                    .or_default()
+                    .refs
+                    .insert(k.offset, String::from_utf8_lossy(n).to_string());
             }
         }
         EXTENT_DATA if d.len() >= 21 => {
@@ -319,7 +368,11 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
     let Some(fs) = Fs::open(ctx.src, base) else {
         return res;
     };
-    if fs.chunks.iter().any(|c| c.ty & 0x1 << 3 != 0 || c.ty & 0x10 != 0 || c.ty & 0x100 != 0 || c.ty & 0x200 != 0) {
+    if fs
+        .chunks
+        .iter()
+        .any(|c| c.ty & 0x1 << 3 != 0 || c.ty & 0x10 != 0 || c.ty & 0x100 != 0 || c.ty & 0x200 != 0)
+    {
         res.warnings.push("Btrfs em RAID 0/10/5/6: a leitura de metadados ainda não suporta esses perfis; usando só assinaturas.".into());
         return res;
     }
@@ -404,11 +457,18 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
     let mut stale: Files = HashMap::new();
     let ns = fs.nodesize as usize;
     let step = fs.sectorsize as usize;
-    let md_chunks: Vec<Chunk> = fs.chunks.iter().filter(|c| c.ty & 0x4 != 0).cloned().collect();
+    let md_chunks: Vec<Chunk> = fs
+        .chunks
+        .iter()
+        .filter(|c| c.ty & 0x4 != 0)
+        .cloned()
+        .collect();
     let total_md: u64 = md_chunks.iter().map(|c| c.len).sum();
     let mut done_md = 0u64;
     for c in &md_chunks {
-        let Some(p0) = c.phys.first().copied() else { continue };
+        let Some(p0) = c.phys.first().copied() else {
+            continue;
+        };
         let mut off = 0u64;
         let block = 8usize << 20;
         while off < c.len {
@@ -416,12 +476,17 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
                 return res;
             }
             let n = ((c.len - off) as usize).min(block + ns);
-            let Ok(buf) = read_vec(ctx.src, fs.base + p0 + off, n) else { break };
+            let Ok(buf) = read_vec(ctx.src, fs.base + p0 + off, n) else {
+                break;
+            };
             let mut i = 0usize;
             while i + ns <= buf.len() && (off + i as u64) < c.len {
                 let logical = c.logical + off + i as u64;
                 // cabeçalho barato antes do CRC
-                if buf[i + 32..i + 48] == fs.fsid && le64(&buf[i..], 48) == logical && buf[i + 100] == 0 {
+                if buf[i + 32..i + 48] == fs.fsid
+                    && le64(&buf[i..], 48) == logical
+                    && buf[i + 100] == 0
+                {
                     if let Some(node) = fs.parse_node(&buf[i..i + ns], Some(logical)) {
                         if is_fs_tree(node.owner) && !live_nodes.contains(&logical) {
                             if let NodeKind::Leaf(items) = &node.kind {
@@ -473,18 +538,32 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
         if !e.has_inode || e.mode & 0o170000 != 0o100000 || e.size == 0 || e.extents.is_empty() {
             continue;
         }
-        let Some((name, parent)) = e.refs.iter().next().map(|(p, n)| (n.clone(), *p)) else { continue };
+        let Some((name, parent)) = e.refs.iter().next().map(|(p, n)| (n.clone(), *p)) else {
+            continue;
+        };
         let dir = {
             let p = path_of(owner, parent);
-            Some(if p.is_empty() { String::new() } else { format!("/{p}") })
+            Some(if p.is_empty() {
+                String::new()
+            } else {
+                format!("/{p}")
+            })
         };
-        let Some((data, any_alloc, all_ok)) = build_data(&fs, e, &allocated) else { continue };
+        let Some((data, any_alloc, all_ok)) = build_data(&fs, e, &allocated) else {
+            continue;
+        };
         let (conf, note) = if !all_ok {
-            (Confidence::Low, "faltam trechos do arquivo na versão antiga da árvore".to_string())
+            (
+                Confidence::Low,
+                "faltam trechos do arquivo na versão antiga da árvore".to_string(),
+            )
         } else if any_alloc {
             (Confidence::Medium, "versão antiga do Btrfs; alguns blocos ainda constam como alocados (podem ser de outro arquivo)".to_string())
         } else {
-            (Confidence::High, "versão antiga da árvore do Btrfs; blocos de dados livres".to_string())
+            (
+                Confidence::High,
+                "versão antiga da árvore do Btrfs; blocos de dados livres".to_string(),
+            )
         };
         let ts = |t: i64| (t > 0).then_some(t);
         let nf = NewFound {
@@ -526,7 +605,10 @@ fn build_data(fs: &Fs, e: &InodeData, allocated: &[Extent]) -> Option<(DataLoc, 
         }
         if foff > pos {
             sparse_marks.push(parts.len());
-            parts.push(Part::Run { offset: 0, len: foff - pos });
+            parts.push(Part::Run {
+                offset: 0,
+                len: foff - pos,
+            });
             plain_only = false;
             pos = foff;
         }
@@ -541,7 +623,9 @@ fn build_data(fs: &Fs, e: &InodeData, allocated: &[Extent]) -> Option<(DataLoc, 
                 c => decode(c, raw, ram)?,
             };
             let len = (bytes.len() as u64).min(e.size - foff);
-            parts.push(Part::Bytes { bytes: bytes[..len as usize].to_vec() });
+            parts.push(Part::Bytes {
+                bytes: bytes[..len as usize].to_vec(),
+            });
             plain_only = false;
             pos = foff + len;
             continue;
@@ -554,7 +638,10 @@ fn build_data(fs: &Fs, e: &InodeData, allocated: &[Extent]) -> Option<(DataLoc, 
         let num = num.min(e.size.saturating_sub(foff));
         if disk == 0 || ty == 2 {
             sparse_marks.push(parts.len());
-            parts.push(Part::Run { offset: 0, len: num });
+            parts.push(Part::Run {
+                offset: 0,
+                len: num,
+            });
             plain_only = false;
         } else {
             let Some(phys) = fs.phys(disk) else {
@@ -563,22 +650,32 @@ fn build_data(fs: &Fs, e: &InodeData, allocated: &[Extent]) -> Option<(DataLoc, 
             };
             let overlaps = {
                 let i = allocated.partition_point(|x| x.end() <= disk);
-                allocated.get(i).map_or(false, |x| x.offset < disk + disk_len)
+                allocated.get(i).is_some_and(|x| x.offset < disk + disk_len)
             };
             any_alloc |= overlaps;
             if comp == 0 {
-                parts.push(Part::Run { offset: phys + offset, len: num });
+                parts.push(Part::Run {
+                    offset: phys + offset,
+                    len: num,
+                });
             } else {
                 let codec = match comp {
                     1 => PackedCodec::Zlib,
                     2 => PackedCodec::Zstd,
-                    3 | 4 | 5 | 6 => PackedCodec::Lzo,
+                    3..=6 => PackedCodec::Lzo,
                     _ => {
                         all_ok = false;
                         break;
                     }
                 };
-                parts.push(Part::Packed(Packed { offset: phys, disk_len, ram_len: le64(d, 8), skip: offset, len: num, codec }));
+                parts.push(Part::Packed(Packed {
+                    offset: phys,
+                    disk_len,
+                    ram_len: le64(d, 8),
+                    skip: offset,
+                    len: num,
+                    codec,
+                }));
                 plain_only = false;
             }
         }
@@ -588,7 +685,16 @@ fn build_data(fs: &Fs, e: &InodeData, allocated: &[Extent]) -> Option<(DataLoc, 
         all_ok = false;
     }
     if plain_only {
-        let ex: Vec<Extent> = parts.iter().filter_map(|p| if let Part::Run { offset, len } = p { Some(Extent::new(*offset, *len)) } else { None }).collect();
+        let ex: Vec<Extent> = parts
+            .iter()
+            .filter_map(|p| {
+                if let Part::Run { offset, len } = p {
+                    Some(Extent::new(*offset, *len))
+                } else {
+                    None
+                }
+            })
+            .collect();
         return Some((DataLoc::Extents { extents: ex }, any_alloc, all_ok));
     }
     // Buracos viram trechos esparsos: Part::Run com offset 0 não serve; usa Bytes de zeros pequenos.
@@ -610,7 +716,9 @@ fn decode(codec: u8, raw: &[u8], ram: usize) -> Option<Vec<u8>> {
         1 => {
             use std::io::Read;
             let mut v = Vec::with_capacity(ram);
-            flate2::read::ZlibDecoder::new(raw).read_to_end(&mut v).ok()?;
+            flate2::read::ZlibDecoder::new(raw)
+                .read_to_end(&mut v)
+                .ok()?;
             Some(v)
         }
         2 => {
@@ -695,7 +803,11 @@ pub fn lzo1x_decompress(src: &[u8], max_out: usize) -> Option<Vec<u8>> {
             }
             let h = byte(ip)?;
             ip += 1;
-            let (dist, len) = if state == 4 { ((t >> 2) + (h << 2) + 2049, 3) } else { ((t >> 2) + (h << 2) + 1, 2) };
+            let (dist, len) = if state == 4 {
+                ((t >> 2) + (h << 2) + 2049, 3)
+            } else {
+                ((t >> 2) + (h << 2) + 1, 2)
+            };
             copy_match(&mut out, dist, len)?;
             let next = t & 3;
             lits(&mut out, &mut ip, next)?;
@@ -708,7 +820,11 @@ pub fn lzo1x_decompress(src: &[u8], max_out: usize) -> Option<Vec<u8>> {
             lits(&mut out, &mut ip, next)?;
             state = next;
         } else if t >= 32 {
-            let len = if t & 31 == 0 { ext(&mut ip, 31)? } else { t & 31 } + 2;
+            let len = if t & 31 == 0 {
+                ext(&mut ip, 31)?
+            } else {
+                t & 31
+            } + 2;
             let b = (byte(ip)?) | (byte(ip + 1)? << 8);
             ip += 2;
             copy_match(&mut out, 1 + (b >> 2), len)?;
@@ -745,7 +861,9 @@ fn copy_match(out: &mut Vec<u8>, dist: usize, len: usize) -> Option<()> {
 
 /// Arquivos e pastas atuais com caminho completo e tamanho (usa só as árvores vivas).
 pub fn live_paths(src: &dyn Source, base: u64) -> Vec<(String, u64, bool)> {
-    let Some(fs) = Fs::open(src, base) else { return vec![] };
+    let Some(fs) = Fs::open(src, base) else {
+        return vec![];
+    };
     let mut roots: Vec<(u64, u64)> = vec![];
     fs.walk(fs.root, &mut |k, d| {
         if k.ty == ROOT_ITEM && d.len() >= 239 && is_fs_tree(k.objectid) {
@@ -817,6 +935,10 @@ pub fn locate_trees(src: &dyn Source, base: u64) -> Option<TreeLocations> {
         root_tree_logical: fs.root,
         fs_tree_logical: fs_t,
         extent_tree_logical: ext_t,
-        chunks: fs.chunks.iter().filter_map(|c| c.phys.first().map(|p| (c.logical, c.len, fs.base + p))).collect(),
+        chunks: fs
+            .chunks
+            .iter()
+            .filter_map(|c| c.phys.first().map(|p| (c.logical, c.len, fs.base + p)))
+            .collect(),
     })
 }

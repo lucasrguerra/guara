@@ -240,14 +240,23 @@ impl AsmArgs {
         for k in &self.volume_keys {
             secrets.push(SecretInput::Key { hex: k.clone() });
         }
-        let raid = if self.raid || self.raid_level.is_some() || self.raid_chunk_kb.is_some() || self.raid_layout.is_some() || !self.raid_order.is_empty() {
+        let raid = if self.raid
+            || self.raid_level.is_some()
+            || self.raid_chunk_kb.is_some()
+            || self.raid_layout.is_some()
+            || !self.raid_order.is_empty()
+        {
             let level = match self.raid_level.as_deref() {
                 None => None,
                 Some("0") => Some(guara_core::raid::Level::R0),
                 Some("1") => Some(guara_core::raid::Level::R1),
                 Some("5") => Some(guara_core::raid::Level::R5),
                 Some("6") => Some(guara_core::raid::Level::R6),
-                Some(x) => return Err(format!("nível de RAID não suportado: {x} (use 0, 1, 5 ou 6)")),
+                Some(x) => {
+                    return Err(format!(
+                        "nível de RAID não suportado: {x} (use 0, 1, 5 ou 6)"
+                    ))
+                }
             };
             let layout = match self.raid_layout.as_deref() {
                 None => None,
@@ -344,7 +353,12 @@ fn run(cli: Cli) -> Result<(), String> {
         }
         Cmd::Inspect { path, json, asm } => {
             let a = asm.assembly()?;
-            let v = eng.rpc("inspect", json!({ "path": path, "assembly": serde_json::to_value(&a).map_err(s)?})).map_err(s)?;
+            let v = eng
+                .rpc(
+                    "inspect",
+                    json!({ "path": path, "assembly": serde_json::to_value(&a).map_err(s)?}),
+                )
+                .map_err(s)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&v).unwrap());
             } else {
@@ -434,7 +448,14 @@ fn run(cli: Cli) -> Result<(), String> {
         }
         Cmd::Verify { path } => {
             let e = guara_core::ewf::EwfSource::open(std::path::Path::new(&path)).map_err(s)?;
-            println!("Formato: {}", if e.info.version == 2 { "Ex01 (EnCase 7)" } else { "E01 (EnCase)" });
+            println!(
+                "Formato: {}",
+                if e.info.version == 2 {
+                    "Ex01 (EnCase 7)"
+                } else {
+                    "E01 (EnCase)"
+                }
+            );
             println!("Segmentos: {}", e.info.segments);
             for (k, v) in &e.info.fields {
                 println!("{k}: {v}");
@@ -452,7 +473,18 @@ fn run(cli: Cli) -> Result<(), String> {
                 }
             }
         }
-        Cmd::Image { path, dest, format, case, examiner, description, evidence, notes, segment_mib, compression } => {
+        Cmd::Image {
+            path,
+            dest,
+            format,
+            case,
+            examiner,
+            description,
+            evidence,
+            notes,
+            segment_mib,
+            compression,
+        } => {
             let fmt = match format.as_str() {
                 "raw" => guara_core::image::ImageFormat::Raw,
                 "e01" => guara_core::image::ImageFormat::E01 {
@@ -464,8 +496,17 @@ fn run(cli: Cli) -> Result<(), String> {
                     segment_mib,
                     compression,
                 },
-                "aff4" => guara_core::image::ImageFormat::Aff4 { case_number: case, examiner, evidence_number: evidence, notes },
-                x => return Err(format!("formato de imagem desconhecido: {x} (use raw, e01 ou aff4)")),
+                "aff4" => guara_core::image::ImageFormat::Aff4 {
+                    case_number: case,
+                    examiner,
+                    evidence_number: evidence,
+                    notes,
+                },
+                x => {
+                    return Err(format!(
+                        "formato de imagem desconhecido: {x} (use raw, e01 ou aff4)"
+                    ))
+                }
             };
             let job = eng.start_image_as(&path, &dest, &fmt).map_err(s)?;
             let st = wait(&eng, &job, None)?;
@@ -1007,4 +1048,3 @@ fn print_health(v: &Value) {
         println!("\n{}", adv.as_str().unwrap_or(""));
     }
 }
-

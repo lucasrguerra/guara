@@ -10,13 +10,19 @@ use crate::types::{Confidence, DataLoc, Extent, Origin};
 use std::collections::{HashMap, HashSet};
 
 fn be16(b: &[u8], o: usize) -> u16 {
-    b.get(o..o + 2).map(|s| u16::from_be_bytes([s[0], s[1]])).unwrap_or(0)
+    b.get(o..o + 2)
+        .map(|s| u16::from_be_bytes([s[0], s[1]]))
+        .unwrap_or(0)
 }
 fn be32(b: &[u8], o: usize) -> u32 {
-    b.get(o..o + 4).map(|s| u32::from_be_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 4)
+        .map(|s| u32::from_be_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 fn be64(b: &[u8], o: usize) -> u64 {
-    b.get(o..o + 8).map(|s| u64::from_be_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 8)
+        .map(|s| u64::from_be_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 
 struct Xfs<'a> {
@@ -46,7 +52,12 @@ impl<'a> Xfs<'a> {
         let agblocks = be32(&sb, 84) as u64;
         let agcount = be32(&sb, 88) as u64;
         let inodesize = be16(&sb, 104) as u64;
-        if !(512..=65536).contains(&bs) || !bs.is_power_of_two() || agblocks == 0 || agcount == 0 || !(256..=2048).contains(&inodesize) {
+        if !(512..=65536).contains(&bs)
+            || !bs.is_power_of_two()
+            || agblocks == 0
+            || agcount == 0
+            || !(256..=2048).contains(&inodesize)
+        {
             return None;
         }
         let incompat = be32(&sb, 216);
@@ -63,7 +74,11 @@ impl<'a> Xfs<'a> {
             agblklog: sb[124] as u32,
             sectsize: be16(&sb, 102) as u64,
             v5,
-            ftype: if v5 { incompat & 1 != 0 } else { features2 & 0x200 != 0 },
+            ftype: if v5 {
+                incompat & 1 != 0
+            } else {
+                features2 & 0x200 != 0
+            },
             root_ino: be64(&sb, 56),
             dblocks: be64(&sb, 8),
         })
@@ -84,7 +99,8 @@ impl<'a> Xfs<'a> {
         let agno = ino >> shift;
         let agbno = (ino >> self.inopblog) & ((1 << self.agblklog) - 1);
         let idx = ino & ((1 << self.inopblog) - 1);
-        (agno < self.agcount && agbno < self.agblocks).then(|| self.ag_off(agno) + agbno * self.bs + idx * self.inodesize)
+        (agno < self.agcount && agbno < self.agblocks)
+            .then(|| self.ag_off(agno) + agbno * self.bs + idx * self.inodesize)
     }
 
     fn read_ino(&self, ino: u64) -> Option<Vec<u8>> {
@@ -104,7 +120,11 @@ impl<'a> Xfs<'a> {
     fn extents_of(&self, ino: &[u8], max_blocks: u64) -> Vec<(u64, u64, u64)> {
         let fmt = ino[5];
         let start = self.core_size(ino);
-        let fork_end = if ino[82] != 0 { start.max(100 + ino[82] as usize * 8) } else { self.inodesize as usize };
+        let fork_end = if ino[82] != 0 {
+            start.max(100 + ino[82] as usize * 8)
+        } else {
+            self.inodesize as usize
+        };
         let lit = &ino[start..fork_end.min(ino.len())];
         let mut out = vec![];
         match fmt {
@@ -136,7 +156,9 @@ impl<'a> Xfs<'a> {
             return;
         }
         let Some(off) = self.fsb_off(fsb) else { return };
-        let Ok(b) = read_vec(self.src, off, self.bs as usize) else { return };
+        let Ok(b) = read_vec(self.src, off, self.bs as usize) else {
+            return;
+        };
         if b.len() < 24 || !(&b[0..4] == b"BMAP" || &b[0..4] == b"BMA3") {
             return;
         }
@@ -169,11 +191,21 @@ fn unpack_extent(r: &[u8]) -> (u64, u64, u64) {
 }
 
 /// Percorre as folhas de uma árvore B+ curta, entregando cada registro de 16 (inobt) ou 8 (bnobt) bytes.
-fn walk_short_btree(x: &Xfs, agno: u64, root: u64, levels: u32, rec: usize, key_size: usize, f: &mut dyn FnMut(&[u8])) {
+fn walk_short_btree(
+    x: &Xfs,
+    agno: u64,
+    root: u64,
+    levels: u32,
+    rec: usize,
+    key_size: usize,
+    f: &mut dyn FnMut(&[u8]),
+) {
     let mut cur = root;
     // desce pela esquerda até a folha
     for lvl in (1..levels).rev() {
-        let Ok(b) = read_vec(x.src, x.ag_off(agno) + cur * x.bs, x.bs as usize) else { return };
+        let Ok(b) = read_vec(x.src, x.ag_off(agno) + cur * x.bs, x.bs as usize) else {
+            return;
+        };
         if b.len() < 24 {
             return;
         }
@@ -185,7 +217,9 @@ fn walk_short_btree(x: &Xfs, agno: u64, root: u64, levels: u32, rec: usize, key_
     }
     let mut seen = HashSet::new();
     while cur != 0 && cur != u32::MAX as u64 && seen.insert(cur) {
-        let Ok(b) = read_vec(x.src, x.ag_off(agno) + cur * x.bs, x.bs as usize) else { return };
+        let Ok(b) = read_vec(x.src, x.ag_off(agno) + cur * x.bs, x.bs as usize) else {
+            return;
+        };
         if b.len() < 24 {
             return;
         }
@@ -203,7 +237,9 @@ fn walk_short_btree(x: &Xfs, agno: u64, root: u64, levels: u32, rec: usize, key_
 pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
     let _ = part_len;
     let mut res = VolumeScan::default();
-    let Some(x) = Xfs::open(ctx.src, base) else { return res };
+    let Some(x) = Xfs::open(ctx.src, base) else {
+        return res;
+    };
 
     // Espaço livre por grupo e inodes livres.
     let mut free: Vec<Extent> = vec![];
@@ -237,7 +273,9 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
     free_set.sort();
     let is_free = |fsb: u64, count: u64| -> bool {
         let i = free_set.partition_point(|&(s, c)| s + c <= fsb);
-        free_set.get(i).map_or(false, |&(s, c)| s <= fsb && s + c >= fsb + count)
+        free_set
+            .get(i)
+            .is_some_and(|&(s, c)| s <= fsb && s + c >= fsb + count)
     };
 
     // Nomes: entradas de diretório liberadas (guardam o nome e os 4 bytes baixos do inode).
@@ -290,16 +328,30 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
                 continue;
             }
             let all_free = ext.iter().all(|e| is_free(e.1, e.2));
-            let extents: Vec<Extent> = ext.iter().filter_map(|e| x.fsb_off(e.1).map(|o| Extent::new(o, e.2 * x.bs))).collect();
+            let extents: Vec<Extent> = ext
+                .iter()
+                .filter_map(|e| x.fsb_off(e.1).map(|o| Extent::new(o, e.2 * x.bs)))
+                .collect();
             if extents.is_empty() || !seen_first.insert(extents[0].offset) {
                 continue;
             }
             let mut size = total_blocks * x.bs;
-            let mut conf = if all_free { Confidence::High } else { Confidence::Low };
-            let mut note = if all_free { "inode XFS liberado; lista de extents recuperada do próprio inode".to_string() } else { "blocos do arquivo já reaproveitados".to_string() };
+            let mut conf = if all_free {
+                Confidence::High
+            } else {
+                Confidence::Low
+            };
+            let mut note = if all_free {
+                "inode XFS liberado; lista de extents recuperada do próprio inode".to_string()
+            } else {
+                "blocos do arquivo já reaproveitados".to_string()
+            };
             // tamanho exato: tenta achar o fim real pelo conteúdo
             let mut est = true;
-            if let Some(h) = read_vec(ctx.src, extents[0].offset, 128).ok().and_then(|head| signatures::detect(ctx.src, extents[0].offset, &head, size)) {
+            if let Some(h) = read_vec(ctx.src, extents[0].offset, 128)
+                .ok()
+                .and_then(|head| signatures::detect(ctx.src, extents[0].offset, &head, size))
+            {
                 if h.len > 0 && h.len <= size {
                     size = h.len;
                     est = false;
@@ -312,7 +364,10 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
             let extents = super::fat::trim_extents(extents, size);
             let low = ino & 0xFFFF_FFFF;
             let (dir, name) = match stale_names.get(&low) {
-                Some((parent, n)) => (Some(live_dirs.get(parent).cloned().unwrap_or_default()), n.clone()),
+                Some((parent, n)) => (
+                    Some(live_dirs.get(parent).cloned().unwrap_or_default()),
+                    n.clone(),
+                ),
                 None => (None, format!("inode_{ino}")),
             };
             let ts = |s: u32| (s != 0).then_some(s as i64);
@@ -323,7 +378,11 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
                 origin: Origin::Xfs,
                 data: DataLoc::Extents { extents },
                 modified: ts(be32(&raw, 40)),
-                created: if raw[4] >= 3 { ts(be32(&raw, 144)) } else { None },
+                created: if raw[4] >= 3 {
+                    ts(be32(&raw, 144))
+                } else {
+                    None
+                },
                 accessed: ts(be32(&raw, 32)),
                 base: conf,
                 note: Some(&note),
@@ -345,7 +404,9 @@ fn collect_names(x: &Xfs, ctx: &Ctx) -> (HashMap<u64, String>, HashMap<u64, (u64
         if !seen.insert(dino) || (ctx.cancelled)() || seen.len() > 200_000 {
             continue;
         }
-        let Some(raw) = x.read_ino(dino) else { continue };
+        let Some(raw) = x.read_ino(dino) else {
+            continue;
+        };
         if be16(&raw, 2) & 0o170000 != 0o040000 {
             continue;
         }
@@ -365,9 +426,14 @@ fn collect_names(x: &Xfs, ctx: &Ctx) -> (HashMap<u64, String>, HashMap<u64, (u64
                     }
                     let nl = lit[p] as usize;
                     p += 3;
-                    let name = String::from_utf8_lossy(lit.get(p..p + nl).unwrap_or(&[])).to_string();
+                    let name =
+                        String::from_utf8_lossy(lit.get(p..p + nl).unwrap_or(&[])).to_string();
                     p += nl + if x.ftype { 1 } else { 0 };
-                    let ino = if i8 { be64(lit, p) } else { be32(lit, p) as u64 };
+                    let ino = if i8 {
+                        be64(lit, p)
+                    } else {
+                        be32(lit, p) as u64
+                    };
                     p += isz;
                     queue.push((ino, format!("{path}/{name}")));
                 }
@@ -382,8 +448,12 @@ fn collect_names(x: &Xfs, ctx: &Ctx) -> (HashMap<u64, String>, HashMap<u64, (u64
                         continue;
                     }
                     for k in 0..cnt.min(256) {
-                        let Some(o) = x.fsb_off(fsb + k) else { continue };
-                        let Ok(b) = read_vec(x.src, o, x.bs as usize) else { continue };
+                        let Some(o) = x.fsb_off(fsb + k) else {
+                            continue;
+                        };
+                        let Ok(b) = read_vec(x.src, o, x.bs as usize) else {
+                            continue;
+                        };
                         parse_dir_block(x, &b, dino, &path, &mut queue, &mut stale);
                     }
                 }
@@ -394,7 +464,14 @@ fn collect_names(x: &Xfs, ctx: &Ctx) -> (HashMap<u64, String>, HashMap<u64, (u64
     (paths, stale)
 }
 
-fn parse_dir_block(x: &Xfs, b: &[u8], dino: u64, path: &str, queue: &mut Vec<(u64, String)>, stale: &mut HashMap<u64, (u64, String)>) {
+fn parse_dir_block(
+    x: &Xfs,
+    b: &[u8],
+    dino: u64,
+    path: &str,
+    queue: &mut Vec<(u64, String)>,
+    stale: &mut HashMap<u64, (u64, String)>,
+) {
     let magic = &b[0..4];
     let hdr = match magic {
         b"XD2B" | b"XD2D" => 16,
@@ -447,7 +524,9 @@ fn scan_free_region(x: &Xfs, r: &[u8], dir_ino: u64, stale: &mut HashMap<u64, (u
         if nl == 0 || name.iter().any(|&c| c < 0x20 || c == b'/' || c == 0x7F) {
             return None;
         }
-        stale.entry(low).or_insert((dir_ino, String::from_utf8_lossy(name).to_string()));
+        stale
+            .entry(low)
+            .or_insert((dir_ino, String::from_utf8_lossy(name).to_string()));
         Some((8 + 1 + nl + if x.ftype { 1 } else { 0 } + 2).div_ceil(8) * 8)
     };
     if r.len() >= 16 {

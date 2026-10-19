@@ -23,13 +23,23 @@ impl Candidate {
             self.level,
             self.chunk,
             self.layout,
-            self.order.iter().map(|&i| Some(Member { src: members[i].clone(), data_offset: 0 })).collect(),
+            self.order
+                .iter()
+                .map(|&i| {
+                    Some(Member {
+                        src: members[i].clone(),
+                        data_offset: 0,
+                    })
+                })
+                .collect(),
         )
     }
 }
 
 const PREFIX: u64 = 24 << 20;
-const CHUNKS: [u64; 9] = [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
+const CHUNKS: [u64; 9] = [
+    4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576,
+];
 
 fn permutations(n: usize) -> Vec<Vec<usize>> {
     fn rec(cur: &mut Vec<usize>, used: &mut Vec<bool>, n: usize, out: &mut Vec<Vec<usize>>) {
@@ -53,7 +63,9 @@ fn permutations(n: usize) -> Vec<Vec<usize>> {
 }
 
 fn ntfs_score(src: &dyn Source, start: u64) -> f64 {
-    let Ok(b) = read_vec(src, start, 512) else { return 0.0 };
+    let Ok(b) = read_vec(src, start, 512) else {
+        return 0.0;
+    };
     if b.len() < 512 || &b[3..11] != b"NTFS    " {
         return 0.0;
     }
@@ -61,18 +73,26 @@ fn ntfs_score(src: &dyn Source, start: u64) -> f64 {
     let spc = b[13] as u64;
     let mft = u64::from_le_bytes(b[0x30..0x38].try_into().unwrap());
     let rs = b[0x40] as i8;
-    let rec = if rs > 0 { rs as u64 * bps * spc } else { 1u64 << (-rs) };
+    let rec = if rs > 0 {
+        rs as u64 * bps * spc
+    } else {
+        1u64 << (-rs)
+    };
     if bps == 0 || spc == 0 || rec == 0 || rec > 65536 {
         return 0.0;
     }
     let mft_off = start + mft * bps * spc;
     let (mut ok, mut total) = (0, 0);
-    for k in [0u64, 1, 2, 3, 5, 11, 16, 24, 40, 100, 250, 600, 1500, 3000, 6000, 12000, 24000, 50000] {
+    for k in [
+        0u64, 1, 2, 3, 5, 11, 16, 24, 40, 100, 250, 600, 1500, 3000, 6000, 12000, 24000, 50000,
+    ] {
         let off = mft_off + k * rec;
         if off + rec > src.size() {
             break;
         }
-        let Ok(r) = read_vec(src, off, 64) else { continue };
+        let Ok(r) = read_vec(src, off, 64) else {
+            continue;
+        };
         if r.len() < 64 {
             continue;
         }
@@ -106,18 +126,25 @@ pub fn fs_score(src: &dyn Source) -> f64 {
     let layout = partition::analyze(src, false);
     let mut best = 0.0f64;
     for p in &layout.partitions {
-        best = best.max(volume_score(src, p.start, p.fs) + if p.fs != FsKind::Unknown { 0.5 } else { 0.0 });
+        best = best.max(
+            volume_score(src, p.start, p.fs) + if p.fs != FsKind::Unknown { 0.5 } else { 0.0 },
+        );
     }
     best
 }
 
 fn first_sector_plausible(src: &dyn Source) -> bool {
-    let Ok(b) = read_vec(src, 0, 4096) else { return false };
+    let Ok(b) = read_vec(src, 0, 4096) else {
+        return false;
+    };
     b.len() >= 1100 && ((b[510] == 0x55 && b[511] == 0xAA) || partition::detect_fs_in(&b).is_some())
 }
 
 /// Testa as combinações e devolve as melhores (maior pontuação primeiro).
-pub fn detect(members: &[Arc<dyn Source>], cancelled: &(dyn Fn() -> bool + Sync)) -> Vec<Candidate> {
+pub fn detect(
+    members: &[Arc<dyn Source>],
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Vec<Candidate> {
     let n = members.len();
     if n < 2 {
         return vec![];
@@ -140,13 +167,22 @@ pub fn detect(members: &[Arc<dyn Source>], cancelled: &(dyn Fn() -> bool + Sync)
     let probe = |s: &Arc<dyn Source>| read_vec(s.as_ref(), 0, 1 << 20).unwrap_or_default();
     let first = probe(&cached[0]);
     if first.iter().any(|&x| x != 0) && cached.iter().skip(1).all(|c| probe(c) == first) {
-        let c = Candidate { level: Level::R1, chunk: 65536, layout: Layout::LeftSymmetric, order: (0..n).collect(), score: fs_score(cached[0].as_ref()) + 1.0 };
+        let c = Candidate {
+            level: Level::R1,
+            chunk: 65536,
+            layout: Layout::LeftSymmetric,
+            order: (0..n).collect(),
+            score: fs_score(cached[0].as_ref()) + 1.0,
+        };
         out.push(c);
     }
 
     // RAID 5/4 satisfaz "XOR de todos os discos = 0" em toda faixa.
     let sample = 4usize << 20;
-    let bufs: Vec<Vec<u8>> = cached.iter().map(|c| read_vec(c.as_ref(), 0, sample).unwrap_or_default()).collect();
+    let bufs: Vec<Vec<u8>> = cached
+        .iter()
+        .map(|c| read_vec(c.as_ref(), 0, sample).unwrap_or_default())
+        .collect();
     let mut xor_zero = 0usize;
     let mut nonzero_rows = 0usize;
     for blk in 0..sample / 4096 {
@@ -181,20 +217,35 @@ pub fn detect(members: &[Arc<dyn Source>], cancelled: &(dyn Fn() -> bool + Sync)
             levels.push(Level::R6);
         }
     }
-    let ok_first: Vec<bool> = cached.iter().map(|c| first_sector_plausible(c.as_ref())).collect();
+    let ok_first: Vec<bool> = cached
+        .iter()
+        .map(|c| first_sector_plausible(c.as_ref()))
+        .collect();
     let any_first = ok_first.iter().any(|&b| b);
     let perms = permutations(n);
     for level in levels {
-        let layouts: Vec<Layout> = if matches!(level, Level::R0) { vec![Layout::LeftSymmetric] } else { Layout::all_raid5().to_vec() };
+        let layouts: Vec<Layout> = if matches!(level, Level::R0) {
+            vec![Layout::LeftSymmetric]
+        } else {
+            Layout::all_raid5().to_vec()
+        };
         for &chunk in &CHUNKS {
             for layout in &layouts {
                 for order in &perms {
                     if cancelled() {
                         return finish(out);
                     }
-                    let cand = Candidate { level, chunk, layout: *layout, order: order.clone(), score: 0.0 };
+                    let cand = Candidate {
+                        level,
+                        chunk,
+                        layout: *layout,
+                        order: order.clone(),
+                        score: 0.0,
+                    };
                     let params = cand.params(&cached);
-                    let Ok(r) = RaidSource::new(params) else { continue };
+                    let Ok(r) = RaidSource::new(params) else {
+                        continue;
+                    };
                     // O primeiro setor do volume precisa estar num disco que o tenha.
                     if any_first {
                         let mut b = [0u8; 512];
@@ -221,7 +272,11 @@ pub fn detect(members: &[Arc<dyn Source>], cancelled: &(dyn Fn() -> bool + Sync)
 }
 
 fn finish(mut out: Vec<Candidate>) -> Vec<Candidate> {
-    out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out.truncate(10);
     out
 }

@@ -11,14 +11,19 @@ fn photo(w: u16, h: u16) -> Vec<u8> {
             x ^= x << 17;
             let noise = ((x >> 40) & 31) as i32;
             let base = 90 + (xx * 90 / w as i32) + (yy * 60 / h as i32);
-            let blob = if ((xx - 200).pow(2) + (yy - 150).pow(2)) < 3600 { 70 } else { 0 };
+            let blob = if ((xx - 200).pow(2) + (yy - 150).pow(2)) < 3600 {
+                70
+            } else {
+                0
+            };
             let v = (base + blob + noise).clamp(0, 255) as u8;
             rgb.extend_from_slice(&[v, v.saturating_sub(20), (v as i32 / 2 + noise) as u8]);
         }
     }
     let mut out = vec![];
     let enc = jpeg_encoder::Encoder::new(&mut out, 92);
-    enc.encode(&rgb, w, h, jpeg_encoder::ColorType::Rgb).unwrap();
+    enc.encode(&rgb, w, h, jpeg_encoder::ColorType::Rgb)
+        .unwrap();
     out
 }
 
@@ -32,7 +37,10 @@ fn decodes_whole_image_and_ends_at_eoi() {
     assert_eq!(d.dc.len() as u32, h.total_mcus());
     // O que sobra depois do último MCU é o EOI.
     let tail = &j[d.state.pos.min(j.len())..];
-    assert!(tail.windows(2).any(|w| w == [0xFF, 0xD9]), "sem EOI depois do último MCU");
+    assert!(
+        tail.windows(2).any(|w| w == [0xFF, 0xD9]),
+        "sem EOI depois do último MCU"
+    );
     assert!(first_discontinuity(&h, &d.dc).is_none());
 }
 
@@ -59,7 +67,12 @@ fn detects_break_and_resumes_with_the_right_continuation() {
     // Decodificação segue o lixo por um tempo; mas a quebra aparece pelo erro ou pela descontinuidade.
     let mcu_break = first_discontinuity(&h, &d.dc);
     // MCUs bons: os decodificados ao fim do cluster `cut`.
-    let good = d.snaps.iter().filter(|s| s.pos <= cut).last().expect("snapshot antes da quebra").clone();
+    let good = d
+        .snaps
+        .iter()
+        .rfind(|s| s.pos <= cut)
+        .expect("snapshot antes da quebra")
+        .clone();
     // Retomada com a continuação verdadeira reproduz a decodificação inteira.
     let mut joined = j[..cut].to_vec();
     joined.extend_from_slice(&j[cut..]);

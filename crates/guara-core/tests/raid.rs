@@ -59,7 +59,9 @@ fn encode_parity(level: Level, layout: Layout, n: usize, logical: &[u8]) -> Vec<
             let start = if level == Level::R6 { qd + 1 } else { pd + 1 };
             (0..dd).map(|d| (start + d) % n).collect()
         } else {
-            (0..n).filter(|&i| i != pd && !(level == Level::R6 && i == qd)).collect()
+            (0..n)
+                .filter(|&i| i != pd && !(level == Level::R6 && i == qd))
+                .collect()
         };
         let mut p = vec![0u8; C];
         let mut q = vec![0u8; C];
@@ -83,7 +85,10 @@ fn members(imgs: &[Vec<u8>], missing: &[usize]) -> Vec<Option<Member>> {
     imgs.iter()
         .enumerate()
         .map(|(i, v)| {
-            (!missing.contains(&i)).then(|| Member { src: Arc::new(MemSource(v.clone())), data_offset: 0 })
+            (!missing.contains(&i)).then(|| Member {
+                src: Arc::new(MemSource(v.clone())),
+                data_offset: 0,
+            })
         })
         .collect()
 }
@@ -92,10 +97,19 @@ fn check(level: Level, layout: Layout, n: usize, missing: &[usize]) {
     let dd = if level == Level::R6 { n - 2 } else { n - 1 };
     let logical = data(C * dd * 23);
     let imgs = encode_parity(level, layout, n, &logical);
-    let r = RaidSource::new(RaidParams::simple(level, C as u64, layout, members(&imgs, missing))).unwrap();
+    let r = RaidSource::new(RaidParams::simple(
+        level,
+        C as u64,
+        layout,
+        members(&imgs, missing),
+    ))
+    .unwrap();
     assert_eq!(r.size(), logical.len() as u64);
     let got = read_vec(&r, 0, logical.len()).unwrap();
-    assert!(got == logical, "{level:?} {layout:?} n={n} faltando {missing:?}");
+    assert!(
+        got == logical,
+        "{level:?} {layout:?} n={n} faltando {missing:?}"
+    );
     // leitura desalinhada
     let part = read_vec(&r, 5000, 30000).unwrap();
     assert_eq!(part, &logical[5000..35000]);
@@ -136,15 +150,33 @@ fn raid0_raid1_linear_and_raid10_near() {
     for (c, ch) in logical.chunks(C).enumerate() {
         imgs[c % 3].extend_from_slice(ch);
     }
-    let r = RaidSource::new(RaidParams::simple(Level::R0, C as u64, Layout::LeftSymmetric, members(&imgs, &[]))).unwrap();
+    let r = RaidSource::new(RaidParams::simple(
+        Level::R0,
+        C as u64,
+        Layout::LeftSymmetric,
+        members(&imgs, &[]),
+    ))
+    .unwrap();
     assert_eq!(read_vec(&r, 0, logical.len()).unwrap(), logical);
     // RAID 1, um membro caído
     let m = vec![logical.clone(), logical.clone()];
-    let r = RaidSource::new(RaidParams::simple(Level::R1, C as u64, Layout::LeftSymmetric, members(&m, &[0]))).unwrap();
+    let r = RaidSource::new(RaidParams::simple(
+        Level::R1,
+        C as u64,
+        Layout::LeftSymmetric,
+        members(&m, &[0]),
+    ))
+    .unwrap();
     assert_eq!(read_vec(&r, 0, logical.len()).unwrap(), logical);
     // Linear
     let (a, b) = logical.split_at(C * 10);
-    let r = RaidSource::new(RaidParams::simple(Level::Linear, C as u64, Layout::LeftSymmetric, members(&[a.to_vec(), b.to_vec()], &[]))).unwrap();
+    let r = RaidSource::new(RaidParams::simple(
+        Level::Linear,
+        C as u64,
+        Layout::LeftSymmetric,
+        members(&[a.to_vec(), b.to_vec()], &[]),
+    ))
+    .unwrap();
     assert_eq!(read_vec(&r, 0, logical.len()).unwrap(), logical);
     // RAID 10 near=2 com 4 discos: slots em sequência.
     let n = 4;
@@ -156,7 +188,12 @@ fn raid0_raid1_linear_and_raid10_near() {
             imgs[disk][row * C..(row + 1) * C].copy_from_slice(ch);
         }
     }
-    let mut p = RaidParams::simple(Level::R10, C as u64, Layout::LeftSymmetric, members(&imgs, &[1]));
+    let mut p = RaidParams::simple(
+        Level::R10,
+        C as u64,
+        Layout::LeftSymmetric,
+        members(&imgs, &[1]),
+    );
     p.near = 2;
     p.far = 1;
     let r = RaidSource::new(p).unwrap();
@@ -164,7 +201,18 @@ fn raid0_raid1_linear_and_raid10_near() {
     assert_eq!(read_vec(&r, 0, logical.len()).unwrap(), logical);
 }
 
-fn md_v1_super(uuid: u8, level: u32, layout: u32, raid_disks: u32, dev_number: u32, role: u16, data_off_sectors: u64, data_sectors: u64, events: u64) -> Vec<u8> {
+#[allow(clippy::too_many_arguments)]
+fn md_v1_super(
+    uuid: u8,
+    level: u32,
+    layout: u32,
+    raid_disks: u32,
+    dev_number: u32,
+    role: u16,
+    data_off_sectors: u64,
+    data_sectors: u64,
+    events: u64,
+) -> Vec<u8> {
     let mut b = vec![0u8; 4096];
     b[0..4].copy_from_slice(&0xA92B_4EFCu32.to_le_bytes());
     b[4..8].copy_from_slice(&1u32.to_le_bytes());
@@ -199,7 +247,17 @@ fn assembles_from_md_v12_superblocks_with_a_missing_disk() {
             continue; // disco perdido
         }
         let mut full = vec![0u8; 4096 + (data_off as usize) * 512 + im.len()];
-        let sb = md_v1_super(7, 5, 2, n as u32, i as u32, i as u16, data_off, (im.len() / 512) as u64, 100);
+        let sb = md_v1_super(
+            7,
+            5,
+            2,
+            n as u32,
+            i as u32,
+            i as u16,
+            data_off,
+            (im.len() / 512) as u64,
+            100,
+        );
         full[4096..8192].copy_from_slice(&sb);
         full[4096 + data_off as usize * 512..][..im.len()].copy_from_slice(im);
         // o superbloco 1.2 fica a 4 KiB; os dados começam em data_offset a partir do início

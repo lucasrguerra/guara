@@ -13,10 +13,13 @@ fn dir() -> Option<PathBuf> {
     d.join("images.conf").exists().then_some(d)
 }
 
-fn conf(d: &PathBuf) -> BTreeMap<String, BTreeMap<String, String>> {
+fn conf(d: &std::path::Path) -> BTreeMap<String, BTreeMap<String, String>> {
     let mut m: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     let mut cur = String::new();
-    for l in std::fs::read_to_string(d.join("images.conf")).unwrap().lines() {
+    for l in std::fs::read_to_string(d.join("images.conf"))
+        .unwrap()
+        .lines()
+    {
         let l = l.trim();
         if let Some(n) = l.strip_prefix('[').and_then(|x| x.strip_suffix(']')) {
             cur = n.to_string();
@@ -34,7 +37,11 @@ fn check_fs(src: &dyn Source, what: &str) {
     }
     let head = read_vec(src, 0, 4096).unwrap();
     let fs = detect_fs_in(&head);
-    assert!(fs.is_some(), "{what}: setor 0 aberto não é um sistema de arquivos: {:02x?}", &head[..32]);
+    assert!(
+        fs.is_some(),
+        "{what}: setor 0 aberto não é um sistema de arquivos: {:02x?}",
+        &head[..32]
+    );
 }
 
 #[test]
@@ -66,19 +73,23 @@ fn opens_all_reference_images_with_password_and_recovery_key() {
         }
         let mut views = vec![];
         if !pw.is_empty() {
-            let u = bitlocker::unlock(src.clone(), &[Secret::Password(pw.clone())]).unwrap_or_else(|e| panic!("{name} senha: {e}"));
+            let u = bitlocker::unlock(src.clone(), &[Secret::Password(pw.clone())])
+                .unwrap_or_else(|e| panic!("{name} senha: {e}"));
             check_fs(u.source.as_ref(), &format!("{name} (senha)"));
             views.push(u);
         }
         if !rp.is_empty() {
-            let u = bitlocker::unlock(src.clone(), &[Secret::RecoveryKey(rp.clone())]).unwrap_or_else(|e| panic!("{name} recuperação: {e}"));
+            let u = bitlocker::unlock(src.clone(), &[Secret::RecoveryKey(rp.clone())])
+                .unwrap_or_else(|e| panic!("{name} recuperação: {e}"));
             check_fs(u.source.as_ref(), &format!("{name} (recuperação)"));
             views.push(u);
         }
         if let Some(g) = c.get("SK_VMK_GUID") {
             let f = d.join(format!("{}.BEK", g.to_uppercase()));
             if f.exists() {
-                let u = bitlocker::unlock(src.clone(), &[Secret::KeyFile(std::fs::read(f).unwrap())]).unwrap_or_else(|e| panic!("{name} BEK: {e}"));
+                let u =
+                    bitlocker::unlock(src.clone(), &[Secret::KeyFile(std::fs::read(f).unwrap())])
+                        .unwrap_or_else(|e| panic!("{name} BEK: {e}"));
                 check_fs(u.source.as_ref(), &format!("{name} (BEK)"));
                 views.push(u);
             }
@@ -86,10 +97,17 @@ fn opens_all_reference_images_with_password_and_recovery_key() {
         assert!(!views.is_empty(), "{name}: nenhum protetor testável");
         let first = read_vec(views[0].source.as_ref(), 0, 1 << 20).unwrap();
         for v in &views[1..] {
-            assert!(read_vec(v.source.as_ref(), 0, 1 << 20).unwrap() == first, "{name}: protetores divergem");
+            assert!(
+                read_vec(v.source.as_ref(), 0, 1 << 20).unwrap() == first,
+                "{name}: protetores divergem"
+            );
         }
         opened += 1;
-        eprintln!("ok {name}: {} ({} protetores)", views[0].description, views.len());
+        eprintln!(
+            "ok {name}: {} ({} protetores)",
+            views[0].description,
+            views.len()
+        );
     }
     assert!(opened > 0);
 }

@@ -154,19 +154,30 @@ impl Packed {
     pub fn read(&self, src: &dyn crate::source::Source) -> std::io::Result<Vec<u8>> {
         use std::io::Read;
         let raw = crate::source::read_vec(src, self.offset, self.disk_len as usize)?;
-        let bad = |m: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("extensão comprimida ilegível ({m})"));
+        let bad = |m: &str| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("extensão comprimida ilegível ({m})"),
+            )
+        };
         let mut data = match self.codec {
             PackedCodec::Zlib => {
                 let mut v = Vec::with_capacity(self.ram_len as usize);
-                flate2::read::ZlibDecoder::new(&raw[..]).read_to_end(&mut v).map_err(|_| bad("zlib"))?;
+                flate2::read::ZlibDecoder::new(&raw[..])
+                    .read_to_end(&mut v)
+                    .map_err(|_| bad("zlib"))?;
                 v
             }
             PackedCodec::Zstd => {
                 let mut v = Vec::with_capacity(self.ram_len as usize);
-                ruzstd::StreamingDecoder::new(&raw[..]).map_err(|_| bad("zstd"))?.read_to_end(&mut v).map_err(|_| bad("zstd"))?;
+                ruzstd::StreamingDecoder::new(&raw[..])
+                    .map_err(|_| bad("zstd"))?
+                    .read_to_end(&mut v)
+                    .map_err(|_| bad("zstd"))?;
                 v
             }
-            PackedCodec::Lzo => crate::fs::btrfs::lzo_btrfs(&raw, self.ram_len as usize).ok_or_else(|| bad("lzo"))?,
+            PackedCodec::Lzo => crate::fs::btrfs::lzo_btrfs(&raw, self.ram_len as usize)
+                .ok_or_else(|| bad("lzo"))?,
         };
         data.resize(self.ram_len.max(data.len() as u64) as usize, 0);
         let s = (self.skip as usize).min(data.len());
@@ -193,14 +204,25 @@ impl Part {
 mod b64 {
     use serde::{Deserialize, Deserializer, Serializer};
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    #[allow(clippy::ptr_arg)]
     pub fn serialize<S: Serializer>(b: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
         let mut out = String::with_capacity(b.len().div_ceil(3) * 4);
         for c in b.chunks(3) {
-            let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+            let n = (c[0] as u32) << 16
+                | (*c.get(1).unwrap_or(&0) as u32) << 8
+                | *c.get(2).unwrap_or(&0) as u32;
             out.push(T[(n >> 18) as usize & 63] as char);
             out.push(T[(n >> 12) as usize & 63] as char);
-            out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-            out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
+            out.push(if c.len() > 1 {
+                T[(n >> 6) as usize & 63] as char
+            } else {
+                '='
+            });
+            out.push(if c.len() > 2 {
+                T[n as usize & 63] as char
+            } else {
+                '='
+            });
         }
         s.serialize_str(&out)
     }
@@ -386,7 +408,16 @@ impl FsKind {
     pub fn has_metadata_scanner(self) -> bool {
         matches!(
             self,
-            FsKind::Ntfs | FsKind::Fat12 | FsKind::Fat16 | FsKind::Fat32 | FsKind::Exfat | FsKind::Ext | FsKind::HfsPlus | FsKind::Btrfs | FsKind::Xfs | FsKind::Apfs
+            FsKind::Ntfs
+                | FsKind::Fat12
+                | FsKind::Fat16
+                | FsKind::Fat32
+                | FsKind::Exfat
+                | FsKind::Ext
+                | FsKind::HfsPlus
+                | FsKind::Btrfs
+                | FsKind::Xfs
+                | FsKind::Apfs
         )
     }
 }

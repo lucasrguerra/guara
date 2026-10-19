@@ -3,7 +3,9 @@ use guara_core::source::{open_path, read_vec, Source};
 use std::path::PathBuf;
 
 fn fx(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ewf").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/ewf")
+        .join(name)
 }
 
 fn raw() -> Vec<u8> {
@@ -32,8 +34,14 @@ fn stored_hash_matches() {
     }
     let e = EwfSource::open(&fx("s_e6.E01")).unwrap();
     assert_eq!(e.info.version, 1);
-    assert_eq!(e.info.fields.get("Examinador").map(String::as_str), Some("examiner"));
-    assert_eq!(e.info.fields.get("Número do caso").map(String::as_str), Some("case1"));
+    assert_eq!(
+        e.info.fields.get("Examinador").map(String::as_str),
+        Some("examiner")
+    );
+    assert_eq!(
+        e.info.fields.get("Número do caso").map(String::as_str),
+        Some("case1")
+    );
     assert_eq!(EwfSource::open(&fx("s_x7.Ex01")).unwrap().info.version, 2);
 }
 
@@ -58,14 +66,20 @@ fn write_then_read_roundtrip_with_segments() {
         ..Default::default()
     };
     let rep = write_e01(&src, &base, &opts, &|| false, &mut |_, _| {}).unwrap();
-    assert!(dir.path().join("img.E02").exists(), "esperava mais de um segmento");
+    assert!(
+        dir.path().join("img.E02").exists(),
+        "esperava mais de um segmento"
+    );
     let r = open_path(&dir.path().join("img.E01")).unwrap();
     assert_eq!(r.size(), data.len() as u64);
     assert!(read_vec(r.as_ref(), 0, data.len()).unwrap() == data);
     let e = EwfSource::open(&dir.path().join("img.E01")).unwrap();
     assert_eq!(e.info.md5.as_deref(), Some(rep.md5.as_str()));
     assert_eq!(e.verify().unwrap(), Some(true));
-    assert_eq!(e.info.fields.get("Examinador").map(String::as_str), Some("Lucas"));
+    assert_eq!(
+        e.info.fields.get("Examinador").map(String::as_str),
+        Some("Lucas")
+    );
 }
 
 #[test]
@@ -74,7 +88,17 @@ fn compressed_output_is_smaller_and_odd_sizes_work() {
     let src = guara_core::source::MemSource(data.clone());
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("z");
-    write_e01(&src, &base, &E01Options { segment_size: 0, ..Default::default() }, &|| false, &mut |_, _| {}).unwrap();
+    write_e01(
+        &src,
+        &base,
+        &E01Options {
+            segment_size: 0,
+            ..Default::default()
+        },
+        &|| false,
+        &mut |_, _| {},
+    )
+    .unwrap();
     assert!(std::fs::metadata(dir.path().join("z.E01")).unwrap().len() < 10_000);
     let r = open_path(&dir.path().join("z.E01")).unwrap();
     assert_eq!(r.size(), 100_352);
@@ -85,8 +109,22 @@ fn compressed_output_is_smaller_and_odd_sizes_work() {
 #[test]
 #[ignore]
 fn emit_for_external_verification() {
-    let Ok(base) = std::env::var("GUARA_E01_OUT") else { return };
+    let Ok(base) = std::env::var("GUARA_E01_OUT") else {
+        return;
+    };
     let src = guara_core::source::MemSource(raw());
-    let opts = E01Options { segment_size: 100_000, case_number: "c1".into(), examiner: "ex".into(), ..Default::default() };
-    write_e01(&src, std::path::Path::new(&base), &opts, &|| false, &mut |_, _| {}).unwrap();
+    let opts = E01Options {
+        segment_size: 100_000,
+        case_number: "c1".into(),
+        examiner: "ex".into(),
+        ..Default::default()
+    };
+    write_e01(
+        &src,
+        std::path::Path::new(&base),
+        &opts,
+        &|| false,
+        &mut |_, _| {},
+    )
+    .unwrap();
 }

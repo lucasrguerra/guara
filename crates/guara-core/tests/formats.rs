@@ -16,31 +16,78 @@ fn check(path: &str, ext: &str, min_conf: Confidence) -> bool {
     // lixo depois do fim real (outro arquivo no disco)
     data.extend((0..5000u32).map(|i| (i.wrapping_mul(2654435761) >> 7) as u8 | 0x81));
     let src = MemSource(data.clone());
-    let h = detect(&src, 0, &data[..128], 1 << 30).unwrap_or_else(|| panic!("{path}: não reconhecido"));
+    let h =
+        detect(&src, 0, &data[..128], 1 << 30).unwrap_or_else(|| panic!("{path}: não reconhecido"));
     assert_eq!(h.len as usize, real, "{path}: tamanho");
     assert_eq!(h.ext, ext, "{path}: extensão");
-    assert!(h.confidence >= min_conf, "{path}: confiança {:?}", h.confidence);
+    assert!(
+        h.confidence >= min_conf,
+        "{path}: confiança {:?}",
+        h.confidence
+    );
     true
 }
 
 fn first(dir: &str, ext: &str) -> Option<String> {
-    let out = std::process::Command::new("find").args([dir, "-iname", &format!("*.{ext}"), "-type", "f", "-size", "+2k", "-size", "-20M"]).output().ok()?;
-    String::from_utf8_lossy(&out.stdout).lines().next().map(String::from)
+    let out = std::process::Command::new("find")
+        .args([
+            dir,
+            "-iname",
+            &format!("*.{ext}"),
+            "-type",
+            "f",
+            "-size",
+            "+2k",
+            "-size",
+            "-20M",
+        ])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()
+        .map(String::from)
 }
 
 #[test]
 fn real_files_have_exact_lengths() {
     let mut n = 0;
     let cases: Vec<(Option<String>, &str, Confidence)> = vec![
-        (first("/usr/share/cinnamon/sounds", "ogg"), "ogg", Confidence::High),
+        (
+            first("/usr/share/cinnamon/sounds", "ogg"),
+            "ogg",
+            Confidence::High,
+        ),
         (first("/usr/share", "gz"), "gz", Confidence::High),
         (first("/usr/share/doc", "bz2"), "bz2", Confidence::High),
         (first("/usr/lib/firmware", "zst"), "zst", Confidence::Medium),
-        (first("/usr/share/texlive/texmf-dist/tex/latex/media9/players", "swf"), "swf", Confidence::Medium),
-        (first("/usr/share/code/resources/app", "rtf"), "rtf", Confidence::High),
-        (first("/usr/share/app-install/icons", "tiff"), "tif", Confidence::Medium),
+        (
+            first(
+                "/usr/share/texlive/texmf-dist/tex/latex/media9/players",
+                "swf",
+            ),
+            "swf",
+            Confidence::Medium,
+        ),
+        (
+            first("/usr/share/code/resources/app", "rtf"),
+            "rtf",
+            Confidence::High,
+        ),
+        (
+            first("/usr/share/app-install/icons", "tiff"),
+            "tif",
+            Confidence::Medium,
+        ),
         (Some("/usr/bin/ls".to_string()), "elf", Confidence::High),
-        (first("/home/lucas/Documents/Desenvolvimento/pop-hub/public", "ico"), "ico", Confidence::High),
+        (
+            first(
+                "/home/lucas/Documents/Desenvolvimento/pop-hub/public",
+                "ico",
+            ),
+            "ico",
+            Confidence::High,
+        ),
     ];
     for (path, ext, conf) in cases {
         if let Some(p) = path {
@@ -55,9 +102,24 @@ fn real_files_have_exact_lengths() {
 #[test]
 fn webm_rar_deb_with_unknown_locations() {
     for (dir, ext, out, conf) in [
-        ("/media/lucas/d9d2ba04-f925-4b9a-97d7-92c2e3bfdb78/Nextcloud/apps/firstrunwizard/img", "webm", "webm", Confidence::High),
-        ("/home/lucas/Documents/Pessoal/dev/power_vision/.trabalho/libbsd", "deb", "deb", Confidence::Medium),
-        ("/media/lucas/d9d2ba04-f925-4b9a-97d7-92c2e3bfdb78/war_cloud/lucasrguerra/Backups", "rar", "rar", Confidence::High),
+        (
+            "/media/lucas/d9d2ba04-f925-4b9a-97d7-92c2e3bfdb78/Nextcloud/apps/firstrunwizard/img",
+            "webm",
+            "webm",
+            Confidence::High,
+        ),
+        (
+            "/home/lucas/Documents/Pessoal/dev/power_vision/.trabalho/libbsd",
+            "deb",
+            "deb",
+            Confidence::Medium,
+        ),
+        (
+            "/media/lucas/d9d2ba04-f925-4b9a-97d7-92c2e3bfdb78/war_cloud/lucasrguerra/Backups",
+            "rar",
+            "rar",
+            Confidence::High,
+        ),
     ] {
         if let Some(p) = first(dir, ext) {
             check(&p, out, conf);

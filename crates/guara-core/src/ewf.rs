@@ -55,7 +55,10 @@ fn pread_exact(f: &File, buf: &mut [u8], mut off: u64) -> io::Result<()> {
     while done < buf.len() {
         let n = pread(f, &mut buf[done..], off)?;
         if n == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "segmento EWF truncado"));
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "segmento EWF truncado",
+            ));
         }
         done += n;
         off += n as u64;
@@ -83,7 +86,9 @@ enum Codec {
 #[derive(Clone, Copy, Debug)]
 enum Kind {
     /// Dados guardados como estão; `checksum` indica 4 bytes de Adler-32 no fim.
-    Stored { checksum: bool },
+    Stored {
+        checksum: bool,
+    },
     Packed(Codec),
     /// Chunk inteiro repetindo estes 8 bytes (EnCase 7 "empty block").
     Pattern([u8; 8]),
@@ -141,7 +146,11 @@ pub fn next_segment_ext(ext: &str) -> Option<String> {
             format!("{}AA", first as char)
         }
     } else {
-        let mut c = [first, rest.as_bytes()[0].to_ascii_uppercase(), rest.as_bytes()[1].to_ascii_uppercase()];
+        let mut c = [
+            first,
+            rest.as_bytes()[0].to_ascii_uppercase(),
+            rest.as_bytes()[1].to_ascii_uppercase(),
+        ];
         let mut i = 2;
         loop {
             if c[i] < b'Z' {
@@ -206,13 +215,22 @@ impl EwfSource {
         }
     }
 
-    fn finish(files: Vec<File>, chunks: Vec<Chunk>, mut info: EwfInfo, size_hint: u64) -> Result<Self> {
+    fn finish(
+        files: Vec<File>,
+        chunks: Vec<Chunk>,
+        mut info: EwfInfo,
+        size_hint: u64,
+    ) -> Result<Self> {
         if chunks.is_empty() {
             return Err(Error::msg("imagem EWF sem tabela de chunks"));
         }
         let chunk_size = info.chunk_size;
         let max = chunks.len() as u64 * chunk_size;
-        let size = if size_hint > 0 { size_hint.min(max) } else { max };
+        let size = if size_hint > 0 {
+            size_hint.min(max)
+        } else {
+            max
+        };
         info.segments = files.len();
         Ok(Self {
             files,
@@ -284,7 +302,11 @@ impl EwfSource {
                                 .collect();
                             for i in 0..n {
                                 let (off, comp) = offs[i];
-                                let end = if i + 1 < n { offs[i + 1].0 } else { sectors_end };
+                                let end = if i + 1 < n {
+                                    offs[i + 1].0
+                                } else {
+                                    sectors_end
+                                };
                                 if end <= off {
                                     return Err(Error::msg("tabela EWF inconsistente"));
                                 }
@@ -396,11 +418,25 @@ impl EwfSource {
                                 let kind = if fl & 4 != 0 {
                                     Kind::Pattern(off.to_le_bytes())
                                 } else if fl & 1 != 0 {
-                                    Kind::Packed(if method == Codec::Raw { Codec::Deflate } else { method })
+                                    Kind::Packed(if method == Codec::Raw {
+                                        Codec::Deflate
+                                    } else {
+                                        method
+                                    })
                                 } else {
-                                    Kind::Stored { checksum: fl & 2 != 0 }
+                                    Kind::Stored {
+                                        checksum: fl & 2 != 0,
+                                    }
                                 };
-                                slots.insert(first + i as u64, Chunk { seg: si as u32, off, len, kind });
+                                slots.insert(
+                                    first + i as u64,
+                                    Chunk {
+                                        seg: si as u32,
+                                        off,
+                                        len,
+                                        kind,
+                                    },
+                                );
                             }
                         }
                     }
@@ -432,7 +468,9 @@ impl EwfSource {
         let mut chunks = Vec::with_capacity(slots.len());
         for (i, (k, c)) in slots.into_iter().enumerate() {
             if k != i as u64 {
-                return Err(Error::msg("segmento Ex01 ausente: sequência de chunks com lacuna"));
+                return Err(Error::msg(
+                    "segmento Ex01 ausente: sequência de chunks com lacuna",
+                ));
             }
             chunks.push(c);
         }
@@ -457,10 +495,19 @@ impl EwfSource {
                 pread_exact(&self.files[c.seg as usize], &mut raw, c.off)?;
                 let mut v = Vec::with_capacity(want);
                 let r: io::Result<usize> = match codec {
-                    Codec::Bzip2 => bzip2::read::BzDecoder::new(&raw[..]).take(want as u64).read_to_end(&mut v),
-                    _ => flate2::read::ZlibDecoder::new(&raw[..]).take(want as u64).read_to_end(&mut v),
+                    Codec::Bzip2 => bzip2::read::BzDecoder::new(&raw[..])
+                        .take(want as u64)
+                        .read_to_end(&mut v),
+                    _ => flate2::read::ZlibDecoder::new(&raw[..])
+                        .take(want as u64)
+                        .read_to_end(&mut v),
                 };
-                r.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("chunk EWF {idx} corrompido: {e}")))?;
+                r.map_err(|e| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("chunk EWF {idx} corrompido: {e}"),
+                    )
+                })?;
                 v
             }
         };
@@ -529,7 +576,9 @@ impl Source for EwfSource {
 fn inflate_all(raw: &[u8]) -> Vec<u8> {
     let mut v = vec![];
     if raw.len() > 2 && raw[0] == 0x78 {
-        let _ = flate2::read::ZlibDecoder::new(raw).take(1 << 24).read_to_end(&mut v);
+        let _ = flate2::read::ZlibDecoder::new(raw)
+            .take(1 << 24)
+            .read_to_end(&mut v);
         if !v.is_empty() {
             return v;
         }
@@ -538,8 +587,13 @@ fn inflate_all(raw: &[u8]) -> Vec<u8> {
 }
 
 fn utf16_text(b: &[u8]) -> String {
-    let u: Vec<u16> = b.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-    String::from_utf16_lossy(&u).trim_start_matches('\u{feff}').to_string()
+    let u: Vec<u16> = b
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    String::from_utf16_lossy(&u)
+        .trim_start_matches('\u{feff}')
+        .to_string()
 }
 
 fn header_key_name(k: &str) -> &str {
@@ -594,9 +648,18 @@ fn parse_v2_text(text: &str, info: &mut EwfInfo, total_bytes: &mut u64, ty: u32)
                 let spc: u64 = v.parse().unwrap_or(64);
                 info.chunk_size = spc * 512;
             }
-            (2, "tb") | (2, "gr") | (_, "dt") | (_, "pid") | (_, "rs") | (_, "ls") | (_, "ph") | (_, "tt") | (_, "at") => {}
+            (2, "tb")
+            | (2, "gr")
+            | (_, "dt")
+            | (_, "pid")
+            | (_, "rs")
+            | (_, "ls")
+            | (_, "ph")
+            | (_, "tt")
+            | (_, "at") => {}
             (2, key) => {
-                info.fields.insert(header_key_name(key).to_string(), v.to_string());
+                info.fields
+                    .insert(header_key_name(key).to_string(), v.to_string());
             }
             _ => {}
         }
@@ -728,7 +791,12 @@ fn utc_now() -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
-    format!("{y} {m} {d} {} {} {}", rem / 3600, rem % 3600 / 60, rem % 60)
+    format!(
+        "{y} {m} {d} {} {} {}",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
 }
 
 /// Cria `base.E01` (e `.E02`... se houver divisão) a partir de `src`.
@@ -772,7 +840,8 @@ pub fn write_e01(
 
     // O segmento está cheio? (reserva espaço para as tabelas e os hashes finais)
     let full = |pos: u64, entries: u64| {
-        opts.segment_size > 0 && pos + chunk_size + 2 * (entries * 4 + 110) + 1024 >= opts.segment_size
+        opts.segment_size > 0
+            && pos + chunk_size + 2 * (entries * 4 + 110) + 1024 >= opts.segment_size
     };
     let result = (|| -> Result<()> {
         loop {
@@ -781,7 +850,9 @@ pub fn write_e01(
                 .write(true)
                 .create_new(true)
                 .open(&path)
-                .map_err(|e| Error::msg(format!("não foi possível criar {}: {e}", path.display())))?;
+                .map_err(|e| {
+                    Error::msg(format!("não foi possível criar {}: {e}", path.display()))
+                })?;
             crate::owner::give_to_user(&path);
             created.push(path);
             let mut w = SegWriter { f, pos: 0 };
@@ -794,7 +865,15 @@ pub fn write_e01(
                 let hdr = zlib(&header_text(opts, &now), 9);
                 w.section("header", &hdr, false)?;
                 w.section("header2", &hdr, false)?;
-                w.section("volume", &volume_data(opts, chunks_total as u32, total.div_ceil(opts.bytes_per_sector as u64)), false)?;
+                w.section(
+                    "volume",
+                    &volume_data(
+                        opts,
+                        chunks_total as u32,
+                        total.div_ceil(opts.bytes_per_sector as u64),
+                    ),
+                    false,
+                )?;
             }
             // Grupos "sectors" + "table" + "table2" até estourar o limite do segmento.
             loop {
@@ -821,7 +900,9 @@ pub fn write_e01(
                         let mut o = 0;
                         while o < want {
                             let n = 512.min(want - o);
-                            if crate::source::read_exact_at(src, off + o as u64, &mut b[o..o + n]).is_err() {
+                            if crate::source::read_exact_at(src, off + o as u64, &mut b[o..o + n])
+                                .is_err()
+                            {
                                 b[o..o + n].fill(0);
                                 match rep.bad_ranges.last_mut() {
                                     Some(l) if l.0 + l.1 == off + o as u64 => l.1 += n as u64,
@@ -833,7 +914,11 @@ pub fn write_e01(
                     }
                     hasher.update(b);
                     let rel = w.pos - base_off;
-                    let packed = if opts.compression > 0 { zlib(b, opts.compression) } else { vec![] };
+                    let packed = if opts.compression > 0 {
+                        zlib(b, opts.compression)
+                    } else {
+                        vec![]
+                    };
                     if opts.compression > 0 && packed.len() < want {
                         entries.push(rel as u32 | 0x8000_0000);
                         w.put(&packed)?;
@@ -888,8 +973,12 @@ pub fn write_e01(
             if chunk_idx >= chunks_total {
                 // Segmento final: hashes e "done".
                 let h = std::mem::take(&mut hasher).finalize();
-                let md5: Vec<u8> = (0..16).map(|i| u8::from_str_radix(&h.md5[i * 2..i * 2 + 2], 16).unwrap()).collect();
-                let sha1: Vec<u8> = (0..20).map(|i| u8::from_str_radix(&h.sha1[i * 2..i * 2 + 2], 16).unwrap()).collect();
+                let md5: Vec<u8> = (0..16)
+                    .map(|i| u8::from_str_radix(&h.md5[i * 2..i * 2 + 2], 16).unwrap())
+                    .collect();
+                let sha1: Vec<u8> = (0..20)
+                    .map(|i| u8::from_str_radix(&h.sha1[i * 2..i * 2 + 2], 16).unwrap())
+                    .collect();
                 let mut hs = md5.clone();
                 hs.extend_from_slice(&[0; 16]);
                 let c = adler32(&hs);
@@ -924,6 +1013,9 @@ pub fn write_e01(
     if rep.cancelled {
         rep.bytes = chunk_idx * chunk_size;
     }
-    crate::owner::write_owned(&base.with_extension("map.json"), serde_json::to_vec_pretty(&rep)?)?;
+    crate::owner::write_owned(
+        &base.with_extension("map.json"),
+        serde_json::to_vec_pretty(&rep)?,
+    )?;
     Ok(rep)
 }

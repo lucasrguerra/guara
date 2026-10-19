@@ -77,7 +77,12 @@ pub fn create_image_as(
 ) -> Result<ImageReport> {
     match format {
         ImageFormat::Raw => create_image(src, dest, cancelled, progress),
-        ImageFormat::Aff4 { case_number, examiner, evidence_number, notes } => {
+        ImageFormat::Aff4 {
+            case_number,
+            examiner,
+            evidence_number,
+            notes,
+        } => {
             let opts = crate::aff4::Aff4Options {
                 case_name: case_number.clone(),
                 examiner: examiner.clone(),
@@ -85,10 +90,25 @@ pub fn create_image_as(
                 evidence_number: evidence_number.clone(),
                 ..Default::default()
             };
-            let dest = if dest.extension().map_or(false, |e| e.eq_ignore_ascii_case("aff4")) { dest.to_path_buf() } else { dest.with_extension("aff4") };
+            let dest = if dest
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("aff4"))
+            {
+                dest.to_path_buf()
+            } else {
+                dest.with_extension("aff4")
+            };
             crate::aff4::write_aff4(src, &dest, &opts, cancelled, progress)
         }
-        ImageFormat::E01 { case_number, description, evidence_number, examiner, notes, segment_mib, compression } => {
+        ImageFormat::E01 {
+            case_number,
+            description,
+            evidence_number,
+            examiner,
+            notes,
+            segment_mib,
+            compression,
+        } => {
             let opts = crate::ewf::E01Options {
                 case_number: case_number.clone(),
                 description: description.clone(),

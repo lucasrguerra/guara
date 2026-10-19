@@ -9,13 +9,19 @@ use crate::types::{Confidence, DataLoc, Extent, Origin};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 fn le16(b: &[u8], o: usize) -> u16 {
-    b.get(o..o + 2).map(|s| u16::from_le_bytes([s[0], s[1]])).unwrap_or(0)
+    b.get(o..o + 2)
+        .map(|s| u16::from_le_bytes([s[0], s[1]]))
+        .unwrap_or(0)
 }
 fn le32(b: &[u8], o: usize) -> u32 {
-    b.get(o..o + 4).map(|s| u32::from_le_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 4)
+        .map(|s| u32::from_le_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 fn le64(b: &[u8], o: usize) -> u64 {
-    b.get(o..o + 8).map(|s| u64::from_le_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 8)
+        .map(|s| u64::from_le_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 
 const OBJ_TYPE_MASK: u32 = 0xFFFF;
@@ -99,22 +105,42 @@ impl<'a> Apfs<'a> {
             }
             let ks = key_base + koff;
             let k = b.get(ks..ks + klen)?.to_vec();
-            let v = if voff == 0xFFFF { vec![] } else { b.get(val_end.checked_sub(voff)?..)?.get(..vlen)?.to_vec() };
+            let v = if voff == 0xFFFF {
+                vec![]
+            } else {
+                b.get(val_end.checked_sub(voff)?..)?.get(..vlen)?.to_vec()
+            };
             entries.push((k, v));
         }
-        Some(BNode { flags, level, entries, oid: le64(b, 8), xid: le64(b, 16) })
+        Some(BNode {
+            flags,
+            level,
+            entries,
+            oid: le64(b, 8),
+            xid: le64(b, 16),
+        })
     }
 
     /// Todas as entradas de uma árvore física (mapa de objetos): filhos são endereços físicos.
-    fn walk_physical(&self, root: u64, fixed_k: usize, fixed_v: usize, f: &mut dyn FnMut(&[u8], &[u8])) {
+    fn walk_physical(
+        &self,
+        root: u64,
+        fixed_k: usize,
+        fixed_v: usize,
+        f: &mut dyn FnMut(&[u8], &[u8]),
+    ) {
         let mut stack = vec![(root, 0u32)];
         let mut seen = HashSet::new();
         while let Some((p, depth)) = stack.pop() {
             if depth > 8 || !seen.insert(p) {
                 continue;
             }
-            let Some(b) = self.checked_block(p) else { continue };
-            let Some(n) = self.parse_node(&b, fixed_k, fixed_v) else { continue };
+            let Some(b) = self.checked_block(p) else {
+                continue;
+            };
+            let Some(n) = self.parse_node(&b, fixed_k, fixed_v) else {
+                continue;
+            };
             if n.level == 0 {
                 for (k, v) in &n.entries {
                     f(k, v);
@@ -130,10 +156,14 @@ impl<'a> Apfs<'a> {
     /// Mapa de objetos: oid -> [(xid, paddr)] ordenado por xid.
     fn omap(&self, omap_paddr: u64) -> HashMap<u64, Vec<(u64, u64)>> {
         let mut m: HashMap<u64, Vec<(u64, u64)>> = HashMap::new();
-        let Some(ob) = self.checked_block(omap_paddr) else { return m };
+        let Some(ob) = self.checked_block(omap_paddr) else {
+            return m;
+        };
         let tree = le64(&ob, 48);
         self.walk_physical(tree, 16, 16, &mut |k, v| {
-            m.entry(le64(k, 0)).or_default().push((le64(k, 8), le64(v, 8)));
+            m.entry(le64(k, 0))
+                .or_default()
+                .push((le64(k, 8), le64(v, 8)));
         });
         for v in m.values_mut() {
             v.sort();
@@ -143,7 +173,11 @@ impl<'a> Apfs<'a> {
 }
 
 fn lookup(m: &HashMap<u64, Vec<(u64, u64)>>, oid: u64, max_xid: u64) -> Option<u64> {
-    m.get(&oid)?.iter().rev().find(|(x, _)| *x <= max_xid).map(|(_, p)| *p)
+    m.get(&oid)?
+        .iter()
+        .rev()
+        .find(|(x, _)| *x <= max_xid)
+        .map(|(_, p)| *p)
 }
 
 // ---------------------------------------------------------------- registros
@@ -188,7 +222,7 @@ fn add_record(files: &mut Files, extents: &mut Extents, k: &[u8], v: &[u8]) {
                 mtime: ns(le64(v, 24)),
                 atime: ns(le64(v, 40)),
                 mode: le16(v, 80),
-                size: le64(v, 84).max(0),
+                size: le64(v, 84),
                 has: true,
                 ..Default::default()
             };
@@ -204,7 +238,14 @@ fn add_record(files: &mut Files, extents: &mut Extents, k: &[u8], v: &[u8]) {
                     let (xt, xs) = (xf[4 + i * 4], le16(xf, 6 + i * 4) as usize);
                     let data = xf.get(p..p + xs).unwrap_or(&[]);
                     match xt {
-                        4 => ino.name = Some(String::from_utf8_lossy(data.split(|&c| c == 0).next().unwrap_or(&[])).to_string()),
+                        4 => {
+                            ino.name = Some(
+                                String::from_utf8_lossy(
+                                    data.split(|&c| c == 0).next().unwrap_or(&[]),
+                                )
+                                .to_string(),
+                            )
+                        }
                         8 if data.len() >= 8 => ino.size = le64(data, 0),
                         _ => {}
                     }
@@ -216,13 +257,17 @@ fn add_record(files: &mut Files, extents: &mut Extents, k: &[u8], v: &[u8]) {
         R_DIR_REC if k.len() > 12 && v.len() >= 18 => {
             let nl = (le32(k, 8) & 0x3FF) as usize;
             if let Some(name) = k.get(12..12 + nl) {
-                let name = String::from_utf8_lossy(name.split(|&c| c == 0).next().unwrap_or(&[])).to_string();
+                let name = String::from_utf8_lossy(name.split(|&c| c == 0).next().unwrap_or(&[]))
+                    .to_string();
                 files.entry(le64(v, 0)).or_default().names.insert(id, name);
             }
         }
         R_FILE_EXTENT if k.len() >= 16 && v.len() >= 24 => {
             let len = le64(v, 0) & 0x00FF_FFFF_FFFF_FFFF;
-            extents.entry(id).or_default().insert(le64(k, 8), (len, le64(v, 8), le64(v, 16)));
+            extents
+                .entry(id)
+                .or_default()
+                .insert(le64(k, 8), (len, le64(v, 8), le64(v, 16)));
         }
         _ => {}
     }
@@ -230,16 +275,28 @@ fn add_record(files: &mut Files, extents: &mut Extents, k: &[u8], v: &[u8]) {
 
 impl Apfs<'_> {
     /// Percorre a árvore de arquivos a partir de uma raiz virtual.
-    fn walk_fstree(&self, root_oid: u64, omap: &HashMap<u64, Vec<(u64, u64)>>, xid: u64, f: &mut dyn FnMut(&[u8], &[u8], u64)) {
-        let Some(rp) = lookup(omap, root_oid, xid) else { return };
+    fn walk_fstree(
+        &self,
+        root_oid: u64,
+        omap: &HashMap<u64, Vec<(u64, u64)>>,
+        xid: u64,
+        f: &mut dyn FnMut(&[u8], &[u8], u64),
+    ) {
+        let Some(rp) = lookup(omap, root_oid, xid) else {
+            return;
+        };
         let mut stack = vec![(rp, 0u32)];
         let mut seen = HashSet::new();
         while let Some((p, depth)) = stack.pop() {
             if depth > 10 || !seen.insert(p) {
                 continue;
             }
-            let Some(b) = self.checked_block(p) else { continue };
-            let Some(n) = self.parse_node(&b, 16, 16) else { continue };
+            let Some(b) = self.checked_block(p) else {
+                continue;
+            };
+            let Some(n) = self.parse_node(&b, 16, 16) else {
+                continue;
+            };
             if n.level == 0 {
                 for (k, v) in &n.entries {
                     f(k, v, p);
@@ -261,7 +318,10 @@ fn path_of(files: &Files, mut id: u64) -> String {
         if id == 2 || id == 1 {
             break;
         }
-        match files.get(&id).and_then(|f| f.names.iter().next().map(|(p, n)| (*p, n.clone()))) {
+        match files
+            .get(&id)
+            .and_then(|f| f.names.iter().next().map(|(p, n)| (*p, n.clone())))
+        {
             Some((p, n)) => {
                 parts.push(n);
                 id = p;
@@ -285,7 +345,11 @@ fn parse_volume(b: &[u8]) -> Option<Volume> {
     if &b[32..36] != b"APSB" {
         return None;
     }
-    let name = String::from_utf8_lossy(&b[704..960]).split('\0').next().unwrap_or("").to_string();
+    let name = String::from_utf8_lossy(&b[704..960])
+        .split('\0')
+        .next()
+        .unwrap_or("")
+        .to_string();
     Some(Volume {
         name,
         omap_paddr: le64(b, 128),
@@ -305,7 +369,12 @@ fn open_container<'a>(src: &'a dyn Source, base: u64) -> Option<(Apfs<'a>, Vec<u
     if !(4096..=65536).contains(&bs) || !bs.is_power_of_two() {
         return None;
     }
-    let a = Apfs { src, base, bs, blocks };
+    let a = Apfs {
+        src,
+        base,
+        bs,
+        blocks,
+    };
     // O superbloco mais recente está na área de descritores de checkpoint.
     let desc_blocks = le32(&b0, 104) as u64;
     let desc_base = le64(&b0, 112);
@@ -323,8 +392,12 @@ fn open_container<'a>(src: &'a dyn Source, base: u64) -> Option<(Apfs<'a>, Vec<u
 pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
     let _ = part_len;
     let mut res = VolumeScan::default();
-    let Some((a, nx)) = open_container(ctx.src, base) else { return res };
-    let Some(cont_omap_block) = a.checked_block(le64(&nx, 160)) else { return res };
+    let Some((a, nx)) = open_container(ctx.src, base) else {
+        return res;
+    };
+    let Some(cont_omap_block) = a.checked_block(le64(&nx, 160)) else {
+        return res;
+    };
     let _ = cont_omap_block;
     let container_omap = a.omap(le64(&nx, 160));
     let max_fs = le32(&nx, 180).min(100) as usize;
@@ -379,8 +452,12 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
                 if !seen.insert(p) {
                     continue;
                 }
-                let Some(b) = a.checked_block(p) else { continue };
-                let Some(n) = a.parse_node(&b, 0, 0) else { continue };
+                let Some(b) = a.checked_block(p) else {
+                    continue;
+                };
+                let Some(n) = a.parse_node(&b, 0, 0) else {
+                    continue;
+                };
                 if n.level == 0 {
                     for (k, val) in &n.entries {
                         let hdr = le64(k, 0);
@@ -397,8 +474,12 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
                 }
             }
             for (xid, sblock) in snaps {
-                let Some(sb) = a.checked_block(sblock) else { continue };
-                let Some(sv) = parse_volume(&sb) else { continue };
+                let Some(sb) = a.checked_block(sblock) else {
+                    continue;
+                };
+                let Some(sv) = parse_volume(&sb) else {
+                    continue;
+                };
                 a.walk_fstree(sv.root_oid, &omap, xid, &mut |k, val, _| {
                     add_record(&mut stale, &mut stale_ext, k, val);
                 });
@@ -417,7 +498,10 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
             }
             let Some(b) = a.block(p) else { continue };
             let ty = le32(&b, 24) & OBJ_TYPE_MASK;
-            if (ty != T_BTREE_NODE && ty != T_BTREE_ROOT) || le32(&b, 28) != SUBTYPE_FSTREE || le16(&b, 34) != 0 {
+            if (ty != T_BTREE_NODE && ty != T_BTREE_ROOT)
+                || le32(&b, 28) != SUBTYPE_FSTREE
+                || le16(&b, 34) != 0
+            {
                 continue;
             }
             if live_nodes.contains(&p) || fletcher64(&b[8..]) != le64(&b, 0) {
@@ -436,7 +520,7 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
     ids.sort();
     let mut seen_first: HashSet<u64> = HashSet::new();
     for id in ids {
-        if live.get(id).map_or(false, |f| f.inode.has) {
+        if live.get(id).is_some_and(|f| f.inode.has) {
             continue;
         }
         let rec = &stale[id];
@@ -444,7 +528,9 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
         if !ino.has || ino.mode & 0o170000 != 0o100000 || ino.size == 0 {
             continue;
         }
-        let Some(ex) = stale_ext.get(&ino.private_id) else { continue };
+        let Some(ex) = stale_ext.get(&ino.private_id) else {
+            continue;
+        };
         if ex.values().any(|e| e.2 != 0) {
             continue; // extensão cifrada
         }
@@ -456,17 +542,29 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
                 None => (format!("arquivo_{id}"), ino.parent),
             },
         };
-        let merged: Files = stale.iter().map(|(k, v)| (*k, v.clone())).chain(live.iter().map(|(k, v)| (*k, v.clone()))).collect();
+        let merged: Files = stale
+            .iter()
+            .map(|(k, v)| (*k, v.clone()))
+            .chain(live.iter().map(|(k, v)| (*k, v.clone())))
+            .collect();
         let dir = Some(format!("/{}", path_of(&merged, parent)).replace("//", "/"));
         let mut extents: Vec<Extent> = vec![];
         let mut pos = 0u64;
         let mut ok = true;
         for (&lo, &(len, paddr, _)) in ex {
             if lo > pos {
-                extents.push(Extent { offset: 0, len: lo - pos, sparse: true });
+                extents.push(Extent {
+                    offset: 0,
+                    len: lo - pos,
+                    sparse: true,
+                });
             }
             if paddr == 0 {
-                extents.push(Extent { offset: 0, len, sparse: true });
+                extents.push(Extent {
+                    offset: 0,
+                    len,
+                    sparse: true,
+                });
             } else if paddr < a.blocks {
                 extents.push(Extent::new(a.base + paddr * a.bs, len));
             } else {
@@ -478,11 +576,17 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
             continue;
         }
         let extents = super::fat::trim_extents(extents, ino.size);
-        let Some(first) = extents.iter().find(|e| !e.sparse) else { continue };
+        let Some(first) = extents.iter().find(|e| !e.sparse) else {
+            continue;
+        };
         if !seen_first.insert(first.offset) {
             continue;
         }
-        let note = if ino.compressed { "arquivo comprimido pelo macOS (decmpfs): o conteúdo pode estar incompleto" } else { "versão antiga da árvore ou instantâneo do APFS" };
+        let note = if ino.compressed {
+            "arquivo comprimido pelo macOS (decmpfs): o conteúdo pode estar incompleto"
+        } else {
+            "versão antiga da árvore ou instantâneo do APFS"
+        };
         let ts = |t: i64| (t > 0).then_some(t);
         let nf = NewFound {
             name,
@@ -493,7 +597,11 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
             modified: ts(ino.mtime),
             created: ts(ino.ctime),
             accessed: ts(ino.atime),
-            base: if ino.compressed { Confidence::Low } else { Confidence::Medium },
+            base: if ino.compressed {
+                Confidence::Low
+            } else {
+                Confidence::Medium
+            },
             note: Some(note),
         };
         let f = make_found(ctx, nf);
@@ -504,13 +612,19 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
 
 /// Arquivos e pastas atuais do primeiro volume sem cifragem (caminho, tamanho, é pasta).
 pub fn live_paths(src: &dyn Source, base: u64) -> Vec<(String, u64, bool)> {
-    let Some((a, nx)) = open_container(src, base) else { return vec![] };
+    let Some((a, nx)) = open_container(src, base) else {
+        return vec![];
+    };
     let cont = a.omap(le64(&nx, 160));
     let mut out = vec![];
     for i in 0..le32(&nx, 180).min(100) as usize {
         let oid = le64(&nx, 184 + i * 8);
-        let Some(p) = lookup(&cont, oid, u64::MAX) else { continue };
-        let Some(vb) = a.checked_block(p) else { continue };
+        let Some(p) = lookup(&cont, oid, u64::MAX) else {
+            continue;
+        };
+        let Some(vb) = a.checked_block(p) else {
+            continue;
+        };
         let Some(v) = parse_volume(&vb) else { continue };
         if v.encrypted {
             continue;
@@ -518,12 +632,18 @@ pub fn live_paths(src: &dyn Source, base: u64) -> Vec<(String, u64, bool)> {
         let omap = a.omap(v.omap_paddr);
         let mut files: Files = HashMap::new();
         let mut ext: Extents = HashMap::new();
-        a.walk_fstree(v.root_oid, &omap, u64::MAX, &mut |k, val, _| add_record(&mut files, &mut ext, k, val));
+        a.walk_fstree(v.root_oid, &omap, u64::MAX, &mut |k, val, _| {
+            add_record(&mut files, &mut ext, k, val)
+        });
         for (&id, f) in &files {
             if !f.inode.has || id <= 2 {
                 continue;
             }
-            out.push((path_of(&files, id), f.inode.size, f.inode.mode & 0o170000 == 0o040000));
+            out.push((
+                path_of(&files, id),
+                f.inode.size,
+                f.inode.mode & 0o170000 == 0o040000,
+            ));
         }
     }
     out.sort();

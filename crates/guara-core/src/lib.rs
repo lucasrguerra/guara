@@ -1,3 +1,10 @@
+#![allow(
+    clippy::type_complexity,
+    clippy::too_many_arguments,
+    clippy::if_same_then_else,
+    clippy::large_enum_variant,
+    clippy::needless_range_loop
+)]
 //! Guará: núcleo de recuperação de arquivos.
 //!
 //! Princípio central: a origem é aberta **somente para leitura**; nada neste
@@ -6,9 +13,9 @@
 pub mod aff4;
 pub mod assemble;
 pub mod carve;
+pub mod crypt;
 pub mod defrag;
 pub mod device;
-pub mod crypt;
 pub mod error;
 pub mod ewf;
 pub mod explorer;
@@ -26,9 +33,9 @@ pub mod mp4rebuild;
 pub mod notify;
 pub mod owner;
 pub mod partition;
-pub mod reconnect;
 pub mod raid;
 pub mod raid_detect;
+pub mod reconnect;
 pub mod recover;
 pub mod report;
 pub mod scan;

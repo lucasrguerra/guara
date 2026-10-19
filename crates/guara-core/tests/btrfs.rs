@@ -4,13 +4,17 @@
 mod common;
 use common::*;
 use guara_core::fs::btrfs::{crc32c, live_paths, lzo1x_decompress};
-use guara_core::source::{FileSource, Source};
+use guara_core::source::FileSource;
 use guara_core::*;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn have(t: &str) -> bool {
-    Command::new("sh").args(["-c", &format!("command -v {t}")]).output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new("sh")
+        .args(["-c", &format!("command -v {t}")])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 fn data(seed: u64, n: usize) -> Vec<u8> {
@@ -51,10 +55,22 @@ fn build() -> Option<Img> {
         std::fs::write(root.join(p), c).unwrap();
     }
     let path = dir.path().join("b.img");
-    std::fs::File::create(&path).unwrap().set_len(128 << 20).unwrap();
-    let o = Command::new("mkfs.btrfs").args(["-q", "-f", "--rootdir"]).arg(&root).arg(&path).output().unwrap();
+    std::fs::File::create(&path)
+        .unwrap()
+        .set_len(128 << 20)
+        .unwrap();
+    let o = Command::new("mkfs.btrfs")
+        .args(["-q", "-f", "--rootdir"])
+        .arg(&root)
+        .arg(&path)
+        .output()
+        .unwrap();
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    Some(Img { _dir: dir, path, files })
+    Some(Img {
+        _dir: dir,
+        path,
+        files,
+    })
 }
 
 #[test]
@@ -63,7 +79,10 @@ fn lists_the_live_tree_with_paths_and_sizes() {
     let src = FileSource::open(&i.path).unwrap();
     let listed = live_paths(&src, 0);
     for (p, c) in &i.files {
-        let f = listed.iter().find(|x| x.0 == *p).unwrap_or_else(|| panic!("{p} ausente: {listed:?}"));
+        let f = listed
+            .iter()
+            .find(|x| x.0 == *p)
+            .unwrap_or_else(|| panic!("{p} ausente: {listed:?}"));
         assert_eq!(f.1, c.len() as u64, "{p}");
         assert!(!f.2);
     }
@@ -164,10 +183,16 @@ fn deleted_file_survives_in_the_previous_version_of_the_leaf() {
     let root_leaf = (t.root_tree as usize, t.root_tree_logical);
     let ext_leaf = (t.extent_tree as usize, t.extent_tree_logical);
     let to_logical = |phys: usize| -> u64 {
-        let c = t.chunks.iter().find(|c| (phys as u64) >= c.2 && (phys as u64) < c.2 + c.1).expect("chunk");
+        let c = t
+            .chunks
+            .iter()
+            .find(|c| (phys as u64) >= c.2 && (phys as u64) < c.2 + c.1)
+            .expect("chunk");
         c.0 + (phys as u64 - c.2)
     };
-    let fl = Leaf { raw: img[fs_leaf.0..fs_leaf.0 + nodesize].to_vec() };
+    let fl = Leaf {
+        raw: img[fs_leaf.0..fs_leaf.0 + nodesize].to_vec(),
+    };
     // inode do arquivo apagado
     let victim = "relatorio.dat";
     let mut ino = 0;
@@ -194,14 +219,23 @@ fn deleted_file_survives_in_the_previous_version_of_the_leaf() {
     // Novo bloco livre para a nova versão: primeiro bloco do metadata sem folha válida e todo zero.
     let free_slot = (0..img.len() / nodesize)
         .map(|n| n * nodesize)
-        .find(|&o| o > fs_leaf.0 && img[o..o + nodesize].iter().all(|&x| x == 0) && t.chunks.iter().any(|c| (o as u64) >= c.2 && (o as u64) < c.2 + c.1) && o < fs_leaf.0 + (8 << 20))
+        .find(|&o| {
+            o > fs_leaf.0
+                && img[o..o + nodesize].iter().all(|&x| x == 0)
+                && t.chunks
+                    .iter()
+                    .any(|c| (o as u64) >= c.2 && (o as u64) < c.2 + c.1)
+                && o < fs_leaf.0 + (8 << 20)
+        })
         .expect("bloco livre");
     // logical = bytenr da folha antiga + (offset físico - offset físico antigo): mesmo chunk
     let new_bytenr = to_logical(free_slot);
     let newleaf = fl.without(|o, _| o == ino, new_bytenr);
     img[free_slot..free_slot + nodesize].copy_from_slice(&newleaf.raw);
     // Aponta o ROOT_ITEM da árvore 5 para a nova versão (e sobe a geração), na folha da árvore raiz.
-    let mut rl = Leaf { raw: img[root_leaf.0..root_leaf.0 + nodesize].to_vec() };
+    let mut rl = Leaf {
+        raw: img[root_leaf.0..root_leaf.0 + nodesize].to_vec(),
+    };
     for k in 0..rl.nritems() {
         let (obj, ty, _, off, _) = rl.item(k);
         if obj == 5 && ty == 132 {
@@ -212,7 +246,9 @@ fn deleted_file_survives_in_the_previous_version_of_the_leaf() {
     rl.seal();
     img[root_leaf.0..root_leaf.0 + nodesize].copy_from_slice(&rl.raw);
     // Libera o extent de dados no extent tree (em outro endereço da mesma folha).
-    let el = Leaf { raw: img[ext_leaf.0..ext_leaf.0 + nodesize].to_vec() };
+    let el = Leaf {
+        raw: img[ext_leaf.0..ext_leaf.0 + nodesize].to_vec(),
+    };
     let newext = el.without(|o, ty| o == data_bytenr && ty == 168, ext_leaf.1);
     let _ = to_logical;
     img[ext_leaf.0..ext_leaf.0 + nodesize].copy_from_slice(&newext.raw);
@@ -221,15 +257,33 @@ fn deleted_file_survives_in_the_previous_version_of_the_leaf() {
     let p2 = i._dir.path().join("deleted.img");
     std::fs::write(&p2, &img).unwrap();
     init();
-    let c = scan_path(&p2, &ScanOptions { mode: ScanMode::Deep, ..Default::default() });
+    let c = scan_path(
+        &p2,
+        &ScanOptions {
+            mode: ScanMode::Deep,
+            ..Default::default()
+        },
+    );
     let f = c
         .found
         .iter()
         .find(|f| f.name == victim && f.origin == Origin::Btrfs)
-        .unwrap_or_else(|| panic!("não achou: {:?}", c.found.iter().map(|f| (&f.name, f.origin)).collect::<Vec<_>>()));
+        .unwrap_or_else(|| {
+            panic!(
+                "não achou: {:?}",
+                c.found
+                    .iter()
+                    .map(|f| (&f.name, f.origin))
+                    .collect::<Vec<_>>()
+            )
+        });
     assert_eq!(f.size, 150_000);
     assert_eq!(f.dir.as_deref(), Some("/docs"));
-    assert!(f.confidence >= Confidence::Medium && f.note.as_deref().unwrap_or("").contains("livres"), "{:?}", f.note);
+    assert!(
+        f.confidence >= Confidence::Medium && f.note.as_deref().unwrap_or("").contains("livres"),
+        "{:?}",
+        f.note
+    );
     let out = i._dir.path().join("out");
     let rep = recover_all(&p2, std::slice::from_ref(f), &out);
     assert!(rep.failed.is_empty(), "{:?}", rep.failed);
@@ -237,7 +291,10 @@ fn deleted_file_survives_in_the_previous_version_of_the_leaf() {
     let got = std::fs::read(if rp.is_absolute() { rp } else { out.join(rp) }).unwrap();
     assert!(got == i.files[0].1);
     // Os arquivos que continuam existindo não aparecem como apagados.
-    assert!(!c.found.iter().any(|f| f.name == "fica.dat" && f.origin == Origin::Btrfs));
+    assert!(!c
+        .found
+        .iter()
+        .any(|f| f.name == "fica.dat" && f.origin == Origin::Btrfs));
     let _ = Path::new("");
 }
 
@@ -247,7 +304,10 @@ fn lzo_literals_and_a_match() {
     let mut s = vec![17 + 20];
     s.extend((0..20u8).map(|i| b'a' + i));
     s.extend_from_slice(&[0x11, 0, 0]);
-    assert_eq!(lzo1x_decompress(&s, 4096).unwrap(), (0..20u8).map(|i| b'a' + i).collect::<Vec<_>>());
+    assert_eq!(
+        lzo1x_decompress(&s, 4096).unwrap(),
+        (0..20u8).map(|i| b'a' + i).collect::<Vec<_>>()
+    );
     // "abcd" + M2 (dist 4, len 4) + fim
     let s = vec![17 + 4, b'a', b'b', b'c', b'd', 0x6C, 0x00, 0x11, 0, 0];
     assert_eq!(lzo1x_decompress(&s, 4096).unwrap(), b"abcdabcd");
@@ -265,16 +325,35 @@ fn packed_extents_decode_zlib_and_zstd() {
     let z = e.finish().unwrap();
     let mut disk = vec![0u8; 4096];
     disk.extend_from_slice(&z);
-    let p = Packed { offset: 4096, disk_len: z.len() as u64, ram_len: plain.len() as u64, skip: 1000, len: 5000, codec: PackedCodec::Zlib };
+    let p = Packed {
+        offset: 4096,
+        disk_len: z.len() as u64,
+        ram_len: plain.len() as u64,
+        skip: 1000,
+        len: 5000,
+        codec: PackedCodec::Zlib,
+    };
     assert_eq!(p.read(&MemSource(disk)).unwrap(), &plain[1000..6000]);
     // zstd, se o utilitário existir
     if have("zstd") {
         let dir = tempfile::tempdir().unwrap();
         let f = dir.path().join("p.bin");
         std::fs::write(&f, &plain).unwrap();
-        assert!(Command::new("zstd").args(["-q", "-f"]).arg(&f).status().unwrap().success());
+        assert!(Command::new("zstd")
+            .args(["-q", "-f"])
+            .arg(&f)
+            .status()
+            .unwrap()
+            .success());
         let z = std::fs::read(dir.path().join("p.bin.zst")).unwrap();
-        let p = Packed { offset: 0, disk_len: z.len() as u64, ram_len: plain.len() as u64, skip: 0, len: plain.len() as u64, codec: PackedCodec::Zstd };
+        let p = Packed {
+            offset: 0,
+            disk_len: z.len() as u64,
+            ram_len: plain.len() as u64,
+            skip: 0,
+            len: plain.len() as u64,
+            codec: PackedCodec::Zstd,
+        };
         assert!(p.read(&MemSource(z)).unwrap() == plain);
     }
 }

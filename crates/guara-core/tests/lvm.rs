@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 #[test]
 fn assembles_real_lvm_image() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/testdata/dfvfs/lvm.raw");
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/testdata/dfvfs/lvm.raw");
     if !p.exists() {
         eprintln!("SKIP: execute scripts/fetch-testdata.sh");
         return;

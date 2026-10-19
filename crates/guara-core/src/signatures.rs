@@ -20,13 +20,19 @@ pub fn category_for_ext(ext: &str) -> Category {
         "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "heic" | "avif" | "tif" | "tiff"
         | "psd" | "svg" | "ico" | "cr2" | "nef" | "dng" | "jp2" => Category::Image,
         "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "odt" | "ods" | "odp"
-        | "txt" | "rtf" | "epub" | "md" | "csv" | "html" | "xml" | "json" | "swf" => Category::Document,
-        "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "wmv" | "flv" | "mpg" | "mpeg" | "3gp" | "ts" => {
-            Category::Video
+        | "txt" | "rtf" | "epub" | "md" | "csv" | "html" | "xml" | "json" | "swf" => {
+            Category::Document
         }
-        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "wma" | "opus" | "mid" | "aif" => Category::Audio,
-        "zip" | "rar" | "7z" | "gz" | "tar" | "bz2" | "xz" | "jar" | "apk" | "zst" | "cab" | "deb" => Category::Archive,
-        "sqlite" | "db" | "sqlite3" | "mdb" | "accdb" | "pst" | "dat" | "evtx" => Category::Database,
+        "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "wmv" | "flv" | "mpg" | "mpeg" | "3gp"
+        | "ts" => Category::Video,
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "wma" | "opus" | "mid" | "aif" => {
+            Category::Audio
+        }
+        "zip" | "rar" | "7z" | "gz" | "tar" | "bz2" | "xz" | "jar" | "apk" | "zst" | "cab"
+        | "deb" => Category::Archive,
+        "sqlite" | "db" | "sqlite3" | "mdb" | "accdb" | "pst" | "dat" | "evtx" => {
+            Category::Database
+        }
         _ => Category::Other,
     }
 }
@@ -85,22 +91,22 @@ pub fn matches_ext(ext: &str, head: &[u8]) -> Option<bool> {
 pub fn might_start(b0: u8) -> bool {
     crate::formats::might_start(b0)
         || matches!(
-        b0,
-        0xFF | 0x89
-            | b'G'
-            | b'B'
-            | b'%'
-            | b'P'
-            | 0xD0
-            | b'7'
-            | b'S'
-            | b'R'
-            | b'I'
-            | b'M'
-            | 0x00
-            | b'f'
-            | 0x1F
-    )
+            b0,
+            0xFF | 0x89
+                | b'G'
+                | b'B'
+                | b'%'
+                | b'P'
+                | 0xD0
+                | b'7'
+                | b'S'
+                | b'R'
+                | b'I'
+                | b'M'
+                | 0x00
+                | b'f'
+                | 0x1F
+        )
 }
 
 const MAX_HEADER: usize = 64 * 1024;

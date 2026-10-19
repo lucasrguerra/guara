@@ -60,7 +60,9 @@ pub fn read_pv(src: &dyn Source) -> Option<PvInfo> {
     }
     let mut best: Option<PvInfo> = None;
     for (mda_off, mda_size) in mdas {
-        let Ok(h) = read_vec(src, mda_off, 512) else { continue };
+        let Ok(h) = read_vec(src, mda_off, 512) else {
+            continue;
+        };
         if h.len() < 512 || &h[4..20] != MDA_MAGIC {
             continue;
         }
@@ -85,11 +87,25 @@ pub fn read_pv(src: &dyn Source) -> Option<PvInfo> {
                 text = [a, b].concat();
             }
         }
-        let s = String::from_utf8_lossy(&text).trim_end_matches('\0').to_string();
+        let s = String::from_utf8_lossy(&text)
+            .trim_end_matches('\0')
+            .to_string();
         let Some(tree) = parse(&s) else { continue };
-        let Some((vg_name, vg)) = tree.sections.iter().find(|(_, sec)| sec.values.contains_key("extent_size")) else { continue };
+        let Some((vg_name, vg)) = tree
+            .sections
+            .iter()
+            .find(|(_, sec)| sec.values.contains_key("extent_size"))
+        else {
+            continue;
+        };
         let seqno = vg.int("seqno").unwrap_or(0);
-        let cand = PvInfo { uuid: uuid.clone(), size, seqno, vg_name: vg_name.clone(), text: s.clone() };
+        let cand = PvInfo {
+            uuid: uuid.clone(),
+            size,
+            seqno,
+            vg_name: vg_name.clone(),
+            text: s.clone(),
+        };
         if best.as_ref().map(|b| cand.seqno > b.seqno).unwrap_or(true) {
             best = Some(cand);
         }
@@ -133,7 +149,10 @@ impl Section {
         }
     }
     pub fn sub(&self, name: &str) -> Option<&Section> {
-        self.sections.iter().find(|(n, _)| n == name).map(|(_, s)| s)
+        self.sections
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, s)| s)
     }
 }
 
@@ -145,7 +164,9 @@ struct Lexer<'a> {
 impl Lexer<'_> {
     fn skip(&mut self) {
         loop {
-            while self.i < self.b.len() && (self.b[self.i].is_ascii_whitespace() || self.b[self.i] == b',') {
+            while self.i < self.b.len()
+                && (self.b[self.i].is_ascii_whitespace() || self.b[self.i] == b',')
+            {
                 self.i += 1;
             }
             if self.i < self.b.len() && self.b[self.i] == b'#' {
@@ -160,7 +181,13 @@ impl Lexer<'_> {
     fn ident(&mut self) -> Option<String> {
         self.skip();
         let s = self.i;
-        while self.i < self.b.len() && !self.b[self.i].is_ascii_whitespace() && !matches!(self.b[self.i], b'=' | b'{' | b'}' | b'[' | b']' | b'"' | b'#') {
+        while self.i < self.b.len()
+            && !self.b[self.i].is_ascii_whitespace()
+            && !matches!(
+                self.b[self.i],
+                b'=' | b'{' | b'}' | b'[' | b']' | b'"' | b'#'
+            )
+        {
             self.i += 1;
         }
         (self.i > s).then(|| String::from_utf8_lossy(&self.b[s..self.i]).to_string())
@@ -196,13 +223,19 @@ impl Lexer<'_> {
             }
             _ => {
                 let s = self.i;
-                while self.i < self.b.len() && (self.b[self.i].is_ascii_digit() || self.b[self.i] == b'-') {
+                while self.i < self.b.len()
+                    && (self.b[self.i].is_ascii_digit() || self.b[self.i] == b'-')
+                {
                     self.i += 1;
                 }
                 if self.i == s {
                     return None;
                 }
-                std::str::from_utf8(&self.b[s..self.i]).ok()?.parse().ok().map(Val::Int)
+                std::str::from_utf8(&self.b[s..self.i])
+                    .ok()?
+                    .parse()
+                    .ok()
+                    .map(Val::Int)
             }
         }
     }
@@ -237,7 +270,11 @@ impl Lexer<'_> {
 }
 
 pub fn parse(text: &str) -> Option<Section> {
-    Lexer { b: text.as_bytes(), i: 0 }.section(true)
+    Lexer {
+        b: text.as_bytes(),
+        i: 0,
+    }
+    .section(true)
 }
 
 // ------------------------------------------------------------- montagem
@@ -246,15 +283,32 @@ fn dashed(u: &str) -> String {
     if u.len() != 32 {
         return u.to_string();
     }
-    format!("{}-{}-{}-{}-{}-{}-{}", &u[0..6], &u[6..10], &u[10..14], &u[14..18], &u[18..22], &u[22..26], &u[26..32])
+    format!(
+        "{}-{}-{}-{}-{}-{}-{}",
+        &u[0..6],
+        &u[6..10],
+        &u[10..14],
+        &u[14..18],
+        &u[18..22],
+        &u[22..26],
+        &u[26..32]
+    )
 }
 
 #[derive(Clone)]
 enum Map {
     /// Lê de `src` a partir de `base` (linear).
-    Linear { src: Option<Arc<dyn Source>>, base: u64 },
-    Striped { srcs: Vec<(Option<Arc<dyn Source>>, u64)>, stripe: u64 },
-    Mirror { legs: Vec<(Option<Arc<dyn Source>>, u64)> },
+    Linear {
+        src: Option<Arc<dyn Source>>,
+        base: u64,
+    },
+    Striped {
+        srcs: Vec<(Option<Arc<dyn Source>>, u64)>,
+        stripe: u64,
+    },
+    Mirror {
+        legs: Vec<(Option<Arc<dyn Source>>, u64)>,
+    },
     Raid(Arc<RaidSource>),
 }
 
@@ -395,31 +449,53 @@ impl Ctx<'_> {
                         })
                         .collect();
                     if srcs.iter().any(|(s, _)| s.is_none()) {
-                        self.warnings.push(format!("{name}: falta um volume físico; as áreas dele aparecem zeradas"));
+                        self.warnings.push(format!(
+                            "{name}: falta um volume físico; as áreas dele aparecem zeradas"
+                        ));
                     }
                     if srcs.len() == 1 {
                         let (src, base) = srcs.into_iter().next().unwrap();
                         Map::Linear { src, base }
                     } else {
-                        Map::Striped { srcs, stripe: seg.int("stripe_size").unwrap_or(128) * 512 }
+                        Map::Striped {
+                            srcs,
+                            stripe: seg.int("stripe_size").unwrap_or(128) * 512,
+                        }
                     }
                 }
                 "mirror" => {
                     let st = mk_stripes(seg.list("mirrors").unwrap_or(&[]));
                     let legs = st
                         .iter()
-                        .filter_map(|(pv, e)| self.pvs.get(pv).map(|(s, pe)| (s.clone(), pe + e * self.ext)))
+                        .filter_map(|(pv, e)| {
+                            self.pvs
+                                .get(pv)
+                                .map(|(s, pe)| (s.clone(), pe + e * self.ext))
+                        })
                         .collect();
                     Map::Mirror { legs }
                 }
                 t if t.starts_with("raid") => {
                     let raids = seg.list("raids").unwrap_or(&[]);
-                    let imgs: Vec<String> = raids.iter().filter_map(|v| if let Val::Str(s) = v { Some(s.clone()) } else { None }).collect();
+                    let imgs: Vec<String> = raids
+                        .iter()
+                        .filter_map(|v| {
+                            if let Val::Str(s) = v {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     // Pares (rimage, rmeta) ou lista só de imagens.
-                    let data_lvs: Vec<&String> = imgs.iter().filter(|n| n.contains("_rimage_")).collect();
+                    let data_lvs: Vec<&String> =
+                        imgs.iter().filter(|n| n.contains("_rimage_")).collect();
                     let mut members: Vec<Option<Member>> = vec![];
                     for n in &data_lvs {
-                        members.push(self.build(n, depth + 1).map(|src| Member { src, data_offset: 0 }));
+                        members.push(self.build(n, depth + 1).map(|src| Member {
+                            src,
+                            data_offset: 0,
+                        }));
                     }
                     let chunk = seg.int("stripe_size").unwrap_or(128) * 512;
                     let (level, layout) = match t {
@@ -435,7 +511,8 @@ impl Ctx<'_> {
                         "raid6_nc" | "raid6_n_6" => (Level::R6, Layout::ParityLast),
                         "raid10" => (Level::R10, Layout::LeftSymmetric),
                         other => {
-                            self.warnings.push(format!("{name}: tipo {other} não suportado"));
+                            self.warnings
+                                .push(format!("{name}: tipo {other} não suportado"));
                             return None;
                         }
                     };
@@ -451,7 +528,9 @@ impl Ctx<'_> {
                     }
                 }
                 other => {
-                    self.warnings.push(format!("{name}: tipo de segmento \"{other}\" não suportado"));
+                    self.warnings.push(format!(
+                        "{name}: tipo de segmento \"{other}\" não suportado"
+                    ));
                     return None;
                 }
             };
@@ -474,27 +553,48 @@ pub fn assemble_vgs(pvs: Vec<(Arc<dyn Source>, PvInfo)>) -> Vec<VgResult> {
     let mut out = vec![];
     for (vg_name, list) in by_vg {
         let newest = list.iter().max_by_key(|(_, p)| p.seqno).unwrap();
-        let Some(tree) = parse(&newest.1.text) else { continue };
-        let Some(vg) = tree.sub(&vg_name) else { continue };
+        let Some(tree) = parse(&newest.1.text) else {
+            continue;
+        };
+        let Some(vg) = tree.sub(&vg_name) else {
+            continue;
+        };
         let ext = vg.int("extent_size").unwrap_or(8192) * 512;
         let mut pvmap = BTreeMap::new();
         let mut warnings = vec![];
         if let Some(pvsec) = vg.sub("physical_volumes") {
             for (pvname, def) in &pvsec.sections {
                 let id = def.str("id").unwrap_or("").to_string();
-                let found = list.iter().find(|(_, p)| dashed(&p.uuid) == id).map(|(s, _)| s.clone());
+                let found = list
+                    .iter()
+                    .find(|(_, p)| dashed(&p.uuid) == id)
+                    .map(|(s, _)| s.clone());
                 if found.is_none() {
                     warnings.push(format!("volume físico {pvname} ({id}) não foi fornecido"));
                 }
-                pvmap.insert(pvname.clone(), (found, def.int("pe_start").unwrap_or(2048) * 512));
+                pvmap.insert(
+                    pvname.clone(),
+                    (found, def.int("pe_start").unwrap_or(2048) * 512),
+                );
             }
         }
-        let Some(lvsec) = vg.sub("logical_volumes") else { continue };
-        let mut ctx = Ctx { ext, pvs: pvmap, lvs: lvsec, cache: BTreeMap::new(), warnings };
+        let Some(lvsec) = vg.sub("logical_volumes") else {
+            continue;
+        };
+        let mut ctx = Ctx {
+            ext,
+            pvs: pvmap,
+            lvs: lvsec,
+            cache: BTreeMap::new(),
+            warnings,
+        };
         let mut lvs = vec![];
         for (name, def) in &lvsec.sections {
             // Imagens internas do RAID e metadados não são volumes de usuário.
-            let hidden = def.list("status").map(|l| !l.iter().any(|v| matches!(v, Val::Str(s) if s == "VISIBLE"))).unwrap_or(false);
+            let hidden = def
+                .list("status")
+                .map(|l| !l.iter().any(|v| matches!(v, Val::Str(s) if s == "VISIBLE")))
+                .unwrap_or(false);
             if hidden {
                 continue;
             }
@@ -502,7 +602,11 @@ pub fn assemble_vgs(pvs: Vec<(Arc<dyn Source>, PvInfo)>) -> Vec<VgResult> {
                 lvs.push((name.clone(), src));
             }
         }
-        out.push(VgResult { name: vg_name, lvs, warnings: ctx.warnings });
+        out.push(VgResult {
+            name: vg_name,
+            lvs,
+            warnings: ctx.warnings,
+        });
     }
     out
 }

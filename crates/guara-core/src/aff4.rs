@@ -16,7 +16,10 @@ use std::sync::Mutex;
 
 pub fn is_aff4(head: &[u8]) -> bool {
     // ZIP local file header + primeiro nome "container.description" ou "version.txt".
-    head.len() > 50 && head.starts_with(b"PK\x03\x04") && (find(&head[30..head.len().min(80)], b"container.description") || find(&head[30..head.len().min(80)], b"version.txt"))
+    head.len() > 50
+        && head.starts_with(b"PK\x03\x04")
+        && (find(&head[30..head.len().min(80)], b"container.description")
+            || find(&head[30..head.len().min(80)], b"version.txt"))
 }
 
 fn find(h: &[u8], n: &[u8]) -> bool {
@@ -35,7 +38,10 @@ struct Resource {
 
 impl Resource {
     fn get(&self, k: &str) -> Option<&str> {
-        self.props.get(k).and_then(|v| v.first()).map(|s| s.as_str())
+        self.props
+            .get(k)
+            .and_then(|v| v.first())
+            .map(|s| s.as_str())
     }
     fn num(&self, k: &str) -> Option<u64> {
         self.get(k)?.parse().ok()
@@ -111,7 +117,10 @@ impl Turtle<'_> {
             }
             _ => {
                 let s = self.i;
-                while self.i < self.b.len() && !self.b[self.i].is_ascii_whitespace() && !matches!(self.b[self.i], b';' | b',') {
+                while self.i < self.b.len()
+                    && !self.b[self.i].is_ascii_whitespace()
+                    && !matches!(self.b[self.i], b';' | b',')
+                {
                     self.i += 1;
                 }
                 // ponto final de sentença colado ao termo
@@ -128,7 +137,11 @@ impl Turtle<'_> {
 }
 
 fn parse_turtle(text: &str) -> HashMap<String, Resource> {
-    let mut t = Turtle { b: text.as_bytes(), i: 0, prefixes: HashMap::new() };
+    let mut t = Turtle {
+        b: text.as_bytes(),
+        i: 0,
+        prefixes: HashMap::new(),
+    };
     let mut out: HashMap<String, Resource> = HashMap::new();
     loop {
         t.ws();
@@ -153,12 +166,14 @@ fn parse_turtle(text: &str) -> HashMap<String, Resource> {
             continue;
         }
         // sujeito
-        let Some(subj) = (if t.b[t.i] == b':' && t.b.get(t.i + 1).map_or(true, |c| c.is_ascii_whitespace()) {
-            t.i += 1;
-            Some(t.prefixes.get("").cloned().unwrap_or_default())
-        } else {
-            t.term()
-        }) else {
+        let Some(subj) =
+            (if t.b[t.i] == b':' && t.b.get(t.i + 1).map_or(true, |c| c.is_ascii_whitespace()) {
+                t.i += 1;
+                Some(t.prefixes.get("").cloned().unwrap_or_default())
+            } else {
+                t.term()
+            })
+        else {
             break;
         };
         let res = out.entry(subj).or_default();
@@ -278,14 +293,23 @@ fn method_of(uri: &str) -> Method {
 impl Aff4Source {
     pub fn open(path: &Path) -> Result<Self> {
         let file = File::open(path)?;
-        let mut zip = zip::ZipArchive::new(file.try_clone()?).map_err(|e| Error::msg(format!("AFF4 inválido (ZIP): {e}")))?;
+        let mut zip = zip::ZipArchive::new(file.try_clone()?)
+            .map_err(|e| Error::msg(format!("AFF4 inválido (ZIP): {e}")))?;
         let mut entries = HashMap::new();
         for i in 0..zip.len() {
             let f = zip.by_index_raw(i).map_err(|e| Error::msg(e.to_string()))?;
-            entries.insert(f.name().to_string(), Loc { data_start: f.data_start(), size: f.compressed_size() });
+            entries.insert(
+                f.name().to_string(),
+                Loc {
+                    data_start: f.data_start(),
+                    size: f.compressed_size(),
+                },
+            );
         }
         let turtle = {
-            let mut f = zip.by_name("information.turtle").map_err(|_| Error::msg("AFF4 sem information.turtle"))?;
+            let mut f = zip
+                .by_name("information.turtle")
+                .map_err(|_| Error::msg("AFF4 sem information.turtle"))?;
             let mut s = String::new();
             f.read_to_string(&mut s)?;
             s
@@ -297,19 +321,30 @@ impl Aff4Source {
         let image = res
             .values()
             .find(|r| (r.is(&img_t) || r.is(&disk_t)) && r.get(&ds).is_some())
-            .ok_or_else(|| Error::msg("AFF4 sem objeto de imagem (aff4:Image com aff4:dataStream)"))?;
+            .ok_or_else(|| {
+                Error::msg("AFF4 sem objeto de imagem (aff4:Image com aff4:dataStream)")
+            })?;
         let mut info = HashMap::new();
         if let Some(v) = image.get(&format!("{NS}diskModel")) {
             info.insert("Modelo do disco".to_string(), v.to_string());
         }
-        for (k, label) in [("caseNumber", "Número do caso"), ("examiner", "Examinador"), ("notes", "Notas"), ("evidenceNumber", "Número da evidência"), ("caseName", "Nome do caso")] {
+        for (k, label) in [
+            ("caseNumber", "Número do caso"),
+            ("examiner", "Examinador"),
+            ("notes", "Notas"),
+            ("evidenceNumber", "Número da evidência"),
+            ("caseName", "Nome do caso"),
+        ] {
             if let Some(v) = res.values().find_map(|r| r.get(&format!("{NS}{k}"))) {
                 info.insert(label.to_string(), v.to_string());
             }
         }
         let data_urn = image.get(&ds).unwrap().to_string();
         // Hashes gravados no fluxo de dados (ou no mapa).
-        for r in res.values().filter(|r| r.get(&format!("{NS}hash")).is_some()) {
+        for r in res
+            .values()
+            .filter(|r| r.get(&format!("{NS}hash")).is_some())
+        {
             for h in r.props.get(&format!("{NS}hash")).into_iter().flatten() {
                 match h.len() {
                     32 if h.chars().all(|c| c.is_ascii_hexdigit()) => {
@@ -333,7 +368,9 @@ impl Aff4Source {
             cache: Mutex::new(None),
             index_cache: Mutex::new(HashMap::new()),
         };
-        let top = res.get(&data_urn).ok_or_else(|| Error::msg("AFF4: fluxo de dados da imagem não encontrado"))?;
+        let top = res
+            .get(&data_urn)
+            .ok_or_else(|| Error::msg("AFF4: fluxo de dados da imagem não encontrado"))?;
         let map_t = format!("{NS}Map");
         if top.is(&map_t) {
             me.size = top.num(&format!("{NS}size")).unwrap_or(0);
@@ -345,7 +382,8 @@ impl Aff4Source {
                     continue;
                 }
                 if let Some(sym) = line.strip_prefix(&format!("{NS}SymbolicStream")) {
-                    let b = u8::from_str_radix(sym, 16).map_err(|_| Error::msg("AFF4: fluxo simbólico inválido"))?;
+                    let b = u8::from_str_radix(sym, 16)
+                        .map_err(|_| Error::msg("AFF4: fluxo simbólico inválido"))?;
                     me.targets.push(Target::Fill(b));
                 } else if line == format!("{NS}Zero") {
                     me.targets.push(Target::Zero);
@@ -372,7 +410,12 @@ impl Aff4Source {
             me.size = s.size;
             me.streams.push(s);
             me.targets.push(Target::Stream(0));
-            me.map = vec![MapEntry { start: 0, len: me.size, target_off: 0, target: 0 }];
+            me.map = vec![MapEntry {
+                start: 0,
+                len: me.size,
+                target_off: 0,
+                target: 0,
+            }];
         }
         if me.size == 0 {
             me.size = image.num(&format!("{NS}size")).unwrap_or(0);
@@ -381,20 +424,29 @@ impl Aff4Source {
     }
 
     fn load_stream(&self, res: &HashMap<String, Resource>, urn: &str) -> Result<ImageStream> {
-        let r = res.get(urn).ok_or_else(|| Error::msg(format!("AFF4: fluxo {urn} não descrito")))?;
+        let r = res
+            .get(urn)
+            .ok_or_else(|| Error::msg(format!("AFF4: fluxo {urn} não descrito")))?;
         Ok(ImageStream {
             urn: urn.to_string(),
             chunk: r.num(&format!("{NS}chunkSize")).unwrap_or(32768),
             per_bevy: r.num(&format!("{NS}chunksInSegment")).unwrap_or(2048),
-            method: r.get(&format!("{NS}compressionMethod")).map(method_of).unwrap_or(Method::Stored),
+            method: r
+                .get(&format!("{NS}compressionMethod"))
+                .map(method_of)
+                .unwrap_or(Method::Stored),
             size: r.num(&format!("{NS}size")).unwrap_or(0),
         })
     }
 
     /// MD5 do primeiro fluxo de blocos (o que o AFF4 grava em `aff4:hash`), para conferir a integridade.
     pub fn verify_stream_md5(&self) -> Result<Option<bool>> {
-        let Some(want) = self.info.get("md5").cloned() else { return Ok(None) };
-        let Some(st) = self.streams.first() else { return Ok(None) };
+        let Some(want) = self.info.get("md5").cloned() else {
+            return Ok(None);
+        };
+        let Some(st) = self.streams.first() else {
+            return Ok(None);
+        };
         let mut h = MultiHasher::new();
         let mut buf = vec![0u8; st.chunk as usize];
         let mut pos = 0u64;
@@ -408,7 +460,10 @@ impl Aff4Source {
     }
 
     fn read_entry(&self, name: &str) -> Result<Vec<u8>> {
-        let loc = self.entries.get(name).ok_or_else(|| Error::msg(format!("AFF4: entrada {name} ausente")))?;
+        let loc = self
+            .entries
+            .get(name)
+            .ok_or_else(|| Error::msg(format!("AFF4: entrada {name} ausente")))?;
         let mut v = vec![0u8; loc.size as usize];
         read_exact_at_file(&self.file, loc.data_start, &mut v)?;
         Ok(v)
@@ -431,7 +486,9 @@ impl Aff4Source {
             if let Some(i) = ic.get(&(si, bevy)) {
                 i.clone()
             } else {
-                let loc = self.entries.get(&format!("{base}.index")).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "índice do bevy ausente"))?;
+                let loc = self.entries.get(&format!("{base}.index")).ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::NotFound, "índice do bevy ausente")
+                })?;
                 let mut v = vec![0u8; loc.size as usize];
                 read_exact_at_file(&self.file, loc.data_start, &mut v)?;
                 let a = std::sync::Arc::new(v);
@@ -439,9 +496,17 @@ impl Aff4Source {
                 a
             }
         };
-        let e = index.get(within as usize * 12..within as usize * 12 + 12).ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "bloco fora do índice"))?;
-        let (off, len) = (u64::from_le_bytes(e[0..8].try_into().unwrap()), u32::from_le_bytes(e[8..12].try_into().unwrap()) as usize);
-        let loc = self.entries.get(&base).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "bevy ausente"))?;
+        let e = index
+            .get(within as usize * 12..within as usize * 12 + 12)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "bloco fora do índice"))?;
+        let (off, len) = (
+            u64::from_le_bytes(e[0..8].try_into().unwrap()),
+            u32::from_le_bytes(e[8..12].try_into().unwrap()) as usize,
+        );
+        let loc = self
+            .entries
+            .get(&base)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "bevy ausente"))?;
         let mut raw = vec![0u8; len];
         read_exact_at_file(&self.file, loc.data_start + off, &mut raw)?;
         let want = st.chunk.min(st.size.saturating_sub(chunk_no * st.chunk)) as usize;
@@ -450,16 +515,23 @@ impl Aff4Source {
         } else {
             let bad = |m: String| io::Error::new(io::ErrorKind::InvalidData, m);
             match st.method {
-                Method::Snappy => snap::raw::Decoder::new().decompress_vec(&raw).map_err(|e| bad(format!("snappy: {e}")))?,
-                Method::Lz4 => lz4_flex::block::decompress(&raw, st.chunk as usize).map_err(|e| bad(format!("lz4: {e}")))?,
+                Method::Snappy => snap::raw::Decoder::new()
+                    .decompress_vec(&raw)
+                    .map_err(|e| bad(format!("snappy: {e}")))?,
+                Method::Lz4 => lz4_flex::block::decompress(&raw, st.chunk as usize)
+                    .map_err(|e| bad(format!("lz4: {e}")))?,
                 Method::Deflate => {
                     let mut v = Vec::with_capacity(st.chunk as usize);
-                    flate2::read::DeflateDecoder::new(&raw[..]).read_to_end(&mut v).map_err(|e| bad(format!("deflate: {e}")))?;
+                    flate2::read::DeflateDecoder::new(&raw[..])
+                        .read_to_end(&mut v)
+                        .map_err(|e| bad(format!("deflate: {e}")))?;
                     v
                 }
                 Method::Zlib => {
                     let mut v = Vec::with_capacity(st.chunk as usize);
-                    flate2::read::ZlibDecoder::new(&raw[..]).read_to_end(&mut v).map_err(|e| bad(format!("zlib: {e}")))?;
+                    flate2::read::ZlibDecoder::new(&raw[..])
+                        .read_to_end(&mut v)
+                        .map_err(|e| bad(format!("zlib: {e}")))?;
                     v
                 }
                 Method::Stored => unreachable!(),
@@ -499,9 +571,13 @@ fn read_exact_at_file(f: &File, off: u64, buf: &mut [u8]) -> io::Result<()> {
     {
         let mut done = 0;
         while done < buf.len() {
-            let n = std::os::windows::fs::FileExt::seek_read(f, &mut buf[done..], off + done as u64)?;
+            let n =
+                std::os::windows::fs::FileExt::seek_read(f, &mut buf[done..], off + done as u64)?;
             if n == 0 {
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "AFF4 truncado"));
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "AFF4 truncado",
+                ));
             }
             done += n;
         }
@@ -534,7 +610,9 @@ impl Source for Aff4Source {
             let n = ((e.start + e.len - pos) as usize).min(want - done);
             let toff = e.target_off + (pos - e.start);
             match self.targets.get(e.target as usize) {
-                Some(Target::Stream(si)) => self.read_stream(*si, toff, &mut buf[done..done + n])?,
+                Some(Target::Stream(si)) => {
+                    self.read_stream(*si, toff, &mut buf[done..done + n])?
+                }
                 Some(Target::Fill(b)) => buf[done..done + n].fill(*b),
                 _ => buf[done..done + n].fill(0),
             }
@@ -557,7 +635,13 @@ pub struct Aff4Options {
 
 impl Default for Aff4Options {
     fn default() -> Self {
-        Self { case_name: String::new(), examiner: String::new(), notes: String::new(), evidence_number: String::new(), chunk_size: 32768 }
+        Self {
+            case_name: String::new(),
+            examiner: String::new(),
+            notes: String::new(),
+            evidence_number: String::new(),
+            chunk_size: 32768,
+        }
     }
 }
 
@@ -565,17 +649,30 @@ fn new_uuid() -> String {
     let mut b = [0u8; 16];
     let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut b));
     if b == [0u8; 16] {
-        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(1);
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(1);
         b = (t ^ (std::process::id() as u128) << 64).to_le_bytes();
     }
     b[6] = (b[6] & 0x0F) | 0x40;
     b[8] = (b[8] & 0x3F) | 0x80;
     let h: Vec<String> = b.iter().map(|x| format!("{x:02x}")).collect();
-    format!("{}-{}-{}-{}-{}", h[0..4].concat(), h[4..6].concat(), h[6..8].concat(), h[8..10].concat(), h[10..16].concat())
+    format!(
+        "{}-{}-{}-{}-{}",
+        h[0..4].concat(),
+        h[4..6].concat(),
+        h[6..8].concat(),
+        h[8..10].concat(),
+        h[10..16].concat()
+    )
 }
 
 fn iso_now() -> String {
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
     let days = secs.div_euclid(86400);
     let rem = secs.rem_euclid(86400);
     let z = days + 719468;
@@ -588,11 +685,18 @@ fn iso_now() -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.000Z", rem / 3600, rem % 3600 / 60, rem % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.000Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
 }
 
 fn esc(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
 }
 
 /// Grava uma imagem AFF4 linear (um fluxo de blocos snappy) de `src`.
@@ -607,7 +711,12 @@ pub fn write_aff4(
         .write(true)
         .create_new(true)
         .open(dest)
-        .map_err(|e| Error::msg(format!("não foi possível criar {}: {e} (o arquivo não pode existir)", dest.display())))?;
+        .map_err(|e| {
+            Error::msg(format!(
+                "não foi possível criar {}: {e} (o arquivo não pode existir)",
+                dest.display()
+            ))
+        })?;
     crate::owner::give_to_user(dest);
     let total = src.size();
     let chunk = opts.chunk_size as u64;
@@ -616,9 +725,12 @@ pub fn write_aff4(
     let stream = format!("aff4://{}", new_uuid());
     let image = format!("aff4://{}", new_uuid());
     let mut zip = zip::ZipWriter::new(out);
-    let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).large_file(true);
+    let stored = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .large_file(true);
     let result = (|| -> Result<ImageReport> {
-        zip.start_file("container.description", stored).map_err(zerr)?;
+        zip.start_file("container.description", stored)
+            .map_err(zerr)?;
         zip.write_all(volume.as_bytes())?;
         zip.start_file("version.txt", stored).map_err(zerr)?;
         zip.write_all(format!("major=1\nminor=2\ntool=Guara {}\n", crate::VERSION).as_bytes())?;
@@ -661,9 +773,15 @@ pub fn write_aff4(
                 }
                 hasher.update(b);
                 // bloco curto (último) é guardado como está; comprimido só se ficar menor
-                let comp = enc_snap.compress_vec(b).map_err(|e| Error::msg(e.to_string()))?;
+                let comp = enc_snap
+                    .compress_vec(b)
+                    .map_err(|e| Error::msg(e.to_string()))?;
                 // Só um bloco cheio pode ficar sem compressão (comprimento == tamanho do bloco).
-                let data: &[u8] = if want as u64 == chunk && comp.len() >= want { b } else { &comp };
+                let data: &[u8] = if want as u64 == chunk && comp.len() >= want {
+                    b
+                } else {
+                    &comp
+                };
                 zip.write_all(data)?;
                 index.extend_from_slice(&boff.to_le_bytes());
                 index.extend_from_slice(&(data.len() as u32).to_le_bytes());
@@ -672,7 +790,8 @@ pub fn write_aff4(
                 chunk_no += 1;
                 progress(pos, total);
             }
-            zip.start_file(format!("{name}.index").as_str(), stored).map_err(zerr)?;
+            zip.start_file(format!("{name}.index").as_str(), stored)
+                .map_err(zerr)?;
             zip.write_all(&index)?;
             if rep.cancelled {
                 break;
@@ -708,7 +827,10 @@ pub fn write_aff4(
     match result {
         Ok(rep) => {
             zip.finish().map_err(zerr)?;
-            crate::owner::write_owned(&dest.with_extension("map.json"), serde_json::to_vec_pretty(&rep)?)?;
+            crate::owner::write_owned(
+                &dest.with_extension("map.json"),
+                serde_json::to_vec_pretty(&rep)?,
+            )?;
             Ok(rep)
         }
         Err(e) => {

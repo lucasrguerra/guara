@@ -12,13 +12,19 @@ use std::collections::{HashMap, HashSet};
 const HFS_EPOCH: i64 = 2_082_844_800;
 
 fn be16(b: &[u8], o: usize) -> u16 {
-    b.get(o..o + 2).map(|s| u16::from_be_bytes([s[0], s[1]])).unwrap_or(0)
+    b.get(o..o + 2)
+        .map(|s| u16::from_be_bytes([s[0], s[1]]))
+        .unwrap_or(0)
 }
 fn be32(b: &[u8], o: usize) -> u32 {
-    b.get(o..o + 4).map(|s| u32::from_be_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 4)
+        .map(|s| u32::from_be_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 fn be64(b: &[u8], o: usize) -> u64 {
-    b.get(o..o + 8).map(|s| u64::from_be_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 8)
+        .map(|s| u64::from_be_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 
 #[derive(Clone, Debug, Default)]
@@ -29,7 +35,11 @@ struct Fork {
 }
 
 fn parse_fork(b: &[u8]) -> Fork {
-    let mut f = Fork { size: be64(b, 0), blocks: be32(b, 12), extents: vec![] };
+    let mut f = Fork {
+        size: be64(b, 0),
+        blocks: be32(b, 12),
+        extents: vec![],
+    };
     for i in 0..8 {
         let (s, c) = (be32(b, 16 + i * 8), be32(b, 20 + i * 8));
         if c != 0 {
@@ -105,9 +115,13 @@ impl<'a> Vol<'a> {
             have = ex.iter().map(|e| e.1 as u64).sum();
             let _ = have;
         }
-        merge_extents(ex.into_iter().map(|(s, c)| Extent::new(self.block_off(s as u64), c as u64 * self.bs)).collect::<Vec<_>>())
-            .into_iter()
-            .collect()
+        merge_extents(
+            ex.into_iter()
+                .map(|(s, c)| Extent::new(self.block_off(s as u64), c as u64 * self.bs))
+                .collect::<Vec<_>>(),
+        )
+        .into_iter()
+        .collect()
     }
 
     /// Extensões além das oito iniciais, procuradas no arquivo de overflow (árvore B+).
@@ -119,7 +133,9 @@ impl<'a> Vol<'a> {
         };
         let total_nodes = self.extents_file.size / node_size as u64;
         for n in 1..total_nodes.min(100_000) {
-            let Some(node) = self.read_tree_node(&self.extents_file, n as u32, node_size) else { continue };
+            let Some(node) = self.read_tree_node(&self.extents_file, n as u32, node_size) else {
+                continue;
+            };
             if node[8] != 0xFF {
                 continue;
             }
@@ -193,8 +209,13 @@ fn records(node: &[u8]) -> Vec<&[u8]> {
 }
 
 fn utf16be(b: &[u8]) -> String {
-    let u: Vec<u16> = b.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
-    String::from_utf16_lossy(&u).replace('/', "_").replace(':', "/")
+    let u: Vec<u16> = b
+        .chunks_exact(2)
+        .map(|c| u16::from_be_bytes([c[0], c[1]]))
+        .collect();
+    String::from_utf16_lossy(&u)
+        .replace('/', "_")
+        .replace(':', "/")
 }
 
 struct CatFile {
@@ -213,7 +234,14 @@ fn date(d: u32) -> Option<i64> {
 }
 
 /// Decodifica um registro do catálogo (chave + dados). `max_id` descarta lixo.
-fn decode_record(r: &[u8], max_id: u32, files: &mut Vec<CatFile>, threads: &mut HashMap<u32, (u32, String)>, folders: &mut HashMap<(u32, String), u32>, stale: bool) {
+fn decode_record(
+    r: &[u8],
+    max_id: u32,
+    files: &mut Vec<CatFile>,
+    threads: &mut HashMap<u32, (u32, String)>,
+    folders: &mut HashMap<(u32, String), u32>,
+    stale: bool,
+) {
     let klen = be16(r, 0) as usize;
     if klen < 6 || klen + 2 > r.len() {
         return;
@@ -240,7 +268,10 @@ fn decode_record(r: &[u8], max_id: u32, files: &mut Vec<CatFile>, threads: &mut 
             // thread de pasta: chave = (id da pasta, ""); dados = (pai, nome)
             let pn = be16(rec, 8) as usize;
             if pn <= 255 {
-                threads.entry(parent).or_insert((be32(rec, 4), utf16be(rec.get(10..10 + pn * 2).unwrap_or(&[]))));
+                threads.entry(parent).or_insert((
+                    be32(rec, 4),
+                    utf16be(rec.get(10..10 + pn * 2).unwrap_or(&[])),
+                ));
             }
         }
         2 if rec.len() >= 248 => {
@@ -263,7 +294,10 @@ fn decode_record(r: &[u8], max_id: u32, files: &mut Vec<CatFile>, threads: &mut 
         4 if rec.len() >= 10 => {
             let pn = be16(rec, 8) as usize;
             if pn <= 255 {
-                threads.entry(parent).or_insert((be32(rec, 4), utf16be(rec.get(10..10 + pn * 2).unwrap_or(&[]))));
+                threads.entry(parent).or_insert((
+                    be32(rec, 4),
+                    utf16be(rec.get(10..10 + pn * 2).unwrap_or(&[])),
+                ));
             }
         }
         _ => {}
@@ -271,7 +305,13 @@ fn decode_record(r: &[u8], max_id: u32, files: &mut Vec<CatFile>, threads: &mut 
 }
 
 /// Procura registros de arquivo nas sobras de um nó (entre os dados e a tabela de offsets).
-fn scan_slack(node: &[u8], max_id: u32, files: &mut Vec<CatFile>, threads: &mut HashMap<u32, (u32, String)>, folders: &mut HashMap<(u32, String), u32>) {
+fn scan_slack(
+    node: &[u8],
+    max_id: u32,
+    files: &mut Vec<CatFile>,
+    threads: &mut HashMap<u32, (u32, String)>,
+    folders: &mut HashMap<(u32, String), u32>,
+) {
     let n = be16(node, 10) as usize;
     let table = node.len().saturating_sub(2 * (n + 1));
     let used_end = (be16(node, table) as usize).max(14);
@@ -284,7 +324,7 @@ fn scan_slack(node: &[u8], max_id: u32, files: &mut Vec<CatFile>, threads: &mut 
             if parent >= 1 && parent < max_id.max(16) {
                 let d = (p + 2 + klen + 1) & !1;
                 let rt = be16(node, d);
-                if matches!(rt, 1 | 2 | 3 | 4) {
+                if matches!(rt, 1..=4) {
                     let end = (d + 248).min(table);
                     decode_record(&node[p..end], max_id, files, threads, folders, true);
                     p = d + if rt == 2 { 248 } else { 16 };
@@ -299,15 +339,22 @@ fn scan_slack(node: &[u8], max_id: u32, files: &mut Vec<CatFile>, threads: &mut 
 pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
     let mut res = VolumeScan::default();
     let _ = part_len;
-    let Some(vbase) = locate(ctx.src, base) else { return res };
-    let Some(vol) = Vol::open(ctx.src, vbase) else { return res };
+    let Some(vbase) = locate(ctx.src, base) else {
+        return res;
+    };
+    let Some(vol) = Vol::open(ctx.src, vbase) else {
+        return res;
+    };
 
     // Mapa de espaço livre.
     if let Some(bm) = vol.read_fork_all(&vol.alloc, (vol.total / 8 + 1) as usize) {
         let mut free = vec![];
         let mut run: Option<u64> = None;
         for b in 0..vol.total {
-            let used = bm.get((b / 8) as usize).map(|x| x >> (7 - (b % 8)) & 1 == 1).unwrap_or(true);
+            let used = bm
+                .get((b / 8) as usize)
+                .map(|x| x >> (7 - (b % 8)) & 1 == 1)
+                .unwrap_or(true);
             match (used, run) {
                 (false, None) => run = Some(b),
                 (true, Some(s)) => {
@@ -327,7 +374,9 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
         res.warnings.push("HFS+: catálogo ilegível.".into());
         return res;
     };
-    let Some(hdr) = vol.read_tree_node(&vol.catalog, 0, ns) else { return res };
+    let Some(hdr) = vol.read_tree_node(&vol.catalog, 0, ns) else {
+        return res;
+    };
     let first_leaf = be32(&hdr, 24);
     let max_id = vol.next_cnid.max(16);
     let mut files: Vec<CatFile> = vec![];
@@ -342,7 +391,9 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
         if (ctx.cancelled)() {
             return res;
         }
-        let Some(node) = vol.read_tree_node(&vol.catalog, n, ns) else { break };
+        let Some(node) = vol.read_tree_node(&vol.catalog, n, ns) else {
+            break;
+        };
         if node[8] != 0xFF {
             break;
         }
@@ -360,7 +411,15 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
 
     // Diário: cópias antigas de nós folha do catálogo.
     if vol.journal_info != 0 {
-        scan_journal(&vol, ns, max_id, &mut files, &mut threads, &mut folders, ctx);
+        scan_journal(
+            &vol,
+            ns,
+            max_id,
+            &mut files,
+            &mut threads,
+            &mut folders,
+            ctx,
+        );
     }
 
     // Caminho de cada pasta a partir dos threads.
@@ -385,13 +444,19 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
 
     let free_set = res.free.clone().unwrap_or_default();
     let mut seen: HashSet<(u32, u64)> = HashSet::new();
-    for f in files.iter().filter(|f| f.stale && !live_ids.contains(&f.id)) {
+    for f in files
+        .iter()
+        .filter(|f| f.stale && !live_ids.contains(&f.id))
+    {
         if f.data.size == 0 || f.data.extents.is_empty() {
             continue;
         }
         let ex = vol.fork_extents(&f.data, f.id, 0);
         let total_len: u64 = ex.iter().map(|e| e.len).sum();
-        if ex.is_empty() || total_len < f.data.size || ex.iter().any(|e| e.end() > vol.base + vol.total * vol.bs) {
+        if ex.is_empty()
+            || total_len < f.data.size
+            || ex.iter().any(|e| e.end() > vol.base + vol.total * vol.bs)
+        {
             continue;
         }
         if !seen.insert((f.id, ex[0].offset)) {
@@ -402,9 +467,15 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
         // Blocos já reaproveitados?
         let reused = extents.iter().filter(|e| !covered_by(&free_set, e)).count();
         let (conf, note) = if reused == 0 {
-            (Confidence::High, "registro apagado do catálogo HFS+; blocos ainda livres".to_string())
+            (
+                Confidence::High,
+                "registro apagado do catálogo HFS+; blocos ainda livres".to_string(),
+            )
         } else {
-            (Confidence::Low, "alguns blocos do arquivo já foram reaproveitados".to_string())
+            (
+                Confidence::Low,
+                "alguns blocos do arquivo já foram reaproveitados".to_string(),
+            )
         };
         let nf = NewFound {
             name: f.name.clone(),
@@ -426,7 +497,9 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
 
 fn covered_by(free: &[Extent], e: &Extent) -> bool {
     let i = free.partition_point(|f| f.end() <= e.offset);
-    free.get(i).map(|f| f.offset <= e.offset && f.end() >= e.end()).unwrap_or(false)
+    free.get(i)
+        .map(|f| f.offset <= e.offset && f.end() >= e.end())
+        .unwrap_or(false)
 }
 
 impl Vol<'_> {
@@ -434,7 +507,14 @@ impl Vol<'_> {
         let mut out = vec![];
         for &(s, c) in &f.extents {
             let n = (c as u64 * self.bs) as usize;
-            out.extend(read_vec(self.src, self.block_off(s as u64), n.min(max.saturating_sub(out.len()))).ok()?);
+            out.extend(
+                read_vec(
+                    self.src,
+                    self.block_off(s as u64),
+                    n.min(max.saturating_sub(out.len())),
+                )
+                .ok()?,
+            );
             if out.len() >= max {
                 break;
             }
@@ -444,8 +524,21 @@ impl Vol<'_> {
 }
 
 /// Procura nós folha do catálogo nas transações guardadas no diário.
-fn scan_journal(vol: &Vol, ns: usize, max_id: u32, files: &mut Vec<CatFile>, threads: &mut HashMap<u32, (u32, String)>, folders: &mut HashMap<(u32, String), u32>, ctx: &Ctx) {
-    let Some(info) = read_vec(vol.src, vol.block_off(vol.journal_info as u64), 52).ok().filter(|b| b.len() == 52) else { return };
+fn scan_journal(
+    vol: &Vol,
+    ns: usize,
+    max_id: u32,
+    files: &mut Vec<CatFile>,
+    threads: &mut HashMap<u32, (u32, String)>,
+    folders: &mut HashMap<(u32, String), u32>,
+    ctx: &Ctx,
+) {
+    let Some(info) = read_vec(vol.src, vol.block_off(vol.journal_info as u64), 52)
+        .ok()
+        .filter(|b| b.len() == 52)
+    else {
+        return;
+    };
     let (joff, jsize) = (be64(&info, 36), be64(&info, 44));
     if jsize == 0 || jsize > 1 << 30 || vol.base + joff + jsize > vol.src.size() {
         return;
@@ -457,14 +550,19 @@ fn scan_journal(vol: &Vol, ns: usize, max_id: u32, files: &mut Vec<CatFile>, thr
             return;
         }
         let n = chunk.min(jsize - pos) as usize;
-        let Ok(buf) = read_vec(vol.src, vol.base + joff + pos, n + ns) else { break };
+        let Ok(buf) = read_vec(vol.src, vol.base + joff + pos, n + ns) else {
+            break;
+        };
         let mut i = 0;
         while i + ns <= buf.len().min(n + ns) && i < n {
             let nd = &buf[i..i + ns];
             // nó folha do catálogo: kind = -1, altura 1, registros plausíveis
             if nd[8] == 0xFF && nd[9] == 1 && be16(nd, 10) > 0 && (be16(nd, 10) as usize) < ns / 8 {
                 let table = ns - 2 * (be16(nd, 10) as usize + 1);
-                if (be16(nd, ns - 2) as usize) == 14 && be16(nd, table) as usize > 14 && (be16(nd, table) as usize) <= table {
+                if (be16(nd, ns - 2) as usize) == 14
+                    && be16(nd, table) as usize > 14
+                    && (be16(nd, table) as usize) <= table
+                {
                     for r in records(nd) {
                         decode_record(r, max_id, files, threads, folders, true);
                     }

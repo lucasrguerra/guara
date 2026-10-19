@@ -26,7 +26,9 @@ pub struct ClusterIndex {
 
 impl ClusterIndex {
     pub fn new(size: u64) -> Self {
-        Self { bits: vec![0; (size / CLUSTER / 64 + 1) as usize] }
+        Self {
+            bits: vec![0; (size / CLUSTER / 64 + 1) as usize],
+        }
     }
     pub fn set(&mut self, off: u64) {
         let c = (off / CLUSTER) as usize;
@@ -36,7 +38,10 @@ impl ClusterIndex {
     }
     pub fn get(&self, off: u64) -> bool {
         let c = (off / CLUSTER) as usize;
-        self.bits.get(c / 64).map(|w| w >> (c % 64) & 1 == 1).unwrap_or(false)
+        self.bits
+            .get(c / 64)
+            .map(|w| w >> (c % 64) & 1 == 1)
+            .unwrap_or(false)
     }
     /// Examina um trecho lido e marca os clusters candidatos.
     pub fn scan_chunk(&mut self, abs: u64, buf: &[u8]) {
@@ -52,7 +57,14 @@ impl ClusterIndex {
     }
     pub fn iter_range(&self, from: u64, to: u64) -> impl Iterator<Item = u64> + '_ {
         let (a, b) = (from.div_ceil(CLUSTER), to / CLUSTER);
-        (a..b).filter(move |&c| self.bits.get(c as usize / 64).map(|w| w >> (c % 64) & 1 == 1).unwrap_or(false)).map(|c| c * CLUSTER)
+        (a..b)
+            .filter(move |&c| {
+                self.bits
+                    .get(c as usize / 64)
+                    .map(|w| w >> (c % 64) & 1 == 1)
+                    .unwrap_or(false)
+            })
+            .map(|c| c * CLUSTER)
     }
 }
 
@@ -84,7 +96,10 @@ pub struct Pool<'a> {
 
 impl Pool<'_> {
     fn free_at(&self, off: u64, len: u64) -> bool {
-        !self.used.iter().any(|u| off < u.end() && off + len > u.offset)
+        !self
+            .used
+            .iter()
+            .any(|u| off < u.end() && off + len > u.offset)
     }
 }
 
@@ -103,14 +118,26 @@ pub enum Analysis {
 /// Procura FF D9 logo depois do último MCU (até 64 bytes de preenchimento).
 fn eoi_after(data: &[u8], pos: usize) -> Option<usize> {
     let end = (pos + 64).min(data.len().saturating_sub(1));
-    (pos.saturating_sub(2)..end).find(|&i| data[i] == 0xFF && data[i + 1] == 0xD9).map(|i| i + 2)
+    (pos.saturating_sub(2)..end)
+        .find(|&i| data[i] == 0xFF && data[i + 1] == 0xD9)
+        .map(|i| i + 2)
 }
 
 /// Valida o JPEG que começa em `off` e, se estiver quebrado, tenta recompô-lo.
-pub fn analyze_jpeg(src: &dyn Source, off: u64, hit_len: u64, pool: &Pool, allow_rebuild: bool) -> Analysis {
+pub fn analyze_jpeg(
+    src: &dyn Source,
+    off: u64,
+    hit_len: u64,
+    pool: &Pool,
+    allow_rebuild: bool,
+) -> Analysis {
     let read_len = (hit_len as usize).clamp(4096, MAX_FILE);
-    let Ok(buf) = read_vec(src, off, read_len) else { return Analysis::Unsupported };
-    let Some(h) = jpegscan::parse_header(&buf) else { return Analysis::Unsupported };
+    let Ok(buf) = read_vec(src, off, read_len) else {
+        return Analysis::Unsupported;
+    };
+    let Some(h) = jpegscan::parse_header(&buf) else {
+        return Analysis::Unsupported;
+    };
     let d = jpegscan::decode(&h, &buf, State::start(&h), u32::MAX, 512);
     let disc = jpegscan::first_discontinuity(&h, &d.dc);
     if d.stop == Stop::Done && disc.is_none() {
@@ -123,12 +150,20 @@ pub fn analyze_jpeg(src: &dyn Source, off: u64, hit_len: u64, pool: &Pool, allow
         Stop::Truncated | Stop::Done => buf.len(),
     };
     if let Some(m) = disc {
-        let bad = d.snaps.iter().rev().find(|s| (s.mcu as usize) <= m).map(|s| s.pos).unwrap_or(h.scan_start);
+        let bad = d
+            .snaps
+            .iter()
+            .rev()
+            .find(|s| (s.mcu as usize) <= m)
+            .map(|s| s.pos)
+            .unwrap_or(h.scan_start);
         stop_pos = stop_pos.min(bad);
     }
     let cl = CLUSTER as usize;
     if off % CLUSTER != 0 || !allow_rebuild {
-        return Analysis::Broken { good_len: (stop_pos / 512 * 512).max(512) as u64 };
+        return Analysis::Broken {
+            good_len: (stop_pos / 512 * 512).max(512) as u64,
+        };
     }
 
     let mut pieces: Vec<(u64, usize)> = vec![];
@@ -143,7 +178,9 @@ pub fn analyze_jpeg(src: &dyn Source, off: u64, hit_len: u64, pool: &Pool, allow
         let mut best: Option<(usize, u64, State, f64)> = None;
         let mut probes = 0usize;
         for back in 0..4usize {
-            let Some(bc_rel) = top.checked_sub(back * cl).filter(|&b| b > 0) else { break };
+            let Some(bc_rel) = top.checked_sub(back * cl).filter(|&b| b > 0) else {
+                break;
+            };
             let bc = frag_start + bc_rel;
             let Some(snap) = snaps
                 .iter()
@@ -155,24 +192,32 @@ pub fn analyze_jpeg(src: &dyn Source, off: u64, hit_len: u64, pool: &Pool, allow
                 continue;
             };
             let mut plane = jpegscan::Plane::new(&h);
-            let _ = jpegscan::decode_plane(&h, &joined[..bc], State::start(&h), u32::MAX, &mut plane);
+            let _ =
+                jpegscan::decode_plane(&h, &joined[..bc], State::start(&h), u32::MAX, &mut plane);
             let lo = off.saturating_sub(WINDOW_BEFORE);
             let hi = cur_base + bc_rel as u64 + WINDOW_AFTER;
             let pre = jpegscan::decode(&h, &joined[..bc], State::start(&h), u32::MAX, 0);
-            let bpm_prefix = (pre.state.pos.saturating_sub(h.scan_start)) as f64 / pre.dc.len().max(1) as f64;
+            let bpm_prefix =
+                (pre.state.pos.saturating_sub(h.scan_start)) as f64 / pre.dc.len().max(1) as f64;
             let mut ranked: Vec<(f64, u64)> = vec![];
             for q in pool.index.iter_range(lo, hi) {
                 if q >= cur_base && q < cur_base + bc_rel as u64 + CLUSTER {
                     continue;
                 }
-                if !pool.free_at(q, CLUSTER) || pieces.iter().any(|&(po, pl)| q < po + pl as u64 && q + CLUSTER > po) {
+                if !pool.free_at(q, CLUSTER)
+                    || pieces
+                        .iter()
+                        .any(|&(po, pl)| q < po + pl as u64 && q + CLUSTER > po)
+                {
                     continue;
                 }
                 probes += 1;
                 if probes > MAX_PROBES {
                     break;
                 }
-                if let Some(sc) = probe_candidate(src, &h, &joined[..bc], &plane, &snap, q, bpm_prefix) {
+                if let Some(sc) =
+                    probe_candidate(src, &h, &joined[..bc], &plane, &snap, q, bpm_prefix)
+                {
                     ranked.push((sc, q));
                 }
             }
@@ -208,7 +253,7 @@ pub fn analyze_jpeg(src: &dyn Source, off: u64, hit_len: u64, pool: &Pool, allow
                     }
                 }
             }
-            if best.as_ref().map_or(false, |b| b.3 == 0.0) {
+            if best.as_ref().is_some_and(|b| b.3 == 0.0) {
                 break;
             }
         }
@@ -231,7 +276,13 @@ pub fn analyze_jpeg(src: &dyn Source, off: u64, hit_len: u64, pool: &Pool, allow
         };
         let all = jpegscan::decode(&h, &joined, State::start(&h), u32::MAX, 0);
         if let Some(m) = jpegscan::first_discontinuity(&h, &all.dc) {
-            let bad = d2.snaps.iter().rev().find(|s| (s.mcu as usize) <= m).map(|s| s.pos).unwrap_or(bc);
+            let bad = d2
+                .snaps
+                .iter()
+                .rev()
+                .find(|s| (s.mcu as usize) <= m)
+                .map(|s| s.pos)
+                .unwrap_or(bc);
             if bad > bc {
                 sp = sp.min(bad);
             }
@@ -241,8 +292,11 @@ pub fn analyze_jpeg(src: &dyn Source, off: u64, hit_len: u64, pool: &Pool, allow
         frag_start = bc;
         suspect = sp.max(bc + cl);
     }
-    let good = pieces.iter().map(|p| p.1).sum::<usize>() + suspect.saturating_sub(frag_start).min(cl * 4) / 512 * 512;
-    Analysis::Broken { good_len: (stop_pos.min(good.max(512)) / 512 * 512).max(512) as u64 }
+    let good = pieces.iter().map(|p| p.1).sum::<usize>()
+        + suspect.saturating_sub(frag_start).min(cl * 4) / 512 * 512;
+    Analysis::Broken {
+        good_len: (stop_pos.min(good.max(512)) / 512 * 512).max(512) as u64,
+    }
 }
 
 fn finish(pieces: Vec<(u64, usize)>) -> Analysis {
@@ -262,7 +316,15 @@ fn finish(pieces: Vec<(u64, usize)>) -> Analysis {
 
 /// Pontuação (menor é melhor) de `q` como continuação de `prefix`: diferença média de pixels
 /// nas bordas entre os MCUs novos e seus vizinhos. Natural: poucos níveis de cinza; lixo: dezenas.
-fn probe_candidate(src: &dyn Source, h: &Header, prefix: &[u8], plane: &jpegscan::Plane, snap: &State, q: u64, bpm_prefix: f64) -> Option<f64> {
+fn probe_candidate(
+    src: &dyn Source,
+    h: &Header,
+    prefix: &[u8],
+    plane: &jpegscan::Plane,
+    snap: &State,
+    q: u64,
+    bpm_prefix: f64,
+) -> Option<f64> {
     let more = read_vec(src, q, PROBE).ok()?;
     if more.len() < 1024 {
         return None;
@@ -326,7 +388,11 @@ fn probe_candidate(src: &dyn Source, h: &Header, prefix: &[u8], plane: &jpegscan
     // Bytes por MCU depois da emenda, comparados com os do trecho anterior.
     let after = d.dc.len() as f64 - (seam.saturating_sub(snap.mcu)) as f64;
     let used = d.state.pos.saturating_sub(prefix.len()) as f64;
-    let ratio = if after > 4.0 && used > 0.0 { (used / after) / bpm_prefix.max(0.5) } else { 1.0 };
+    let ratio = if after > 4.0 && used > 0.0 {
+        (used / after) / bpm_prefix.max(0.5)
+    } else {
+        1.0
+    };
     let sc = sum / n as f64 + 20.0 * ratio.ln().abs();
     Some(sc)
 }

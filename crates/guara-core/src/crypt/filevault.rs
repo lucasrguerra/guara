@@ -80,12 +80,18 @@ fn plist_value(xml: &str, key: &str) -> Option<String> {
     while let Some(p) = xml[from..].find(&k) {
         let rest = &xml[from + p + k.len()..];
         from += p + k.len();
-        let Some(open) = rest.find('<').filter(|&o| o == 0) else { continue };
-        let Some(gt) = rest[open..].find('>') else { continue };
+        let Some(open) = rest.find('<').filter(|&o| o == 0) else {
+            continue;
+        };
+        let Some(gt) = rest[open..].find('>') else {
+            continue;
+        };
         if rest[open..open + gt].ends_with('/') {
             continue; // <reference .../>
         }
-        let Some(te) = rest[open + 1..].find(|c: char| c == ' ' || c == '>') else { continue };
+        let Some(te) = rest[open + 1..].find([' ', '>']) else {
+            continue;
+        };
         let tag = &rest[open + 1..open + 1 + te];
         let vstart = open + gt + 1;
         if let Some(e) = rest[vstart..].find(&format!("</{tag}>")) {
@@ -116,20 +122,31 @@ pub fn unlock(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
     let block_size = le32(&h, 96) as u64;
     let disklbl = le64(&h, 104);
     if block_size == 0 || block_size > 1 << 20 || le32(&h, 168) != 16 {
-        return Err(UnlockError::Unsupported("Core Storage com chave de metadados que não é AES-128".into()));
+        return Err(UnlockError::Unsupported(
+            "Core Storage com chave de metadados que não é AES-128".into(),
+        ));
     }
     let mut md_key = [0u8; 32];
     md_key[..16].copy_from_slice(&h[176..192]);
     md_key[16..].copy_from_slice(&h[304..320]);
-    let (k1, k2) = (AesAny::new(&md_key[..16]).unwrap(), AesAny::new(&md_key[16..]).unwrap());
-    let md_cipher = SectorCipher::Xts { k1, k2, iv: Iv::Plain64 };
+    let (k1, k2) = (
+        AesAny::new(&md_key[..16]).unwrap(),
+        AesAny::new(&md_key[16..]).unwrap(),
+    );
+    let md_cipher = SectorCipher::Xts {
+        k1,
+        k2,
+        iv: Iv::Plain64,
+    };
 
-    let label = read_vec(src.as_ref(), disklbl * block_size, MD_BLOCK).map_err(|e| corrupt(&e.to_string()))?;
+    let label = read_vec(src.as_ref(), disklbl * block_size, MD_BLOCK)
+        .map_err(|e| corrupt(&e.to_string()))?;
     if label.len() < MD_BLOCK {
         return Err(corrupt("rótulo do disco truncado"));
     }
     let vgd_off = le32(&label, 220) as u64;
-    let vgd = read_vec(src.as_ref(), disklbl * block_size + vgd_off, 40).map_err(|e| corrupt(&e.to_string()))?;
+    let vgd = read_vec(src.as_ref(), disklbl * block_size + vgd_off, 40)
+        .map_err(|e| corrupt(&e.to_string()))?;
     if vgd.len() < 40 {
         return Err(corrupt("descritor de grupos truncado"));
     }
@@ -141,7 +158,8 @@ pub fn unlock(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
     let mut family = [0u8; 16];
     let mut got = 0u8;
     for i in 0..md_blocks.min(64) {
-        let mut b = read_vec(src.as_ref(), md_start + i * MD_BLOCK as u64, MD_BLOCK).map_err(|e| corrupt(&e.to_string()))?;
+        let mut b = read_vec(src.as_ref(), md_start + i * MD_BLOCK as u64, MD_BLOCK)
+            .map_err(|e| corrupt(&e.to_string()))?;
         if b.len() < MD_BLOCK || b.iter().all(|&x| x == 0) {
             break;
         }
@@ -192,7 +210,12 @@ pub fn unlock(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
     let finish = |vk16: [u8; 16]| -> UnlockResult {
         let mut full = [0u8; 32];
         full[..16].copy_from_slice(&vk16);
-        full[16..].copy_from_slice(&Sha256::new().chain_update(vk16).chain_update(family).finalize()[..16]);
+        full[16..].copy_from_slice(
+            &Sha256::new()
+                .chain_update(vk16)
+                .chain_update(family)
+                .finalize()[..16],
+        );
         let cipher = SectorCipher::Xts {
             k1: AesAny::new(&full[..16]).unwrap(),
             k2: AesAny::new(&full[16..]).unwrap(),
@@ -228,6 +251,11 @@ pub fn unlock(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
     Err(UnlockError::WrongSecret)
 }
 
-pub fn unlock_window(base: Arc<dyn Source>, start: u64, len: u64, secrets: &[Secret]) -> UnlockResult {
+pub fn unlock_window(
+    base: Arc<dyn Source>,
+    start: u64,
+    len: u64,
+    secrets: &[Secret],
+) -> UnlockResult {
     unlock(Arc::new(SubSource::new(base, start, len)), secrets)
 }

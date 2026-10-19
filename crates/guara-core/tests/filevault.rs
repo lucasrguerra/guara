@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 #[test]
 fn opens_reference_image_and_matches_known_hash() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/testdata/fvault2-images/small");
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/testdata/fvault2-images/small");
     if !p.exists() {
         eprintln!("SKIP: execute scripts/fetch-testdata.sh");
         return;
@@ -31,5 +32,8 @@ fn opens_reference_image_and_matches_known_hash() {
         h.update(&buf[..n]);
         off += n as u64;
     }
-    assert_eq!(h.finalize().sha256, "2c662e36c0f7e2f5583e6a939bbcbdc660805692d0fccaa45ad4052beb3b8e18");
+    assert_eq!(
+        h.finalize().sha256,
+        "2c662e36c0f7e2f5583e6a939bbcbdc660805692d0fccaa45ad4052beb3b8e18"
+    );
 }

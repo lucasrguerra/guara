@@ -98,10 +98,20 @@ impl Iv {
 /// Cifra aplicada setor a setor.
 #[derive(Clone)]
 pub enum SectorCipher {
-    Xts { k1: AesAny, k2: AesAny, iv: Iv },
-    Cbc { key: AesAny, iv: Iv },
+    Xts {
+        k1: AesAny,
+        k2: AesAny,
+        iv: Iv,
+    },
+    Cbc {
+        key: AesAny,
+        iv: Iv,
+    },
     /// BitLocker AES-CBC com difusor Elephant (chave de dados + chave de ajuste).
-    Elephant { key: AesAny, tweak: AesAny },
+    Elephant {
+        key: AesAny,
+        tweak: AesAny,
+    },
 }
 
 fn gf_double(t: &mut [u8; 16]) {
@@ -200,7 +210,13 @@ pub struct Patch {
 }
 
 impl CryptSource {
-    pub fn new(inner: Arc<dyn Source>, cipher: SectorCipher, data_offset: u64, len: u64, sector: u64) -> Self {
+    pub fn new(
+        inner: Arc<dyn Source>,
+        cipher: SectorCipher,
+        data_offset: u64,
+        len: u64,
+        sector: u64,
+    ) -> Self {
         let sector = sector.max(512);
         Self {
             inner,
@@ -245,7 +261,8 @@ impl CryptSource {
         }
         crate::source::read_exact_at(self.inner.as_ref(), self.data_offset + rel, out)?;
         if rel < self.plain_from {
-            self.cipher.decrypt_sector(out, rel / 512 + self.iv_tweak, rel);
+            self.cipher
+                .decrypt_sector(out, rel / 512 + self.iv_tweak, rel);
         }
         Ok(())
     }
@@ -342,5 +359,7 @@ pub fn from_hex(s: &str) -> Option<Vec<u8>> {
     if s.len() % 2 != 0 {
         return None;
     }
-    (0..s.len() / 2).map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()).collect()
+    (0..s.len() / 2)
+        .map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok())
+        .collect()
 }

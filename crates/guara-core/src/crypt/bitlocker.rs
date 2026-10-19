@@ -16,8 +16,12 @@ fn le64(b: &[u8], o: usize) -> u64 {
     u64::from_le_bytes(b[o..o + 8].try_into().unwrap())
 }
 
-const GUID_NORMAL: [u8; 16] = [0x3b, 0xd6, 0x67, 0x49, 0x29, 0x2e, 0xd8, 0x4a, 0x83, 0x99, 0xf6, 0xa3, 0x39, 0xe3, 0xd0, 0x01];
-const GUID_EOW: [u8; 16] = [0x3b, 0x4d, 0xa8, 0x92, 0x80, 0xdd, 0x0e, 0x4d, 0x9e, 0x4e, 0xb1, 0xe3, 0x28, 0x4e, 0xae, 0xd8];
+const GUID_NORMAL: [u8; 16] = [
+    0x3b, 0xd6, 0x67, 0x49, 0x29, 0x2e, 0xd8, 0x4a, 0x83, 0x99, 0xf6, 0xa3, 0x39, 0xe3, 0xd0, 0x01,
+];
+const GUID_EOW: [u8; 16] = [
+    0x3b, 0x4d, 0xa8, 0x92, 0x80, 0xdd, 0x0e, 0x4d, 0x9e, 0x4e, 0xb1, 0xe3, 0x28, 0x4e, 0xae, 0xd8,
+];
 
 /// Posição da tabela de deslocamentos FVE, se for BitLocker (normal ou To Go).
 fn offsets_pos(vbr: &[u8]) -> Option<usize> {
@@ -45,7 +49,9 @@ const RA: [u32; 4] = [9, 0, 13, 0];
 const RB: [u32; 4] = [0, 10, 0, 25];
 
 fn words(buf: &[u8]) -> Vec<u32> {
-    buf.chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect()
+    buf.chunks_exact(4)
+        .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+        .collect()
 }
 
 // Decifragem (ordem do dm-crypt do Linux): somas em ordem crescente.
@@ -219,7 +225,11 @@ impl Vmk {
         self.nested.iter().find(|e| e.vtype == 5)
     }
     fn stretch_salt(&self) -> Option<&[u8]> {
-        self.nested.iter().find(|e| e.vtype == 3).filter(|e| e.data.len() >= 20).map(|e| &e.data[4..20])
+        self.nested
+            .iter()
+            .find(|e| e.vtype == 3)
+            .filter(|e| e.data.len() >= 20)
+            .map(|e| &e.data[4..20])
     }
 }
 
@@ -366,8 +376,13 @@ pub fn unlock(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
             }
         }
     }
-    let fve = fve.ok_or_else(|| UnlockError::Unsupported("metadados FVE ilegíveis ou do Windows Vista".into()))?;
-    let fvek_entry = fve.fvek.as_ref().ok_or_else(|| UnlockError::Corrupt("sem FVEK".into()))?;
+    let fve = fve.ok_or_else(|| {
+        UnlockError::Unsupported("metadados FVE ilegíveis ou do Windows Vista".into())
+    })?;
+    let fvek_entry = fve
+        .fvek
+        .as_ref()
+        .ok_or_else(|| UnlockError::Corrupt("sem FVEK".into()))?;
 
     let mut volume_key: Option<Vec<u8>> = None;
     for s in secrets {
@@ -393,7 +408,8 @@ pub fn unlock(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
         k
     } else {
         let vmk = vmk_found.ok_or(UnlockError::WrongSecret)?;
-        decrypt_key_entry(&vmk, fvek_entry).ok_or_else(|| UnlockError::Corrupt("FVEK não decifra com a VMK".into()))?
+        decrypt_key_entry(&vmk, fvek_entry)
+            .ok_or_else(|| UnlockError::Corrupt("FVEK não decifra com a VMK".into()))?
     };
     let k = &fvek_bytes;
     let bad = || UnlockError::Corrupt("tamanho de chave incompatível com o método".into());
@@ -408,7 +424,11 @@ pub fn unlock(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
                     key: AesAny::new(&k[..n]).ok_or_else(bad)?,
                     tweak: AesAny::new(&k[32..32 + n]).ok_or_else(bad)?,
                 },
-                if n == 16 { "AES-128-CBC + difusor" } else { "AES-256-CBC + difusor" },
+                if n == 16 {
+                    "AES-128-CBC + difusor"
+                } else {
+                    "AES-256-CBC + difusor"
+                },
             )
         }
         0x8002 | 0x8003 => {
@@ -417,35 +437,69 @@ pub fn unlock(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
                 return Err(bad());
             }
             let key = AesAny::new(&k[..n]).ok_or_else(bad)?;
-            (SectorCipher::Cbc { key: key.clone(), iv: Iv::Eboiv(key) }, if n == 16 { "AES-128-CBC" } else { "AES-256-CBC" })
+            (
+                SectorCipher::Cbc {
+                    key: key.clone(),
+                    iv: Iv::Eboiv(key),
+                },
+                if n == 16 {
+                    "AES-128-CBC"
+                } else {
+                    "AES-256-CBC"
+                },
+            )
         }
         0x8004 | 0x8005 => {
             let n = if fve.method == 0x8004 { 16 } else { 32 };
             if k.len() < 2 * n {
                 return Err(bad());
             }
-            let iv = if bps > 512 { Iv::Unit(bps) } else { Iv::Plain64 };
+            let iv = if bps > 512 {
+                Iv::Unit(bps)
+            } else {
+                Iv::Plain64
+            };
             (
                 SectorCipher::Xts {
                     k1: AesAny::new(&k[..n]).ok_or_else(bad)?,
                     k2: AesAny::new(&k[n..2 * n]).ok_or_else(bad)?,
                     iv,
                 },
-                if n == 16 { "AES-128-XTS" } else { "AES-256-XTS" },
+                if n == 16 {
+                    "AES-128-XTS"
+                } else {
+                    "AES-256-XTS"
+                },
             )
         }
-        m => return Err(UnlockError::Unsupported(format!("método de cifragem BitLocker {m:#x}"))),
+        m => {
+            return Err(UnlockError::Unsupported(format!(
+                "método de cifragem BitLocker {m:#x}"
+            )))
+        }
     };
     let len = src.size();
     let mut cs = CryptSource::new(src.clone(), cipher, 0, len, bps);
     let mut patches = vec![];
     // Áreas de metadados FVE: o Windows não as expõe como dados.
     for off in meta_offsets {
-        patches.push(Patch { at: off, len: fve.meta_size, from: 0, decrypt_from: None, zero: true });
+        patches.push(Patch {
+            at: off,
+            len: fve.meta_size,
+            from: 0,
+            decrypt_from: None,
+            zero: true,
+        });
     }
     if fve.volume_header_size > 0 && fve.volume_header_offset > 0 {
         // O início do volume original foi movido para outro lugar e cifrado lá.
-        patches.push(Patch { at: fve.volume_header_offset, len: fve.volume_header_size, from: 0, decrypt_from: None, zero: true });
+        patches.push(Patch {
+            at: fve.volume_header_offset,
+            len: fve.volume_header_size,
+            from: 0,
+            decrypt_from: None,
+            zero: true,
+        });
         patches.push(Patch {
             at: 0,
             len: fve.volume_header_size,
@@ -465,6 +519,11 @@ pub fn unlock(src: Arc<dyn Source>, secrets: &[Secret]) -> UnlockResult {
     })
 }
 
-pub fn unlock_window(base: Arc<dyn Source>, start: u64, len: u64, secrets: &[Secret]) -> UnlockResult {
+pub fn unlock_window(
+    base: Arc<dyn Source>,
+    start: u64,
+    len: u64,
+    secrets: &[Secret],
+) -> UnlockResult {
     unlock(Arc::new(SubSource::new(base, start, len)), secrets)
 }

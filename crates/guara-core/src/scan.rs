@@ -274,8 +274,12 @@ impl Handler<'_> {
                 refs.push(c);
             }
         }
-        let Some(r) = crate::mp4rebuild::rebuild(self.src, off, p.hit_len, &refs) else { return };
-        let Ok(pre) = crate::source::read_vec(self.src, off, r.pre_len as usize) else { return };
+        let Some(r) = crate::mp4rebuild::rebuild(self.src, off, p.hit_len, &refs) else {
+            return;
+        };
+        let Ok(pre) = crate::source::read_vec(self.src, off, r.pre_len as usize) else {
+            return;
+        };
         let payload_len = r.payload.1 - r.payload.0;
         let mut f = p.found;
         let hdr = r.mdat_header();
@@ -284,7 +288,10 @@ impl Handler<'_> {
             parts: vec![
                 Part::Bytes { bytes: pre },
                 Part::Bytes { bytes: hdr },
-                Part::Run { offset: r.payload.0, len: payload_len },
+                Part::Run {
+                    offset: r.payload.0,
+                    len: payload_len,
+                },
                 Part::Bytes { bytes: r.moov },
             ],
         };
@@ -311,13 +318,23 @@ impl Handler<'_> {
             used.extend(self.carved.iter().copied());
             // O próprio começo do arquivo não conta como "ocupado" para ele mesmo.
             used.retain(|e| !(e.offset == off));
-            let pool = crate::defrag::Pool { index: &self.index, used: &used };
-            if let crate::defrag::Analysis::Rebuilt { extents, size } = crate::defrag::analyze_jpeg(self.src, off, p.hit_len, &pool, true) {
+            let pool = crate::defrag::Pool {
+                index: &self.index,
+                used: &used,
+            };
+            if let crate::defrag::Analysis::Rebuilt { extents, size } =
+                crate::defrag::analyze_jpeg(self.src, off, p.hit_len, &pool, true)
+            {
                 let mut f = p.found;
                 f.size = size;
-                f.data = DataLoc::Extents { extents: extents.clone() };
+                f.data = DataLoc::Extents {
+                    extents: extents.clone(),
+                };
                 f.confidence = Confidence::Medium;
-                f.note = Some(format!("remontado a partir de {} fragmentos separados no disco; confira a imagem", extents.len()));
+                f.note = Some(format!(
+                    "remontado a partir de {} fragmentos separados no disco; confira a imagem",
+                    extents.len()
+                ));
                 self.carved.extend(extents);
                 self.sink.replace(f);
             }
@@ -354,7 +371,10 @@ impl CarveEvents for Handler<'_> {
         let mut skip_len = None;
         let mut pending_len = None;
         if hit.ext == "jpg" {
-            let pool = crate::defrag::Pool { index: &self.index, used: &[] };
+            let pool = crate::defrag::Pool {
+                index: &self.index,
+                used: &[],
+            };
             match crate::defrag::analyze_jpeg(self.src, off, hit.len, &pool, false) {
                 crate::defrag::Analysis::Intact { len } => {
                     hit.len = len;
@@ -412,8 +432,16 @@ impl CarveEvents for Handler<'_> {
         self.carved.push(Extent::new(off, hit.len));
         if let Some(hl) = pending_len {
             let mut pf = f.clone();
-            pf.note = Some(if pending_mp4 { "vídeo sem índice (moov)".into() } else { "JPEG interrompido ou fragmentado".into() });
-            self.pending.push(Pending { found: pf, hit_len: hl, mp4: pending_mp4 });
+            pf.note = Some(if pending_mp4 {
+                "vídeo sem índice (moov)".into()
+            } else {
+                "JPEG interrompido ou fragmentado".into()
+            });
+            self.pending.push(Pending {
+                found: pf,
+                hit_len: hl,
+                mp4: pending_mp4,
+            });
         }
         self.sink.found(f);
         match skip_len {

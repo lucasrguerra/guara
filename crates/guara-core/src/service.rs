@@ -225,14 +225,25 @@ impl Engine {
         if opts.assembly.remember_keys {
             opts.assembly.keys = asm.keys.clone();
         }
-        let job = self.register(JobKind::Scan, path.to_string(), opts, Some(asm.source.clone()));
+        let job = self.register(
+            JobKind::Scan,
+            path.to_string(),
+            opts,
+            Some(asm.source.clone()),
+        );
         {
             let mut s = job.st.lock().unwrap();
             for u in &asm.unlocked {
-                s.warnings.push(format!("Volume cifrado aberto na posição {}: {}.", u.start, u.description));
+                s.warnings.push(format!(
+                    "Volume cifrado aberto na posição {}: {}.",
+                    u.start, u.description
+                ));
             }
             for l in &asm.locked {
-                s.warnings.push(format!("Volume cifrado na posição {} não foi aberto: {}.", l.start, l.reason));
+                s.warnings.push(format!(
+                    "Volume cifrado na posição {} não foi aberto: {}.",
+                    l.start, l.reason
+                ));
             }
             s.warnings.extend(asm.notes.iter().cloned());
         }
@@ -552,7 +563,12 @@ impl Engine {
     }
 
     /// Cria a imagem em bruto ou em outro formato forense (E01 ou AFF4).
-    pub fn start_image_as(&self, path: &str, dest: &str, format: &image::ImageFormat) -> Result<String> {
+    pub fn start_image_as(
+        &self,
+        path: &str,
+        dest: &str,
+        format: &image::ImageFormat,
+    ) -> Result<String> {
         let format = format.clone();
         let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
         recover::check_destination(
@@ -848,8 +864,14 @@ impl Engine {
         let mut last_err = None;
         for path in &tried {
             match open_path(Path::new(path)) {
-                Ok(src) if crate::reconnect::matches(src.as_ref(), if j.opts.assembly.is_plain() { size } else { 0 }, fp.as_deref()) => {
-                    *j.src.lock().unwrap() = Some(finish_source(&j, src));
+                Ok(src)
+                    if crate::reconnect::matches(
+                        src.as_ref(),
+                        if j.opts.assembly.is_plain() { size } else { 0 },
+                        fp.as_deref(),
+                    ) =>
+                {
+                    *j.src.lock().unwrap() = Some(finish_source(j, src));
                     *j.src_path.lock().unwrap() = path.clone();
                     return Ok(None);
                 }
@@ -860,7 +882,7 @@ impl Engine {
         if let Some((path, src)) =
             crate::reconnect::find_matching_source(size, fp.as_deref(), &tried)
         {
-            *j.src.lock().unwrap() = Some(finish_source(&j, src));
+            *j.src.lock().unwrap() = Some(finish_source(j, src));
             *j.src_path.lock().unwrap() = path.clone();
             return Ok(Some(path));
         }
@@ -1019,10 +1041,15 @@ impl Engine {
                 }
                 layout.warnings.extend(a.notes.iter().cloned());
                 for u in &a.unlocked {
-                    layout.warnings.push(format!("Volume aberto em {}: {}.", u.start, u.description));
+                    layout
+                        .warnings
+                        .push(format!("Volume aberto em {}: {}.", u.start, u.description));
                 }
                 for l in &a.locked {
-                    layout.warnings.push(format!("Volume cifrado em {} continua fechado: {}.", l.start, l.reason));
+                    layout.warnings.push(format!(
+                        "Volume cifrado em {} continua fechado: {}.",
+                        l.start, l.reason
+                    ));
                 }
                 json!(layout)
             }

@@ -39,11 +39,20 @@ const SPS: &str = "67f4000d90d9b28283f602d41818190000030001000003003c8f142996";
 const PPS: &str = "68ebec448440";
 
 fn hex(s: &str) -> Vec<u8> {
-    (0..s.len() / 2).map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).unwrap()).collect()
+    (0..s.len() / 2)
+        .map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).unwrap())
+        .collect()
 }
 
 /// Cabeçalho de fatia H.264 conforme o SPS acima (log2_max_frame_num e log2_max_poc_lsb lidos do SPS).
-fn slice(idr: bool, frame_num: u32, poc_lsb: u32, payload: usize, seed: u8, sps: &mguara::Sps) -> Vec<u8> {
+fn slice(
+    idr: bool,
+    frame_num: u32,
+    poc_lsb: u32,
+    payload: usize,
+    seed: u8,
+    sps: &mguara::Sps,
+) -> Vec<u8> {
     let mut b = BitW::new();
     b.ue(0); // first_mb_in_slice
     b.ue(if idr { 7 } else { 5 }); // slice_type
@@ -95,7 +104,14 @@ fn synthetic_opt(gops: usize, inband: bool) -> (Vec<u8>, Vec<usize>, Vec<bool>) 
             if i == 0 {
                 frame_num = 0;
             }
-            let s = slice(i == 0, frame_num % 16, p % 64, 600 + i * 90 + g * 7, (g * 7 + i) as u8, &sps);
+            let s = slice(
+                i == 0,
+                frame_num % 16,
+                p % 64,
+                600 + i * 90 + g * 7,
+                (g * 7 + i) as u8,
+                &sps,
+            );
             nal(&mut mdat, &s);
             if p % 4 == 0 || i == 1 || i == 4 {
                 frame_num += 1;
@@ -105,7 +121,10 @@ fn synthetic_opt(gops: usize, inband: bool) -> (Vec<u8>, Vec<usize>, Vec<bool>) 
         }
     }
     let mut f = vec![];
-    f.extend_from_slice(&[0, 0, 0, 24, b'f', b't', b'y', b'p', b'i', b's', b'o', b'm', 0, 0, 2, 0, b'i', b's', b'o', b'm', b'a', b'v', b'c', b'1']);
+    f.extend_from_slice(&[
+        0, 0, 0, 24, b'f', b't', b'y', b'p', b'i', b's', b'o', b'm', 0, 0, 2, 0, b'i', b's', b'o',
+        b'm', b'a', b'v', b'c', b'1',
+    ]);
     f.extend_from_slice(&[0, 0, 0, 8, b'f', b'r', b'e', b'e']);
     f.extend_from_slice(&((8 + mdat.len()) as u32).to_be_bytes());
     f.extend_from_slice(b"mdat");
@@ -133,10 +152,14 @@ fn rebuilds_synthetic_stream_with_b_frames_and_garbage_tail() {
     let r = mp4rebuild::rebuild(&src, 0, file.len() as u64, &[]).expect("reconstrução");
     assert_eq!(r.frames, sizes.len());
     assert_eq!((r.width, r.height), (320, 240));
-    assert_eq!(r.payload.1 as usize, real_len, "o fim do vídeo foi detectado");
+    assert_eq!(
+        r.payload.1 as usize, real_len,
+        "o fim do vídeo foi detectado"
+    );
     let out = assemble(&file, &r);
     let size = out.len() as u64;
-    let mut mp4 = mp4::Mp4Reader::read_header(std::io::Cursor::new(out), size).expect("moov válido");
+    let mut mp4 =
+        mp4::Mp4Reader::read_header(std::io::Cursor::new(out), size).expect("moov válido");
     let track_id = *mp4.tracks().keys().next().unwrap();
     let t = &mp4.tracks()[&track_id];
     assert_eq!(t.sample_count() as usize, sizes.len());
@@ -164,7 +187,9 @@ fn rebuilds_synthetic_stream_with_b_frames_and_garbage_tail() {
 #[test]
 fn rebuilds_real_h264_file_like_the_original_index() {
     let Ok(path) = std::env::var("GUARA_MP4_SAMPLE") else {
-        eprintln!("SKIP: defina GUARA_MP4_SAMPLE com um MP4 H.264 para comparar com o índice original");
+        eprintln!(
+            "SKIP: defina GUARA_MP4_SAMPLE com um MP4 H.264 para comparar com o índice original"
+        );
         return;
     };
     let orig = std::fs::read(&path).unwrap();
@@ -189,7 +214,10 @@ fn rebuilds_real_h264_file_like_the_original_index() {
     let mut b = mp4::Mp4Reader::read_header(std::io::Cursor::new(out), rsize).unwrap();
     let ta = *a.tracks().keys().next().unwrap();
     let tb = *b.tracks().keys().next().unwrap();
-    assert_eq!(a.tracks()[&ta].sample_count(), b.tracks()[&tb].sample_count());
+    assert_eq!(
+        a.tracks()[&ta].sample_count(),
+        b.tracks()[&tb].sample_count()
+    );
     for i in 1..=a.tracks()[&ta].sample_count() {
         let x = a.read_sample(ta, i).unwrap().unwrap();
         let y = b.read_sample(tb, i).unwrap().unwrap();
@@ -243,8 +271,12 @@ fn rebuilds_real_video_with_interleaved_audio() {
     // O tamanho do mdat declarado vai muito além dos 40 MB que temos (arquivo cortado).
     let src = MemSource(file.clone());
     // Sem SPS/PPS no mdat, é preciso um vídeo de referência da mesma câmera (aqui, o próprio original).
-    let cfg = mp4rebuild::config_from_mp4(&MemSource(head.clone()), 0, head.len() as u64).expect("avcC do original");
-    assert!(mp4rebuild::rebuild(&src, 0, file.len() as u64, &[]).is_none(), "sem referência não há como montar o avcC");
+    let cfg = mp4rebuild::config_from_mp4(&MemSource(head.clone()), 0, head.len() as u64)
+        .expect("avcC do original");
+    assert!(
+        mp4rebuild::rebuild(&src, 0, file.len() as u64, &[]).is_none(),
+        "sem referência não há como montar o avcC"
+    );
     let r = mp4rebuild::rebuild(&src, 0, file.len() as u64, &[cfg]).expect("reconstrução");
     let out = assemble(&file, &r);
     let osize = out.len() as u64;
@@ -253,10 +285,26 @@ fn rebuilds_real_video_with_interleaved_audio() {
     // Original (índice completo) para comparar as primeiras amostras.
     let f = std::fs::File::open(&path).unwrap();
     let mut a = mp4::Mp4Reader::read_header(std::io::BufReader::new(f), total).unwrap();
-    let vid = a.tracks().values().find(|t| t.track_type().map(|x| x == mp4::TrackType::Video).unwrap_or(false)).unwrap().track_id();
-    eprintln!("reconstruído: {} quadros, {} bytes pulados (áudio), {}x{}", r.frames, r.skipped_bytes, r.width, r.height);
-    let sizes_a: Vec<usize> = (1..=60).map(|i| a.read_sample(vid, i).unwrap().unwrap().bytes.len()).collect();
-    let sizes_b: Vec<usize> = (1..=60).map(|i| b.read_sample(tb, i).unwrap().unwrap().bytes.len()).collect();
+    let vid = a
+        .tracks()
+        .values()
+        .find(|t| {
+            t.track_type()
+                .map(|x| x == mp4::TrackType::Video)
+                .unwrap_or(false)
+        })
+        .unwrap()
+        .track_id();
+    eprintln!(
+        "reconstruído: {} quadros, {} bytes pulados (áudio), {}x{}",
+        r.frames, r.skipped_bytes, r.width, r.height
+    );
+    let sizes_a: Vec<usize> = (1..=60)
+        .map(|i| a.read_sample(vid, i).unwrap().unwrap().bytes.len())
+        .collect();
+    let sizes_b: Vec<usize> = (1..=60)
+        .map(|i| b.read_sample(tb, i).unwrap().unwrap().bytes.len())
+        .collect();
     eprintln!("ORIG {:?}\nMINE {:?}", &sizes_a[40..60], &sizes_b[40..60]);
     let check = (r.frames as u32 - 1).min(400);
     for i in 1..=check {
@@ -275,7 +323,8 @@ fn deep_scan_rebuilds_a_video_without_moov_using_a_neighbour_as_reference() {
     common::init();
     // Arquivo íntegro (com moov) da "mesma câmera" e um segundo que perdeu o moov e não traz SPS/PPS.
     let (good_raw, _, _) = synthetic_opt(8, true);
-    let r = mp4rebuild::rebuild(&MemSource(good_raw.clone()), 0, good_raw.len() as u64, &[]).unwrap();
+    let r =
+        mp4rebuild::rebuild(&MemSource(good_raw.clone()), 0, good_raw.len() as u64, &[]).unwrap();
     let good = assemble(&good_raw, &r);
     let (broken, sizes, _) = synthetic_opt(10, false);
     let mut disk = vec![0u8; 8192];
@@ -288,12 +337,32 @@ fn deep_scan_rebuilds_a_video_without_moov_using_a_neighbour_as_reference() {
     let dir = tempfile::tempdir().unwrap();
     let img = dir.path().join("v.img");
     std::fs::write(&img, &disk).unwrap();
-    let c = common::scan_path(&img, &ScanOptions { mode: ScanMode::Deep, ..Default::default() });
+    let c = common::scan_path(
+        &img,
+        &ScanOptions {
+            mode: ScanMode::Deep,
+            ..Default::default()
+        },
+    );
     let vids: Vec<_> = c.found.iter().filter(|f| f.ext == "mp4").collect();
-    assert_eq!(vids.len(), 2, "{:?}", vids.iter().map(|f| (f.first_offset(), f.size, f.confidence, &f.note)).collect::<Vec<_>>());
-    let fb = vids.iter().find(|f| matches!(f.data, guara_core::DataLoc::Parts { .. })).expect("vídeo quebrado");
+    assert_eq!(
+        vids.len(),
+        2,
+        "{:?}",
+        vids.iter()
+            .map(|f| (f.first_offset(), f.size, f.confidence, &f.note))
+            .collect::<Vec<_>>()
+    );
+    let fb = vids
+        .iter()
+        .find(|f| matches!(f.data, guara_core::DataLoc::Parts { .. }))
+        .expect("vídeo quebrado");
     let _ = broken_off;
-    assert!(fb.note.as_deref().unwrap_or("").contains("reconstruído"), "{:?}", fb.note);
+    assert!(
+        fb.note.as_deref().unwrap_or("").contains("reconstruído"),
+        "{:?}",
+        fb.note
+    );
     let _ = good_off;
     let out = dir.path().join("out");
     let rep = common::recover_all(&img, std::slice::from_ref(*fb), &out);

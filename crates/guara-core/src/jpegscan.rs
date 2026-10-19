@@ -16,7 +16,12 @@ struct Huff {
 
 impl Huff {
     fn new(counts: &[u8; 16], vals: Vec<u8>) -> Huff {
-        let mut h = Huff { mincode: [0; 17], maxcode: [-1; 18], valptr: [0; 17], vals };
+        let mut h = Huff {
+            mincode: [0; 17],
+            maxcode: [-1; 18],
+            valptr: [0; 17],
+            vals,
+        };
         let mut code = 0i32;
         let mut k = 0i32;
         for l in 1..=16 {
@@ -103,7 +108,15 @@ pub fn parse_header(d: &[u8]) -> Option<Header> {
                 if n == 0 || n > 4 || seg.len() < 6 + n * 3 || w == 0 || h == 0 {
                     return None;
                 }
-                let comps = (0..n).map(|i| (seg[7 + i * 3] >> 4, seg[7 + i * 3] & 15, seg[8 + i * 3] as usize & 3)).collect();
+                let comps = (0..n)
+                    .map(|i| {
+                        (
+                            seg[7 + i * 3] >> 4,
+                            seg[7 + i * 3] & 15,
+                            seg[8 + i * 3] as usize & 3,
+                        )
+                    })
+                    .collect();
                 sof = Some((w, h, comps));
             }
             0xC2 | 0xC3 | 0xC5..=0xC7 | 0xC9..=0xCB | 0xCD..=0xCF => return None, // progressivo, aritmético etc.
@@ -136,7 +149,11 @@ pub fn parse_header(d: &[u8]) -> Option<Header> {
                         return None;
                     }
                     for i in 0..64 {
-                        qt[id][i] = if prec == 0 { seg[q + i] as u16 } else { u16::from_be_bytes([seg[q + 2 * i], seg[q + 2 * i + 1]]) };
+                        qt[id][i] = if prec == 0 {
+                            seg[q + i] as u16
+                        } else {
+                            u16::from_be_bytes([seg[q + 2 * i], seg[q + 2 * i + 1]])
+                        };
                     }
                     q += n;
                 }
@@ -155,7 +172,13 @@ pub fn parse_header(d: &[u8]) -> Option<Header> {
                 let mut cs = vec![];
                 for i in 0..ns {
                     let t = seg[2 + i * 2];
-                    cs.push(Comp { h: comps[i].0, v: comps[i].1, tq: comps[i].2, dc_tbl: (t >> 4) as usize & 3, ac_tbl: (t & 15) as usize & 3 });
+                    cs.push(Comp {
+                        h: comps[i].0,
+                        v: comps[i].1,
+                        tq: comps[i].2,
+                        dc_tbl: (t >> 4) as usize & 3,
+                        ac_tbl: (t & 15) as usize & 3,
+                    });
                 }
                 let hmax = cs.iter().map(|c| c.h).max()? as u32;
                 let vmax = cs.iter().map(|c| c.v).max()? as u32;
@@ -218,7 +241,15 @@ impl State {
         self.pred[0]
     }
     pub fn start(h: &Header) -> State {
-        State { pos: h.scan_start, bitbuf: 0, bitcnt: 0, pred: [0; 4], mcu: 0, rst_next: 0, mcus_since_rst: 0 }
+        State {
+            pos: h.scan_start,
+            bitbuf: 0,
+            bitcnt: 0,
+            pred: [0; 4],
+            mcu: 0,
+            rst_next: 0,
+            mcus_since_rst: 0,
+        }
     }
 }
 
@@ -240,7 +271,9 @@ struct Bits<'a> {
 impl Bits<'_> {
     fn fill(&mut self) {
         while self.st.bitcnt <= 24 && self.marker.is_none() {
-            let Some(&b) = self.d.get(self.st.pos) else { break };
+            let Some(&b) = self.d.get(self.st.pos) else {
+                break;
+            };
             if b == 0xFF {
                 match self.d.get(self.st.pos + 1) {
                     Some(0) => {
@@ -283,7 +316,10 @@ impl Bits<'_> {
                 return None;
             }
             code = (self.st.bitbuf >> (32 - l)) as i32;
-            if h.maxcode[l as usize] >= 0 && code <= h.maxcode[l as usize] && code >= h.mincode[l as usize] {
+            if h.maxcode[l as usize] >= 0
+                && code <= h.maxcode[l as usize]
+                && code >= h.mincode[l as usize]
+            {
                 self.st.bitbuf <<= l;
                 self.st.bitcnt -= l;
                 let idx = h.valptr[l as usize] + code - h.mincode[l as usize];
@@ -321,7 +357,11 @@ pub fn decode_hook(
     mut hook: Option<&mut dyn FnMut(u32, &[[i32; 64]])>,
 ) -> Decoded {
     let mut lblocks: Vec<[i32; 64]> = Vec::new();
-    let mut b = Bits { d: data, st: state, marker: None };
+    let mut b = Bits {
+        d: data,
+        st: state,
+        marker: None,
+    };
     let total = h.total_mcus();
     let mut dc_out = Vec::new();
     let mut snaps = Vec::new();
@@ -428,7 +468,12 @@ pub fn decode_hook(
             last_snap = b.st.pos;
         }
     }
-    Decoded { dc: dc_out, snaps, stop, state: b.st }
+    Decoded {
+        dc: dc_out,
+        snaps,
+        stop,
+        state: b.st,
+    }
 }
 
 fn fail(b: &Bits, data: &[u8]) -> Stop {
@@ -496,8 +541,9 @@ pub fn first_discontinuity(h: &Header, dc: &[i32]) -> Option<usize> {
 // --------------------------------------------------------------- pixels
 
 const ZIGZAG: [usize; 64] = [
-    0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44,
-    51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
+    0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20,
+    13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59,
+    52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
 ];
 
 fn cos_table() -> &'static [[f32; 8]; 8] {
@@ -506,8 +552,14 @@ fn cos_table() -> &'static [[f32; 8]; 8] {
         let mut t = [[0f32; 8]; 8];
         for x in 0..8 {
             for u in 0..8 {
-                let cu = if u == 0 { std::f32::consts::FRAC_1_SQRT_2 } else { 1.0 };
-                t[x][u] = 0.5 * cu * (((2 * x + 1) as f32 * u as f32 * std::f32::consts::PI) / 16.0).cos();
+                let cu = if u == 0 {
+                    std::f32::consts::FRAC_1_SQRT_2
+                } else {
+                    1.0
+                };
+                t[x][u] = 0.5
+                    * cu
+                    * (((2 * x + 1) as f32 * u as f32 * std::f32::consts::PI) / 16.0).cos();
             }
         }
         t
@@ -556,7 +608,8 @@ pub fn mcu_luma(h: &Header, blocks: &[[i32; 64]]) -> Vec<u8> {
         let px = idct_block(blk, &h.qt[c.tq]);
         let (bx, by) = (i % bw, i / bw);
         for y in 0..8 {
-            out[(by * 8 + y) * w + bx * 8..(by * 8 + y) * w + bx * 8 + 8].copy_from_slice(&px[y * 8..y * 8 + 8]);
+            out[(by * 8 + y) * w + bx * 8..(by * 8 + y) * w + bx * 8 + 8]
+                .copy_from_slice(&px[y * 8..y * 8 + 8]);
         }
     }
     out
@@ -576,7 +629,14 @@ impl Plane {
     pub fn new(h: &Header) -> Plane {
         let c = &h.comps[0];
         let (mw, mh) = (c.h as usize * 8, c.v as usize * 8);
-        Plane { w: mw * h.mcus_x as usize, h: mh * h.mcus_y as usize, px: vec![0; mw * h.mcus_x as usize * mh * h.mcus_y as usize], mw, mh, have: 0 }
+        Plane {
+            w: mw * h.mcus_x as usize,
+            h: mh * h.mcus_y as usize,
+            px: vec![0; mw * h.mcus_x as usize * mh * h.mcus_y as usize],
+            mw,
+            mh,
+            have: 0,
+        }
     }
     pub fn put(&mut self, h: &Header, mcu: u32, luma: &[u8]) {
         let (mx, my) = ((mcu % h.mcus_x) as usize, (mcu / h.mcus_x) as usize);
@@ -589,7 +649,13 @@ impl Plane {
 }
 
 /// Decodifica e preenche o plano com as luminâncias.
-pub fn decode_plane(h: &Header, data: &[u8], state: State, max_mcus: u32, plane: &mut Plane) -> Decoded {
+pub fn decode_plane(
+    h: &Header,
+    data: &[u8],
+    state: State,
+    max_mcus: u32,
+    plane: &mut Plane,
+) -> Decoded {
     let mut hook = |mcu: u32, blocks: &[[i32; 64]]| {
         let l = mcu_luma(h, blocks);
         plane.put(h, mcu, &l);

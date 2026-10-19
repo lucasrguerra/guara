@@ -6,7 +6,9 @@
 use crate::source::{read_vec, Source};
 
 fn be32(b: &[u8], o: usize) -> u32 {
-    b.get(o..o + 4).map(|s| u32::from_be_bytes(s.try_into().unwrap())).unwrap_or(0)
+    b.get(o..o + 4)
+        .map(|s| u32::from_be_bytes(s.try_into().unwrap()))
+        .unwrap_or(0)
 }
 
 // ------------------------------------------------------------------ bits
@@ -45,7 +47,11 @@ impl<'a> Bits<'a> {
     }
     fn se(&mut self) -> Option<i32> {
         let k = self.ue()?;
-        Some(if k % 2 == 1 { (k / 2 + 1) as i32 } else { -((k / 2) as i32) })
+        Some(if k % 2 == 1 {
+            (k / 2 + 1) as i32
+        } else {
+            -((k / 2) as i32)
+        })
     }
     fn skip(&mut self, n: usize) {
         self.pos += n;
@@ -101,10 +107,18 @@ pub fn parse_sps264(nal: &[u8]) -> Option<Sps264> {
     }
     let rbsp = unescape(&nal[1..]);
     let mut b = Bits::new(&rbsp);
-    let mut s = Sps264 { profile: b.u(8)? as u8, compat: b.u(8)? as u8, level: b.u(8)? as u8, ..Default::default() };
+    let mut s = Sps264 {
+        profile: b.u(8)? as u8,
+        compat: b.u(8)? as u8,
+        level: b.u(8)? as u8,
+        ..Default::default()
+    };
     b.ue()?; // sps_id
     let mut chroma = 1;
-    if matches!(s.profile, 100 | 110 | 122 | 244 | 44 | 83 | 86 | 118 | 128 | 138 | 139 | 134 | 135) {
+    if matches!(
+        s.profile,
+        100 | 110 | 122 | 244 | 44 | 83 | 86 | 118 | 128 | 138 | 139 | 134 | 135
+    ) {
         chroma = b.ue()?;
         if chroma == 3 {
             b.bit()?;
@@ -161,10 +175,8 @@ pub fn parse_sps264(nal: &[u8]) -> Option<Sps264> {
     s.height = ((2 - s.frame_mbs_only as u32) * h * 16).checked_sub((ct + cb) * sub_h)?;
     // VUI até o timing_info.
     if b.bit()? == 1 {
-        if b.bit()? == 1 {
-            if b.u(8)? == 255 {
-                b.skip(32);
-            }
+        if b.bit()? == 1 && b.u(8)? == 255 {
+            b.skip(32);
         }
         if b.bit()? == 1 {
             b.bit()?;
@@ -207,10 +219,8 @@ fn slice264(nal: &[u8], sps: &Sps264, pic_order_present: bool) -> Option<SliceIn
     b.ue()?; // pps_id
     let frame_num = b.u(sps.log2_max_frame_num)?;
     let mut bottom = false;
-    if !sps.frame_mbs_only {
-        if b.bit()? == 1 {
-            bottom = b.bit()? == 1;
-        }
+    if !sps.frame_mbs_only && b.bit()? == 1 {
+        bottom = b.bit()? == 1;
     }
     let idr = nal[0] & 0x1F == 5;
     if idr {
@@ -221,14 +231,22 @@ fn slice264(nal: &[u8], sps: &Sps264, pic_order_present: bool) -> Option<SliceIn
         poc_lsb = Some(b.u(sps.log2_max_poc_lsb)?);
         let _ = pic_order_present;
     }
-    Some(SliceInfo { frame_num, first_mb0: first == 0, idr, poc_lsb, bottom })
+    Some(SliceInfo {
+        frame_num,
+        first_mb0: first == 0,
+        idr,
+        poc_lsb,
+        bottom,
+    })
 }
 
 /// bottom_field_pic_order_in_frame_present_flag do PPS.
 fn pps_pic_order_present(nal: &[u8]) -> bool {
     let rbsp = unescape(&nal[1..]);
     let mut b = Bits::new(&rbsp);
-    let (Some(_), Some(_), Some(_)) = (b.ue(), b.ue(), b.bit()) else { return false };
+    let (Some(_), Some(_), Some(_)) = (b.ue(), b.ue(), b.bit()) else {
+        return false;
+    };
     b.bit() == Some(1)
 }
 
@@ -345,7 +363,12 @@ pub fn config_from_mp4(src: &dyn Source, off: u64, max: u64) -> Option<MediaConf
                         p += 2 + l;
                     }
                     if !sps.is_empty() && !pps.is_empty() {
-                        return Some(MediaConfig { codec: Codec::Avc, sps, pps, vps: vec![] });
+                        return Some(MediaConfig {
+                            codec: Codec::Avc,
+                            sps,
+                            pps,
+                            vps: vec![],
+                        });
                     }
                 }
             } else if tag == b"hvcC" {
@@ -371,7 +394,12 @@ pub fn config_from_mp4(src: &dyn Source, off: u64, max: u64) -> Option<MediaConf
                         }
                     }
                     if !sps.is_empty() && !pps.is_empty() {
-                        return Some(MediaConfig { codec: Codec::Hevc, sps, pps, vps });
+                        return Some(MediaConfig {
+                            codec: Codec::Hevc,
+                            sps,
+                            pps,
+                            vps,
+                        });
                     }
                 }
             }
@@ -448,10 +476,16 @@ pub fn rebuild(src: &dyn Source, off: u64, avail: u64, refs: &[MediaConfig]) -> 
     if let Some(r) = rebuild_with(src, off, avail, None) {
         return Some(r);
     }
-    refs.iter().find_map(|c| rebuild_with(src, off, avail, Some(c)))
+    refs.iter()
+        .find_map(|c| rebuild_with(src, off, avail, Some(c)))
 }
 
-fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaConfig>) -> Option<Rebuilt> {
+fn rebuild_with(
+    src: &dyn Source,
+    off: u64,
+    avail: u64,
+    preset: Option<&MediaConfig>,
+) -> Option<Rebuilt> {
     // Átomos antes do mdat.
     let mut p = 0u64;
     let mut pre_end = None;
@@ -465,7 +499,10 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
             pre_end = Some(p);
             break;
         }
-        if !matches!(ty, b"ftyp" | b"free" | b"skip" | b"wide" | b"uuid" | b"pnot" | b"junk" | b"styp") {
+        if !matches!(
+            ty,
+            b"ftyp" | b"free" | b"skip" | b"wide" | b"uuid" | b"pnot" | b"junk" | b"styp"
+        ) {
             return None;
         }
         let sz = be32(&h, 0) as u64;
@@ -477,7 +514,11 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
     let pre_len = pre_end?;
     let (data_start, declared) = mdat_at(src, off + pre_len)?;
     let hard_end = off + avail.min(src.size() - off);
-    let data_end_decl = if declared == 0 { hard_end } else { (off + pre_len + declared).min(hard_end) };
+    let data_end_decl = if declared == 0 {
+        hard_end
+    } else {
+        (off + pre_len + declared).min(hard_end)
+    };
 
     // Lê o payload em blocos, interpretando NALs.
     let mut samples: Vec<Sample> = vec![];
@@ -485,7 +526,10 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
     let mut cache_off = data_start;
     let read_at = |o: u64, n: usize, cache: &mut Vec<u8>, cache_off: &mut u64| -> Option<Vec<u8>> {
         if o < *cache_off || o + n as u64 > *cache_off + cache.len() as u64 {
-            let want = (data_end_decl.saturating_sub(o) as usize).min(8 << 20).max(n).min((hard_end - o) as usize);
+            let want = (data_end_decl.saturating_sub(o) as usize)
+                .min(8 << 20)
+                .max(n)
+                .min((hard_end - o) as usize);
             *cache = read_vec(src, o, want).ok()?;
             *cache_off = o;
         }
@@ -494,15 +538,18 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
     };
     // Detecta o codec: o que forma a cadeia mais longa de unidades NAL válidas.
     let chain = |c: Codec| -> usize {
-        let Ok(head) = read_vec(src, data_start, 64 << 10) else { return 0 };
+        let Ok(head) = read_vec(src, data_start, 64 << 10) else {
+            return 0;
+        };
         let mut p = 0usize;
         let mut n = 0;
         while p + 6 <= head.len() {
             let l = be32(&head, p) as usize;
-            let ok = l >= 1 && l <= 8 << 20 && match c {
-                Codec::Avc => avc_nal_ok(head[p + 4]),
-                Codec::Hevc => hevc_nal_ok(head[p + 4], head[p + 5]),
-            };
+            let ok = (1..=8 << 20).contains(&l)
+                && match c {
+                    Codec::Avc => avc_nal_ok(head[p + 4]),
+                    Codec::Hevc => hevc_nal_ok(head[p + 4], head[p + 5]),
+                };
             if !ok {
                 break;
             }
@@ -540,7 +587,11 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
         match codec {
             Codec::Avc => {
                 sps264 = c.sps.iter().find_map(|n| parse_sps264(n));
-                pic_order_present = c.pps.first().map(|p| pps_pic_order_present(p)).unwrap_or(false);
+                pic_order_present = c
+                    .pps
+                    .first()
+                    .map(|p| pps_pic_order_present(p))
+                    .unwrap_or(false);
             }
             Codec::Hevc => sps265 = c.sps.iter().find_map(|n| parse_sps_hevc(n)),
         }
@@ -558,10 +609,12 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
     'outer: while pos + 6 <= data_end_decl {
         let hdr = read_at(pos, 6, &mut cache, &mut cache_off)?;
         let len = be32(&hdr, 0) as u64;
-        let ok = len >= 1 && len <= 16 << 20 && pos + 4 + len <= data_end_decl && match codec {
-            Codec::Avc => avc_nal_ok(hdr[4]),
-            Codec::Hevc => hevc_nal_ok(hdr[4], hdr[5]),
-        };
+        let ok = (1..=16 << 20).contains(&len)
+            && pos + 4 + len <= data_end_decl
+            && match codec {
+                Codec::Avc => avc_nal_ok(hdr[4]),
+                Codec::Hevc => hevc_nal_ok(hdr[4], hdr[5]),
+            };
         let mut ok = ok;
         if ok && nal_count >= 3 && len > (max_len * 6).max(1 << 20) {
             // Um "tamanho" muito maior que os já vistos é lixo (áudio lido como vídeo).
@@ -577,7 +630,16 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
         }
         if !valid {
             // Pode ser áudio intercalado: procura a próxima unidade NAL plausível.
-            let found = scan_nal(src, codec, pos + 1, (pos + (2 << 20)).min(data_end_decl), data_end_decl, sps264.as_ref(), pps_nals.len(), (max_len * 6).max(1 << 20));
+            let found = scan_nal(
+                src,
+                codec,
+                pos + 1,
+                (pos + (2 << 20)).min(data_end_decl),
+                data_end_decl,
+                sps264.as_ref(),
+                pps_nals.len(),
+                (max_len * 6).max(1 << 20),
+            );
             match found {
                 Some(q) if nal_count > 0 => {
                     // O que veio antes fecha o quadro atual.
@@ -593,20 +655,32 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
             }
         }
         let nal_start = pos + 4;
-        let nal = read_at(nal_start, len.min(64 << 10) as usize, &mut cache, &mut cache_off)?;
+        let nal = read_at(
+            nal_start,
+            len.min(64 << 10) as usize,
+            &mut cache,
+            &mut cache_off,
+        )?;
         let (is_vcl, first_of_pic, is_idr, ty) = match codec {
             Codec::Avc => {
                 let t = nal[0] & 0x1F;
                 match t {
                     1 | 2 | 5 => {
-                        let first = sps264.as_ref().and_then(|s| slice264(&nal, s, pic_order_present));
-                        (true, first.as_ref().map(|f| f.first_mb0).unwrap_or(true), t == 5, t)
+                        let first = sps264
+                            .as_ref()
+                            .and_then(|s| slice264(&nal, s, pic_order_present));
+                        (
+                            true,
+                            first.as_ref().map(|f| f.first_mb0).unwrap_or(true),
+                            t == 5,
+                            t,
+                        )
                     }
                     7 => {
                         if sps264.is_none() {
                             sps264 = parse_sps264(&nal);
                         }
-                        if !sps_nals.iter().any(|x| *x == nal) && sps_nals.len() < 4 {
+                        if !sps_nals.contains(&nal) && sps_nals.len() < 4 {
                             sps_nals.push(nal.clone());
                         }
                         (false, false, false, t)
@@ -615,7 +689,7 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
                         if pps_nals.is_empty() {
                             pic_order_present = pps_pic_order_present(&nal);
                         }
-                        if !pps_nals.iter().any(|x| *x == nal) && pps_nals.len() < 4 {
+                        if !pps_nals.contains(&nal) && pps_nals.len() < 4 {
                             pps_nals.push(nal.clone());
                         }
                         (false, false, false, t)
@@ -626,9 +700,14 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
             Codec::Hevc => {
                 let t = (nal[0] >> 1) & 0x3F;
                 match t {
-                    0..=9 | 16..=21 => (true, nal.get(2).map(|b| b & 0x80 != 0).unwrap_or(true), (16..=21).contains(&t), t),
+                    0..=9 | 16..=21 => (
+                        true,
+                        nal.get(2).map(|b| b & 0x80 != 0).unwrap_or(true),
+                        (16..=21).contains(&t),
+                        t,
+                    ),
                     32 => {
-                        if !vps_nals.iter().any(|x| *x == nal) && vps_nals.len() < 2 {
+                        if !vps_nals.contains(&nal) && vps_nals.len() < 2 {
                             vps_nals.push(nal.clone());
                         }
                         (false, false, false, t)
@@ -637,13 +716,13 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
                         if sps265.is_none() {
                             sps265 = parse_sps_hevc(&nal);
                         }
-                        if !sps_nals.iter().any(|x| *x == nal) && sps_nals.len() < 4 {
+                        if !sps_nals.contains(&nal) && sps_nals.len() < 4 {
                             sps_nals.push(nal.clone());
                         }
                         (false, false, false, t)
                     }
                     34 => {
-                        if !pps_nals.iter().any(|x| *x == nal) && pps_nals.len() < 4 {
+                        if !pps_nals.contains(&nal) && pps_nals.len() < 4 {
                             pps_nals.push(nal.clone());
                         }
                         (false, false, false, t)
@@ -695,7 +774,13 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
                         }
                     }
                 }
-                cur = Some(Sample { off: start, size: 0, sync: is_idr, poc, idr: is_idr });
+                cur = Some(Sample {
+                    off: start,
+                    size: 0,
+                    sync: is_idr,
+                    poc,
+                    idr: is_idr,
+                });
             }
             if !first_of_pic {
                 group_start = None;
@@ -736,7 +821,11 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
         None => (30, 1),
     };
     let fps = num as f64 / den as f64;
-    let (num, den) = if !(1.0..=240.0).contains(&fps) { (30, 1) } else { (num, den) };
+    let (num, den) = if !(1.0..=240.0).contains(&fps) {
+        (30, 1)
+    } else {
+        (num, den)
+    };
     let fps = num as f64 / den as f64;
     // Escala: tique do quadro = den, escala de tempo = num.
     let (timescale, dur) = (num, den);
@@ -766,12 +855,30 @@ fn rebuild_with(src: &dyn Source, off: u64, avail: u64, preset: Option<&MediaCon
             ctts = Some(offs.iter().map(|&d| (d + depth) * dur as i64).collect());
         }
     }
-    let reorder_delay: i64 = ctts.as_ref().map(|c| c.iter().copied().min().unwrap_or(0)).unwrap_or(0);
+    let reorder_delay: i64 = ctts
+        .as_ref()
+        .map(|c| c.iter().copied().min().unwrap_or(0))
+        .unwrap_or(0);
 
     let payload = (data_start, payload_end);
     let out_payload_start = pre_len + 16;
     let map_off = |abs: u64| -> u64 { out_payload_start + (abs - data_start) };
-    let moov = build_moov(codec, width, height, &sps_nals, &pps_nals, &vps_nals, profile_info.as_ref(), &sps264, &samples, timescale, dur, ctts.as_deref(), reorder_delay, &map_off);
+    let moov = build_moov(
+        codec,
+        width,
+        height,
+        &sps_nals,
+        &pps_nals,
+        &vps_nals,
+        profile_info.as_ref(),
+        &sps264,
+        &samples,
+        timescale,
+        dur,
+        ctts.as_deref(),
+        reorder_delay,
+        &map_off,
+    );
     let used: u64 = samples.iter().map(|s| s.size as u64).sum();
     Some(Rebuilt {
         pre_len,
@@ -846,7 +953,14 @@ fn build_moov(
     let (fourcc, cfg) = match codec {
         Codec::Avc => {
             let s = avc.as_ref().unwrap();
-            let mut c = vec![1, s.profile, s.compat, s.level, 0xFF, 0xE0 | sps.len() as u8];
+            let mut c = vec![
+                1,
+                s.profile,
+                s.compat,
+                s.level,
+                0xFF,
+                0xE0 | sps.len() as u8,
+            ];
             for x in sps {
                 c.extend_from_slice(&(x.len() as u16).to_be_bytes());
                 c.extend_from_slice(x);
@@ -893,14 +1007,24 @@ fn build_moov(
     stsd_body.extend_from_slice(&sample_entry);
     let stsd = full(b"stsd", 0, 0, &stsd_body);
 
-    let stts = full(b"stts", 0, 0, &[u32b(1).as_slice(), &u32b(n as u32), &u32b(dur)].concat());
+    let stts = full(
+        b"stts",
+        0,
+        0,
+        &[u32b(1).as_slice(), &u32b(n as u32), &u32b(dur)].concat(),
+    );
     let mut stsz_body = u32b(0).to_vec();
     stsz_body.extend_from_slice(&u32b(n as u32));
     for s in samples {
         stsz_body.extend_from_slice(&u32b(s.size));
     }
     let stsz = full(b"stsz", 0, 0, &stsz_body);
-    let stsc = full(b"stsc", 0, 0, &[u32b(1).as_slice(), &u32b(1), &u32b(1), &u32b(1)].concat());
+    let stsc = full(
+        b"stsc",
+        0,
+        0,
+        &[u32b(1).as_slice(), &u32b(1), &u32b(1), &u32b(1)].concat(),
+    );
     let need64 = samples.iter().any(|s| map_off(s.off) > u32::MAX as u64);
     let stco = if need64 {
         let mut b = u32b(n as u32).to_vec();
@@ -915,7 +1039,12 @@ fn build_moov(
         }
         full(b"stco", 0, 0, &b)
     };
-    let syncs: Vec<u32> = samples.iter().enumerate().filter(|(_, s)| s.sync).map(|(i, _)| i as u32 + 1).collect();
+    let syncs: Vec<u32> = samples
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.sync)
+        .map(|(i, _)| i as u32 + 1)
+        .collect();
     let mut stbl_parts = vec![stsd, stts];
     if let Some(c) = ctts {
         // entradas agrupadas
@@ -1008,7 +1137,13 @@ fn build_moov(
 }
 
 /// A unidade NAL parece de verdade? Valida o cabeçalho de fatia e o tamanho de SPS/PPS/AUD.
-fn nal_plausible(codec: Codec, head: &[u8], len: u64, sps: Option<&Sps264>, pps_count: usize) -> bool {
+fn nal_plausible(
+    codec: Codec,
+    head: &[u8],
+    len: u64,
+    sps: Option<&Sps264>,
+    pps_count: usize,
+) -> bool {
     match codec {
         Codec::Avc => {
             let t = head[0] & 0x1F;
@@ -1016,8 +1151,13 @@ fn nal_plausible(codec: Codec, head: &[u8], len: u64, sps: Option<&Sps264>, pps_
                 1 | 2 | 5 => {
                     let rbsp = unescape(&head[1..]);
                     let mut b = Bits::new(&rbsp);
-                    let (Some(first), Some(st), Some(pps)) = (b.ue(), b.ue(), b.ue()) else { return false };
-                    if st > 9 || pps > 255 || (pps_count > 0 && pps as usize >= pps_count.max(1) && pps > 3) {
+                    let (Some(first), Some(st), Some(pps)) = (b.ue(), b.ue(), b.ue()) else {
+                        return false;
+                    };
+                    if st > 9
+                        || pps > 255
+                        || (pps_count > 0 && pps as usize >= pps_count.max(1) && pps > 3)
+                    {
                         return false;
                     }
                     if t == 5 && !matches!(st, 2 | 4 | 7 | 9) {
@@ -1047,7 +1187,7 @@ fn nal_plausible(codec: Codec, head: &[u8], len: u64, sps: Option<&Sps264>, pps_
             let t = (head[0] >> 1) & 0x3F;
             match t {
                 35 => len <= 4,
-                32 | 33 | 34 => (4..=1000).contains(&len),
+                32..=34 => (4..=1000).contains(&len),
                 _ => true,
             }
         }
@@ -1055,17 +1195,34 @@ fn nal_plausible(codec: Codec, head: &[u8], len: u64, sps: Option<&Sps264>, pps_
 }
 
 /// Quantas unidades NAL válidas seguidas (sem vãos) começam em `at` (até `max`).
-fn chain_len(buf: &[u8], base: u64, at: u64, codec: Codec, sps: Option<&Sps264>, pps_count: usize, cap: u64, max: usize) -> usize {
+fn chain_len(
+    buf: &[u8],
+    base: u64,
+    at: u64,
+    codec: Codec,
+    sps: Option<&Sps264>,
+    pps_count: usize,
+    cap: u64,
+    max: usize,
+) -> usize {
     let mut p = (at - base) as usize;
     let mut n = 0;
     while n < max && p + 8 <= buf.len() {
         let l = be32(buf, p) as u64;
-        let ok = l >= 1 && l <= cap && p as u64 + 4 + l <= buf.len() as u64 + 8
+        let ok = l >= 1
+            && l <= cap
+            && p as u64 + 4 + l <= buf.len() as u64 + 8
             && match codec {
                 Codec::Avc => avc_nal_ok(buf[p + 4]),
                 Codec::Hevc => hevc_nal_ok(buf[p + 4], buf[p + 5]),
             }
-            && nal_plausible(codec, &buf[p + 4..(p + 4 + (l as usize).min(48)).min(buf.len())], l, sps, pps_count);
+            && nal_plausible(
+                codec,
+                &buf[p + 4..(p + 4 + (l as usize).min(48)).min(buf.len())],
+                l,
+                sps,
+                pps_count,
+            );
         if !ok {
             break;
         }
@@ -1077,12 +1234,22 @@ fn chain_len(buf: &[u8], base: u64, at: u64, codec: Codec, sps: Option<&Sps264>,
 
 /// Próxima posição em [from, limit) onde começa uma sequência de unidades NAL plausíveis.
 /// Prefere o primeiro ponto com duas ou mais unidades seguidas; senão, uma unidade isolada.
-fn scan_nal(src: &dyn Source, codec: Codec, from: u64, limit: u64, data_end: u64, sps: Option<&Sps264>, pps_count: usize, cap: u64) -> Option<u64> {
+fn scan_nal(
+    src: &dyn Source,
+    codec: Codec,
+    from: u64,
+    limit: u64,
+    data_end: u64,
+    sps: Option<&Sps264>,
+    pps_count: usize,
+    cap: u64,
+) -> Option<u64> {
     if limit <= from + 8 {
         return None;
     }
     // Lê um pouco além do limite para poder seguir a cadeia de unidades.
-    let want = ((limit - from) as usize + (cap as usize).min(4 << 20)).min((data_end - from) as usize);
+    let want =
+        ((limit - from) as usize + (cap as usize).min(4 << 20)).min((data_end - from) as usize);
     let buf = read_vec(src, from, want).ok()?;
     let mut single = None;
     let mut i = 0usize;
@@ -1093,7 +1260,11 @@ fn scan_nal(src: &dyn Source, codec: Codec, from: u64, limit: u64, data_end: u64
             let nb = buf[i + 4];
             let good_head = match codec {
                 // Um quadro novo começa por parâmetros/AUD/SEI ou por fatia do macrobloco 0.
-                Codec::Avc => avc_nal_ok(nb) && (matches!(nb & 0x1F, 6..=9) || (matches!(nb & 0x1F, 1 | 5) && buf[i + 5] & 0x80 != 0)),
+                Codec::Avc => {
+                    avc_nal_ok(nb)
+                        && (matches!(nb & 0x1F, 6..=9)
+                            || (matches!(nb & 0x1F, 1 | 5) && buf[i + 5] & 0x80 != 0))
+                }
                 Codec::Hevc => hevc_nal_ok(nb, buf[i + 5]),
             };
             if good_head {

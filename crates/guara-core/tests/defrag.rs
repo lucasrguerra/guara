@@ -17,15 +17,23 @@ fn photo_n(w: u16, h: u16, seed: u64, shift: i32, nmask: u64) -> Vec<u8> {
             let noise = ((x >> 40) & nmask) as i32;
             let fx = xx as f32 / w as f32;
             let fy = yy as f32 / h as f32;
-            let wave = ((fx * 9.0 + seed as f32 * 0.37).sin() * (fy * 7.0 + 1.3).cos() * 40.0) as i32 + ((fx * 31.0).sin() * 8.0) as i32;
+            let wave = ((fx * 9.0 + seed as f32 * 0.37).sin() * (fy * 7.0 + 1.3).cos() * 40.0)
+                as i32
+                + ((fx * 31.0).sin() * 8.0) as i32;
             let base = 110 + shift + wave + (xx * 40 / w as i32);
-            let blob = if ((xx - 300).pow(2) + (yy - 200).pow(2)) < 5000 { 60 } else { 0 };
+            let blob = if ((xx - 300).pow(2) + (yy - 200).pow(2)) < 5000 {
+                60
+            } else {
+                0
+            };
             let v = (base + blob + noise).clamp(0, 255) as u8;
             rgb.extend_from_slice(&[v, v.saturating_sub(10), (v as i32 / 2 + noise) as u8]);
         }
     }
     let mut out = vec![];
-    jpeg_encoder::Encoder::new(&mut out, 92).encode(&rgb, w, h, jpeg_encoder::ColorType::Rgb).unwrap();
+    jpeg_encoder::Encoder::new(&mut out, 92)
+        .encode(&rgb, w, h, jpeg_encoder::ColorType::Rgb)
+        .unwrap();
     out
 }
 
@@ -71,7 +79,10 @@ fn rebuilds_a_jpeg_split_around_another_one() {
     // O fragmento correto precisa estar marcado.
     assert!(idx.get(a2_off));
     eprintln!("TRUE a2_off={a2_off}");
-    let pool = Pool { index: &idx, used: &[Extent::new(b_off, bb.len() as u64)] };
+    let pool = Pool {
+        index: &idx,
+        used: &[Extent::new(b_off, bb.len() as u64)],
+    };
     match analyze_jpeg(&src, a_off, 4 << 20, &pool, true) {
         Analysis::Rebuilt { extents, size } => {
             assert_eq!(size as usize, a.len(), "tamanho");
@@ -79,13 +90,18 @@ fn rebuilds_a_jpeg_split_around_another_one() {
             assert_eq!(extents[0], Extent::new(a_off, split as u64));
             assert_eq!(extents[1].offset, a2_off);
             let mut got = disk[a_off as usize..a_off as usize + split].to_vec();
-            got.extend_from_slice(&disk[a2_off as usize..a2_off as usize + (size as usize - split)]);
+            got.extend_from_slice(
+                &disk[a2_off as usize..a2_off as usize + (size as usize - split)],
+            );
             assert!(got == a, "conteúdo recomposto difere");
         }
         other => panic!("esperava Rebuilt, veio {other:?}"),
     }
     // O outro JPEG, íntegro, continua íntegro.
-    let pool2 = Pool { index: &idx, used: &[] };
+    let pool2 = Pool {
+        index: &idx,
+        used: &[],
+    };
     match analyze_jpeg(&src, b_off, 4 << 20, &pool2, true) {
         Analysis::Intact { len } => assert_eq!(len as usize, b.len()),
         other => panic!("B deveria estar íntegro: {other:?}"),
@@ -129,7 +145,10 @@ fn rebuilds_three_fragments_among_many_decoys() {
         .filter(|(i, _)| *i != 2) // o fragmento do meio de A não é de outro arquivo
         .map(|(_, (o, l))| Extent::new(*o, *l))
         .collect();
-    let pool = Pool { index: &idx, used: &used };
+    let pool = Pool {
+        index: &idx,
+        used: &used,
+    };
     match analyze_jpeg(&src, a_off, 4 << 20, &pool, true) {
         Analysis::Rebuilt { extents, size } => {
             assert_eq!(size as usize, n);
@@ -167,17 +186,36 @@ fn deep_scan_recovers_fragmented_jpeg_end_to_end() {
     let dir = tempfile::tempdir().unwrap();
     let img = dir.path().join("d.img");
     std::fs::write(&img, &disk).unwrap();
-    let c = common::scan_path(&img, &ScanOptions { mode: ScanMode::Deep, ..Default::default() });
+    let c = common::scan_path(
+        &img,
+        &ScanOptions {
+            mode: ScanMode::Deep,
+            ..Default::default()
+        },
+    );
     let jpgs: Vec<_> = c.found.iter().filter(|f| f.ext == "jpg").collect();
-    assert_eq!(jpgs.len(), 2, "{:?}", jpgs.iter().map(|f| (f.size, f.first_offset(), f.confidence)).collect::<Vec<_>>());
-    let fa = jpgs.iter().find(|f| f.first_offset() == Some(a_off as u64)).unwrap();
+    assert_eq!(
+        jpgs.len(),
+        2,
+        "{:?}",
+        jpgs.iter()
+            .map(|f| (f.size, f.first_offset(), f.confidence))
+            .collect::<Vec<_>>()
+    );
+    let fa = jpgs
+        .iter()
+        .find(|f| f.first_offset() == Some(a_off as u64))
+        .unwrap();
     assert_eq!(fa.size as usize, n, "{:?}", fa.note);
     let out = dir.path().join("out");
     let rep = common::recover_all(&img, std::slice::from_ref(*fa), &out);
     let p = std::path::PathBuf::from(&rep.recovered[0].path);
     let got = std::fs::read(if p.is_absolute() { p } else { out.join(p) }).unwrap();
     assert!(got == a, "JPEG recuperado difere do original");
-    let fb = jpgs.iter().find(|f| f.first_offset() != Some(a_off as u64)).unwrap();
+    let fb = jpgs
+        .iter()
+        .find(|f| f.first_offset() != Some(a_off as u64))
+        .unwrap();
     assert_eq!(fb.size as usize, photo_n(1600, 1200, 77, 30, 3).len());
     let _ = (b_len, recover::RecoverReport::default());
 }
