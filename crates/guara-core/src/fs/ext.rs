@@ -442,7 +442,7 @@ fn walk_dirs(ext: &Ext, ctx: &Ctx) -> Names {
     let mut seen: HashSet<u64> = HashSet::new();
     let mut visited = 0usize;
     while let Some((dino, path)) = queue.pop() {
-        if !seen.insert(dino) || (ctx.cancelled)() || visited > 2_000_000 {
+        if !seen.insert(dino) || (visited % 256 == 255 && (ctx.cancelled)()) || visited > 2_000_000 {
             continue;
         }
         visited += 1;
@@ -526,7 +526,7 @@ fn journal_inodes(ext: &Ext, ctx: &Ctx) -> HashMap<u64, Vec<Vec<u8>>> {
     let mut idx = first;
     // Varredura física: qualquer bloco que seja descritor, em ordem do diário.
     while idx < n {
-        if (ctx.cancelled)() {
+        if idx % 4096 == 4095 && (ctx.cancelled)() {
             break;
         }
         let Some(d) = ext.read_block(jblocks[idx]) else {
@@ -605,7 +605,7 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
     // 1) Inodes apagados na tabela atual.
     let total = ext.groups.len() as u64;
     for (g, gr) in ext.groups.iter().enumerate() {
-        if (ctx.cancelled)() {
+        if g % 16 == 15 && (ctx.cancelled)() {
             return res;
         }
         if gr.flags & 0x1 != 0 {
@@ -659,9 +659,6 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
     for (ino_no, snaps) in &journal {
         if emitted.contains(ino_no) || names.live.contains_key(ino_no) || *ino_no < 11 {
             continue;
-        }
-        if (ctx.cancelled)() {
-            return res;
         }
         let cur = ext.read_inode(*ino_no);
         // Se o inode atual está vivo e é outro arquivo, não mexe.

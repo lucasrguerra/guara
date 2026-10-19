@@ -62,6 +62,7 @@ pub fn carve_range(
             break;
         }
         let scan_len = got.min(CHUNK).min((end - pos) as usize);
+        ev.chunk(pos, &buf[..scan_len]);
         let mut i = 0usize;
         while i < scan_len {
             let abs = pos + i as u64;
@@ -78,10 +79,12 @@ pub fn carve_range(
                         || cfg.categories.contains(&category_for_ext(hit.ext));
                     if hit.len >= MIN_LEN && allowed {
                         let action = ev.hit(abs, &hit);
-                        if matches!(action, HitAction::Skip)
-                            && hit.confidence != crate::types::Confidence::Low
-                        {
-                            skip_until = abs + hit.len;
+                        match action {
+                            HitAction::Skip if hit.confidence != crate::types::Confidence::Low => {
+                                skip_until = abs + hit.len;
+                            }
+                            HitAction::SkipLen(n) => skip_until = abs + n,
+                            _ => {}
                         }
                     }
                 }
@@ -109,6 +112,8 @@ pub enum CarveEnd {
 /// Receptor de eventos do carving.
 pub trait CarveEvents {
     fn advance(&mut self, bytes: u64);
+    /// Cada trecho lido, antes de procurar assinaturas (para indexar o que serve a recomposição).
+    fn chunk(&mut self, _abs: u64, _data: &[u8]) {}
     fn hit(&mut self, offset: u64, hit: &Hit) -> HitAction;
 }
 
@@ -116,6 +121,8 @@ pub trait CarveEvents {
 pub enum HitAction {
     /// Pula o conteúdo do arquivo reconhecido (comportamento padrão).
     Skip,
+    /// Pula só estes bytes (arquivo cujo resto não é confiável).
+    SkipLen(u64),
     /// Segue setor a setor (acerto descartado).
     Continue,
 }

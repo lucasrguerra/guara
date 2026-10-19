@@ -23,6 +23,10 @@ pub trait Sink {
     fn found(&mut self, f: Found);
     /// Um achado de carving confirmou um arquivo já listado por metadados.
     fn confirm(&mut self, id: u64, confidence: Confidence);
+    /// Um achado já emitido ganhou dados melhores (ex.: JPEG remontado de fragmentos).
+    fn replace(&mut self, f: Found) {
+        self.found(f);
+    }
     fn progress(&mut self, p: Progress);
     fn warning(&mut self, w: String);
     fn layout(&mut self, l: &DiskLayout);
@@ -194,12 +198,16 @@ pub fn run(
         categories: &opts.categories,
     };
     let mut handler = Handler {
+        src,
         sink,
         starts,
         fs_extents,
         next_id: &next_id,
         done,
         total,
+        index: crate::defrag::ClusterIndex::new(src.size()),
+        pending: vec![],
+        carved: vec![],
     };
     for ri in 0..cp.ranges.len() {
         let (start, end) = (cp.ranges[ri].start, cp.ranges[ri].end);
@@ -215,19 +223,58 @@ pub fn run(
             return Outcome::Interrupted(cp);
         }
     }
+    handler.rebuild_pending();
     Outcome::Completed
 }
 
+/// JPEG que parece quebrado: tenta recompor depois de varrer o disco todo.
+struct PendingJpeg {
+    found: Found,
+    hit_len: u64,
+}
+
 struct Handler<'a> {
+    src: &'a dyn Source,
     sink: &'a mut dyn Sink,
     starts: HashMap<u64, (u64, Confidence)>,
     fs_extents: Vec<Extent>,
     next_id: &'a AtomicU64,
     done: u64,
     total: u64,
+    index: crate::defrag::ClusterIndex,
+    pending: Vec<PendingJpeg>,
+    /// Extents de arquivos carved já emitidos (não podem servir de fragmento para outro).
+    carved: Vec<Extent>,
+}
+
+impl Handler<'_> {
+    fn rebuild_pending(&mut self) {
+        let pend = std::mem::take(&mut self.pending);
+        for p in pend {
+            let off = p.found.first_offset().unwrap_or(0);
+            let mut used = self.fs_extents.clone();
+            used.extend(self.carved.iter().copied());
+            // O próprio começo do arquivo não conta como "ocupado" para ele mesmo.
+            used.retain(|e| !(e.offset == off));
+            let pool = crate::defrag::Pool { index: &self.index, used: &used };
+            if let crate::defrag::Analysis::Rebuilt { extents, size } = crate::defrag::analyze_jpeg(self.src, off, p.hit_len, &pool, true) {
+                let mut f = p.found;
+                f.size = size;
+                f.data = DataLoc::Extents { extents: extents.clone() };
+                f.confidence = Confidence::Medium;
+                f.note = Some(format!("remontado a partir de {} fragmentos separados no disco; confira a imagem", extents.len()));
+                self.carved.extend(extents);
+                self.sink.replace(f);
+            }
+        }
+    }
 }
 
 impl CarveEvents for Handler<'_> {
+    fn chunk(&mut self, abs: u64, data: &[u8]) {
+        self.index.scan_chunk(abs, data);
+    }
+
     fn advance(&mut self, n: u64) {
         self.done += n;
         self.sink.progress(Progress {
@@ -248,6 +295,26 @@ impl CarveEvents for Handler<'_> {
         if overlaps(&self.fs_extents, off, 1) {
             return HitAction::Continue; // dentro de arquivo já listado (ex.: miniatura embutida)
         }
+        let mut hit = hit.clone();
+        let mut skip_len = None;
+        let mut pending_len = None;
+        if hit.ext == "jpg" {
+            let pool = crate::defrag::Pool { index: &self.index, used: &[] };
+            match crate::defrag::analyze_jpeg(self.src, off, hit.len, &pool, false) {
+                crate::defrag::Analysis::Intact { len } => {
+                    hit.len = len;
+                    hit.confidence = Confidence::High;
+                }
+                crate::defrag::Analysis::Broken { good_len } => {
+                    pending_len = Some(hit.len);
+                    hit.len = good_len;
+                    hit.confidence = Confidence::Low;
+                    skip_len = Some(good_len);
+                }
+                crate::defrag::Analysis::Unsupported | crate::defrag::Analysis::Rebuilt { .. } => {}
+            }
+        }
+        let hit = &hit;
         let id = self
             .next_id
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -278,8 +345,17 @@ impl CarveEvents for Handler<'_> {
             },
         };
         self.starts.insert(off, (id, hit.confidence));
+        self.carved.push(Extent::new(off, hit.len));
+        if let Some(hl) = pending_len {
+            let mut pf = f.clone();
+            pf.note = Some("JPEG interrompido ou fragmentado".into());
+            self.pending.push(PendingJpeg { found: pf, hit_len: hl });
+        }
         self.sink.found(f);
-        HitAction::Skip
+        match skip_len {
+            Some(n) => HitAction::SkipLen(n),
+            None => HitAction::Skip,
+        }
     }
 }
 

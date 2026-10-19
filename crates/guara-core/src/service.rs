@@ -137,6 +137,17 @@ impl Sink for JobSink {
             s.found[i].confidence = s.found[i].confidence.max(c);
         }
     }
+    fn replace(&mut self, f: Found) {
+        let mut s = self.0.st.lock().unwrap();
+        match s.index.get(&f.id).copied() {
+            Some(i) => s.found[i] = f,
+            None => {
+                let i = s.found.len();
+                s.index.insert(f.id, i);
+                s.found.push(f);
+            }
+        }
+    }
     fn progress(&mut self, p: Progress) {
         self.0.st.lock().unwrap().progress = p;
     }
@@ -738,17 +749,6 @@ impl Engine {
     }
 
     pub fn load_session(&self, path: &str) -> Result<String> {
-        // Clicar de novo numa sessão já aberta reaproveita o job em vez de criar outro igual.
-        let want = Path::new(path);
-        if let Some(j) = self
-            .jobs
-            .lock()
-            .unwrap()
-            .values()
-            .find(|j| j.session_file.lock().unwrap().as_deref() == Some(want))
-        {
-            return Ok(j.id.clone());
-        }
         let bytes = std::fs::read(path).map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
                 Error::msg(format!(
@@ -763,6 +763,17 @@ impl Engine {
                 "O arquivo {path} não é uma sessão do Guará válida (ou foi criado por uma versão incompatível): {e}"
             ))
         })?;
+        // Clicar de novo numa sessão já aberta reaproveita o job em vez de criar outro igual.
+        let want = Path::new(path);
+        if let Some(j) = self
+            .jobs
+            .lock()
+            .unwrap()
+            .values()
+            .find(|j| j.session_file.lock().unwrap().as_deref() == Some(want))
+        {
+            return Ok(j.id.clone());
+        }
         let job = self.register(
             JobKind::Scan,
             data.target.clone(),

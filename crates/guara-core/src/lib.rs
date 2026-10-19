@@ -5,6 +5,7 @@
 
 pub mod assemble;
 pub mod carve;
+pub mod defrag;
 pub mod device;
 pub mod crypt;
 pub mod error;
@@ -16,6 +17,7 @@ pub mod hashing;
 pub mod health;
 pub mod http;
 pub mod image;
+pub mod jpegscan;
 pub mod lvm;
 pub mod meta;
 pub mod notify;

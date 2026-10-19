@@ -22,6 +22,12 @@ impl Sink for Collect {
             f.confidence = f.confidence.max(c);
         }
     }
+    fn replace(&mut self, f: Found) {
+        match self.found.iter_mut().find(|x| x.id == f.id) {
+            Some(x) => *x = f,
+            None => self.found.push(f),
+        }
+    }
     fn progress(&mut self, _: Progress) {}
     fn warning(&mut self, w: String) {
         self.warnings.push(w);
