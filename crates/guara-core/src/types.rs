@@ -106,6 +106,72 @@ pub enum DataLoc {
     Extents {
         extents: Vec<Extent>,
     },
+    /// Arquivo montado: trechos em memória (cabeçalhos refeitos) e trechos do disco.
+    Parts {
+        parts: Vec<Part>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "part", rename_all = "lowercase")]
+pub enum Part {
+    Bytes {
+        #[serde(with = "b64")]
+        bytes: Vec<u8>,
+    },
+    /// Trecho contíguo da origem.
+    Run { offset: u64, len: u64 },
+}
+
+impl Part {
+    pub fn len(&self) -> u64 {
+        match self {
+            Part::Bytes { bytes } => bytes.len() as u64,
+            Part::Run { len, .. } => *len,
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+mod b64 {
+    use serde::{Deserialize, Deserializer, Serializer};
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    pub fn serialize<S: Serializer>(b: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+        let mut out = String::with_capacity(b.len().div_ceil(3) * 4);
+        for c in b.chunks(3) {
+            let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+            out.push(T[(n >> 18) as usize & 63] as char);
+            out.push(T[(n >> 12) as usize & 63] as char);
+            out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+            out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
+        }
+        s.serialize_str(&out)
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let s = String::deserialize(d)?;
+        let mut out = vec![];
+        let (mut acc, mut bits) = (0u32, 0);
+        for c in s.bytes() {
+            let v = match c {
+                b'A'..=b'Z' => c - b'A',
+                b'a'..=b'z' => c - b'a' + 26,
+                b'0'..=b'9' => c - b'0' + 52,
+                b'+' => 62,
+                b'/' => 63,
+                _ => continue,
+            } as u32;
+            acc = (acc << 6) | v;
+            bits += 6;
+            if bits >= 8 {
+                bits -= 8;
+                out.push((acc >> bits) as u8);
+                acc &= (1 << bits) - 1;
+            }
+        }
+        Ok(out)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -188,6 +254,10 @@ impl Found {
         match &self.data {
             DataLoc::Extents { extents } => extents.iter().find(|e| !e.sparse).map(|e| e.offset),
             DataLoc::Resident { .. } => None,
+            DataLoc::Parts { parts } => parts.iter().find_map(|p| match p {
+                Part::Run { offset, .. } => Some(*offset),
+                _ => None,
+            }),
         }
     }
 
@@ -330,6 +400,9 @@ pub struct ScanOptions {
     /// O disco principal é só membro de RAID sem metadados: varre apenas os volumes virtuais.
     #[serde(default)]
     pub skip_primary: bool,
+    /// Vídeos íntegros da mesma câmera/drone: fornecem SPS/PPS para remontar MP4 sem moov.
+    #[serde(default)]
+    pub references: Vec<String>,
 }
 
 fn default_max_carve() -> u64 {
@@ -347,6 +420,7 @@ impl Default for ScanOptions {
             extra_parts: vec![],
             covered: vec![],
             skip_primary: false,
+            references: vec![],
         }
     }
 }

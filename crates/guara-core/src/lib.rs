@@ -20,6 +20,7 @@ pub mod image;
 pub mod jpegscan;
 pub mod lvm;
 pub mod meta;
+pub mod mp4rebuild;
 pub mod notify;
 pub mod owner;
 pub mod partition;

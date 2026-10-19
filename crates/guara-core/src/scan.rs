@@ -207,6 +207,15 @@ pub fn run(
         total,
         index: crate::defrag::ClusterIndex::new(src.size()),
         pending: vec![],
+        intact_mp4: vec![],
+        refs: opts
+            .references
+            .iter()
+            .filter_map(|p| {
+                let s = crate::source::open_path(std::path::Path::new(p)).ok()?;
+                crate::mp4rebuild::config_from_mp4(s.as_ref(), 0, s.size())
+            })
+            .collect(),
         carved: vec![],
     };
     for ri in 0..cp.ranges.len() {
@@ -227,10 +236,11 @@ pub fn run(
     Outcome::Completed
 }
 
-/// JPEG que parece quebrado: tenta recompor depois de varrer o disco todo.
-struct PendingJpeg {
+/// Arquivo que parece quebrado: tenta recompor depois de varrer o disco todo.
+struct Pending {
     found: Found,
     hit_len: u64,
+    mp4: bool,
 }
 
 struct Handler<'a> {
@@ -242,16 +252,58 @@ struct Handler<'a> {
     done: u64,
     total: u64,
     index: crate::defrag::ClusterIndex,
-    pending: Vec<PendingJpeg>,
+    pending: Vec<Pending>,
+    /// Vídeos íntegros achados no carving (início, tamanho): fontes de SPS/PPS.
+    intact_mp4: Vec<(u64, u64)>,
+    refs: Vec<crate::mp4rebuild::MediaConfig>,
     /// Extents de arquivos carved já emitidos (não podem servir de fragmento para outro).
     carved: Vec<Extent>,
 }
 
 impl Handler<'_> {
+    fn rebuild_mp4(&mut self, p: Pending, off: u64) {
+        // Referências: as informadas pelo usuário e os vídeos íntegros mais próximos no disco.
+        let mut refs = self.refs.clone();
+        let mut near = self.intact_mp4.clone();
+        near.sort_by_key(|&(o, _)| o.abs_diff(off));
+        for (o, l) in near.into_iter().take(6) {
+            if let Some(c) = crate::mp4rebuild::config_from_mp4(self.src, o, l) {
+                refs.push(c);
+            }
+        }
+        let Some(r) = crate::mp4rebuild::rebuild(self.src, off, p.hit_len, &refs) else { return };
+        let Ok(pre) = crate::source::read_vec(self.src, off, r.pre_len as usize) else { return };
+        let payload_len = r.payload.1 - r.payload.0;
+        let mut f = p.found;
+        let hdr = r.mdat_header();
+        f.size = pre.len() as u64 + hdr.len() as u64 + payload_len + r.moov.len() as u64;
+        f.data = DataLoc::Parts {
+            parts: vec![
+                Part::Bytes { bytes: pre },
+                Part::Bytes { bytes: hdr },
+                Part::Run { offset: r.payload.0, len: payload_len },
+                Part::Bytes { bytes: r.moov },
+            ],
+        };
+        f.ext = "mp4".into();
+        f.name = format!("arquivo_{:06}.mp4", f.id);
+        f.confidence = Confidence::Medium;
+        f.note = Some(format!(
+            "índice (moov) reconstruído: {} quadros {}x{} a {:.1} fps, sem áudio; ajuste de tempo aproximado",
+            r.frames, r.width, r.height, r.fps
+        ));
+        self.carved.push(Extent::new(r.payload.0, payload_len));
+        self.sink.replace(f);
+    }
+
     fn rebuild_pending(&mut self) {
         let pend = std::mem::take(&mut self.pending);
         for p in pend {
             let off = p.found.first_offset().unwrap_or(0);
+            if p.mp4 {
+                self.rebuild_mp4(p, off);
+                continue;
+            }
             let mut used = self.fs_extents.clone();
             used.extend(self.carved.iter().copied());
             // O próprio começo do arquivo não conta como "ocupado" para ele mesmo.
@@ -314,6 +366,15 @@ impl CarveEvents for Handler<'_> {
                 crate::defrag::Analysis::Unsupported | crate::defrag::Analysis::Rebuilt { .. } => {}
             }
         }
+        let mut pending_mp4 = false;
+        if matches!(hit.ext, "mp4" | "mov" | "m4v" | "3gp") {
+            if hit.confidence == Confidence::High {
+                self.intact_mp4.push((off, hit.len));
+            } else {
+                pending_mp4 = true;
+                pending_len = Some(hit.len);
+            }
+        }
         let hit = &hit;
         let id = self
             .next_id
@@ -348,8 +409,8 @@ impl CarveEvents for Handler<'_> {
         self.carved.push(Extent::new(off, hit.len));
         if let Some(hl) = pending_len {
             let mut pf = f.clone();
-            pf.note = Some("JPEG interrompido ou fragmentado".into());
-            self.pending.push(PendingJpeg { found: pf, hit_len: hl });
+            pf.note = Some(if pending_mp4 { "vídeo sem índice (moov)".into() } else { "JPEG interrompido ou fragmentado".into() });
+            self.pending.push(Pending { found: pf, hit_len: hl, mp4: pending_mp4 });
         }
         self.sink.found(f);
         match skip_len {

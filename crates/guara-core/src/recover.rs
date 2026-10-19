@@ -375,6 +375,29 @@ pub fn write_file(src: &dyn Source, f: &Found, path: &Path) -> Result<Hashes> {
             out.write_all(bytes)?;
             hasher.update(bytes);
         }
+        DataLoc::Parts { parts } => {
+            for part in parts {
+                match part {
+                    Part::Bytes { bytes } => {
+                        out.write_all(bytes)?;
+                        hasher.update(bytes);
+                    }
+                    Part::Run { offset, len } => {
+                        let mut done = 0u64;
+                        while done < *len {
+                            let n = (*len - done).min(1 << 20) as usize;
+                            let got = read_vec(src, offset + done, n)?;
+                            if got.len() < n {
+                                return Err(Error::msg("leitura além do fim da origem"));
+                            }
+                            out.write_all(&got)?;
+                            hasher.update(&got);
+                            done += n as u64;
+                        }
+                    }
+                }
+            }
+        }
         DataLoc::Extents { extents } => {
             let mut left = f.size;
             let mut buf = vec![0u8; 1 << 20];
@@ -424,6 +447,25 @@ pub fn read_found_at(
             let n = want.min(bytes.len().saturating_sub(o));
             buf[..n].copy_from_slice(&bytes[o..o + n]);
             Ok(n)
+        }
+        DataLoc::Parts { parts } => {
+            let mut pos = 0u64;
+            for p in parts {
+                let plen = p.len();
+                if offset < pos + plen {
+                    let within = offset - pos;
+                    let n = want.min((plen - within) as usize);
+                    return match p {
+                        Part::Bytes { bytes } => {
+                            buf[..n].copy_from_slice(&bytes[within as usize..within as usize + n]);
+                            Ok(n)
+                        }
+                        Part::Run { offset: o, .. } => src.read_at(o + within, &mut buf[..n]),
+                    };
+                }
+                pos += plen;
+            }
+            Ok(0)
         }
         DataLoc::Extents { extents } => {
             let mut pos = 0u64;

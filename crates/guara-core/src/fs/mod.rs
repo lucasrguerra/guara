@@ -66,6 +66,7 @@ pub fn make_found(ctx: &Ctx, n: NewFound) -> Found {
     let mut note = n.note.map(String::from);
     let head: Vec<u8> = match &n.data {
         DataLoc::Resident { bytes } => bytes.iter().take(32).copied().collect(),
+        DataLoc::Parts { .. } => vec![],
         DataLoc::Extents { extents } => extents
             .iter()
             .find(|e| !e.sparse)
