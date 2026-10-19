@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/guara-core", "crates/guara-cli"]
 
 [workspace.package]
-version = "0.6.0"
+version = "1.0.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/lucasrguerra/guara"
@@ -16,3 +16,7 @@ codegen-units = 1
 opt-level = 3
 strip = true
 panic = "abort"
+
+# Dependências otimizadas também em debug: os testes de cifra fazem milhões de SHA-256.
+[profile.dev.package."*"]
+opt-level = 3

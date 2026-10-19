@@ -316,7 +316,7 @@ function paintHealth() {
     tile('Total gravado', h.host_writes == null ? null : human(h.host_writes)),
   ].join('');
   const info = (h.info || []).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
-  const dash = (x) => x == null ? '<span class="dim">–</span>' : x;
+  const dash = (x) => x == null ? '<span class="dim">-</span>' : x;
   const attrs = h.attributes || [];
   const table = attrs.length ? `<details class="adv h-attrs"${bad ? ' open' : ''}><summary>Atributos SMART (${attrs.length})</summary>
     <div class="h-scroll"><table class="h-table"><thead><tr><th></th><th>ID</th><th>Atributo</th><th>Atual</th><th>Pior</th><th>Limite</th><th>Bruto</th></tr></thead><tbody>
@@ -409,10 +409,33 @@ function renderDevice(err) {
         <div class="row" id="optCats">${CATS.map(([k, n]) => `<label class="check"><input type="checkbox" value="${k}"> ${n}</label>`).join('')}</div>
         <div class="sub">Sem nenhuma categoria marcada, todos os tipos são procurados.</div>
       </details>
+      <details class="adv"><summary>Volumes cifrados, RAID e vídeos</summary>
+        <label class="fld"><span>Senha do volume (BitLocker, LUKS, FileVault 2)</span><input class="input" id="optPw" type="password" autocomplete="off"></label>
+        <label class="fld"><span>Chave de recuperação do BitLocker</span><input class="input" id="optRk" placeholder="000000-000000-... (8 grupos)" autocomplete="off"></label>
+        <label class="fld"><span>Arquivo de chave (.BEK ou keyfile)</span><input class="input" id="optKf" placeholder="/caminho/chave.BEK"></label>
+        <label class="fld"><span>Outros discos do mesmo conjunto (RAID/LVM), um caminho por linha</span><textarea class="input" id="optMembers" rows="3"></textarea></label>
+        <label class="check"><input type="checkbox" id="optRaid"><span><b>Estes discos formam um RAID sem metadados</b><br><span class="sub">O Guará descobre sozinho o nível, a faixa, o layout e a ordem dos discos.</span></span></label>
+        <label class="fld"><span>Vídeo íntegro da mesma câmera/drone (refaz o índice de MP4 sem moov)</span><input class="input" id="optRef" placeholder="/caminho/video-bom.mp4"></label>
+        <label class="check"><input type="checkbox" id="optRemember"><span><b>Lembrar as chaves dos volumes abertos na sessão</b><br><span class="sub">A senha nunca é gravada; só a chave derivada.</span></span></label>
+      </details>
     </div></div>`;
   $('#elevate')?.addEventListener('click', () => tauri.core.invoke('relaunch_elevated').catch((e) => toast(String(e))));
   const opts = (mode) => ({
     mode,
+    assembly: (() => {
+      const v = (id) => ($(id)?.value || '').trim();
+      const secrets = [];
+      if (v('#optPw')) secrets.push({ kind: 'password', value: v('#optPw') });
+      if (v('#optRk')) secrets.push({ kind: 'recovery', value: v('#optRk') });
+      if (v('#optKf')) secrets.push({ kind: 'keyfile', path: v('#optKf') });
+      return {
+        secrets,
+        members: v('#optMembers').split('\n').map((x) => x.trim()).filter(Boolean),
+        raid: $('#optRaid')?.checked ? {} : null,
+        remember_keys: $('#optRemember')?.checked || false,
+      };
+    })(),
+    references: $('#optRef')?.value.trim() ? [$('#optRef').value.trim()] : [],
     include_allocated: $('#optAlloc')?.checked || false,
     categories: [...document.querySelectorAll('#optCats input:checked')].map((i) => i.value),
   });
@@ -442,10 +465,18 @@ async function startScan(options) {
 
 async function startImage() {
   const base = (S.defaults.home || '') + (S.defaults.sep || '/');
-  const dest = await ask({ title: 'Criar imagem do disco', text: 'Onde salvar o arquivo de imagem? Use <b>outro disco</b> com espaço suficiente e um nome que ainda não exista.', value: base + 'disco-guara.img', ok: 'Criar imagem' });
-  if (!dest) return;
+  const f = await askForm({ title: 'Criar imagem do disco', text: 'Onde salvar o arquivo de imagem? Use <b>outro disco</b> com espaço suficiente e um nome que ainda não exista.', ok: 'Criar imagem', fields: [
+    { name: 'dest', label: 'Arquivo de destino', value: base + 'disco-guara.img' },
+    { name: 'format', label: 'Formato', value: 'raw', options: [['raw', 'Bruta (.img)'], ['e01', 'Expert Witness (.E01, com hash e metadados)'], ['aff4', 'AFF4 (.aff4)']] },
+    { name: 'case', label: 'Número do caso (E01/AFF4)', value: '' },
+    { name: 'examiner', label: 'Examinador (E01/AFF4)', value: '' },
+  ] });
+  if (!f || !f.dest) return;
+  const dest = f.dest;
+  const format = f.format === 'e01' ? { kind: 'e01', case_number: f.case, examiner: f.examiner }
+    : f.format === 'aff4' ? { kind: 'aff4', case_number: f.case, examiner: f.examiner } : { kind: 'raw' };
   try {
-    const { job } = await rpc('image_start', { path: S.device.path, dest });
+    const { job } = await rpc('image_start', { path: S.device.path, dest, format });
     watchAux(job, 'Criando imagem do disco', (st) => {
       const r = st.report || {};
       const bad = (r.bad_ranges || []).length;

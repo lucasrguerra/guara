@@ -118,6 +118,10 @@ Veja [CONTRIBUTING.md](CONTRIBUTING.md). Versões seguem [SemVer](https://semver
 
 [MIT](LICENSE-MIT) ou [Apache-2.0](LICENSE-APACHE), à sua escolha.
 
+## Novidades da 1.0.0
+
+Metadados de ext4, HFS+, Btrfs, XFS e APFS; abertura de volumes BitLocker, LUKS e FileVault 2 com senha ou chave; RAID (0/1/4/5/6/10) e LVM remontados, com parâmetros descobertos sozinhos; imagens E01, Ex01 e AFF4; JPEG fragmentado e MP4 sem índice. Detalhes e limitações no [CHANGELOG](CHANGELOG.md).
+
 ## Novidades da 0.6.0
 
 - Saúde do disco completa, no estilo do CrystalDiskInfo: estado com % de vida útil, temperatura, horas e vezes ligado, total lido e gravado, ficha do dispositivo (modelo, firmware, interface, modo de transferência, rotação, recursos) e a tabela inteira de atributos SMART (ATA e NVMe).

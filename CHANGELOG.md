@@ -2,6 +2,22 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [1.0.0] - 2026-10-19
+
+### Adicionado
+- **Sistemas de arquivos com metadados:** ext4 (inodes apagados e cópias antigas no diário), HFS+ (sobras de nós e diário), Btrfs (versões antigas das árvores; extensões zlib, zstd e lzo), XFS (inodes liberados e nomes de entradas liberadas) e APFS (instantâneos e nós antigos). ReFS ainda é só detectado.
+- **Volumes cifrados:** BitLocker (senha, chave de recuperação, .BEK, chave limpa), LUKS1/LUKS2 e FileVault 2 (Core Storage) abrem com a senha ou a chave e são varridos por dentro. As senhas nunca vão para o arquivo de sessão.
+- **RAID e LVM:** RAID 0, 1, 4, 5, 6, 10 e linear a partir de superblocos do mdadm, inclusive degradado; descoberta automática de nível, faixa, layout e ordem quando não há metadados; LVM2 (linear, em faixas, espelhado e RAID).
+- **Imagens forenses:** leitura de E01/Ex01 e AFF4; gravação de E01 e AFF4; comando `guara verify`.
+- **Carving:** JPEG fragmentado remontado (até três fragmentos), reconstrução do índice de MP4/MOV sem moov (H.264/HEVC, com vídeo de referência) e 24 formatos reconhecidos pela estrutura.
+- **Interface:** campos de senha, RAID, vídeo de referência e formato da imagem.
+
+### Corrigido
+- Abrir de novo uma sessão recente já aberta não cria mais cópias iguais na aba de sessões.
+
+### Limitações
+- Storage Spaces e ReFS (metadados) não suportados; XFS e APFS testados com exclusões simuladas; áudio não é reconstruído em MP4 sem moov.
+
 ## [0.6.0] - 2026-10-18
 
 ### Adicionado
