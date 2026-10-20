@@ -76,7 +76,9 @@ A interface é uma página só (`apps/gui/ui`). Há duas formas de rodá-la:
 - **App desktop (Tauri):** a janela carrega a página e fala com o núcleo diretamente.
 - **`guara ui`:** o binário sobe um servidor em `127.0.0.1` protegido por token e abre o navegador.
 
-Como o front-end é o mesmo, tudo que existe em um existe no outro.
+Como o front-end é o mesmo, tudo que existe em um existe no outro. Veja como ele é em [interface.md](interface.md).
+
+<p align="center"><img src="../img/explorer-light-pt.png" width="720" alt="O explorador do Guará"></p>
 
 ## Decisões de projeto
 

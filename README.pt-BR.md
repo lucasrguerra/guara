@@ -2,9 +2,11 @@
 <h1 align="center">Guará</h1>
 <p align="center">Recuperação de arquivos livre e gratuita para HD, SSD e pendrive.<br>Terminal e interface gráfica · Windows, Linux e macOS · somente leitura na origem.</p>
 
-<p align="center"><a href="docs/pt-BR/suporte.md">O que suporta</a> · <a href="docs/pt-BR/cli.md">Terminal</a> · <a href="docs/pt-BR/arquitetura.md">Arquitetura</a> · <a href="ROADMAP.pt-BR.md">Roadmap</a> · <a href="CHANGELOG.pt-BR.md">Changelog</a></p>
+<p align="center"><a href="docs/pt-BR/suporte.md">O que suporta</a> · <a href="docs/pt-BR/interface.md">Interface</a> · <a href="docs/pt-BR/cli.md">Terminal</a> · <a href="docs/pt-BR/arquitetura.md">Arquitetura</a> · <a href="ROADMAP.pt-BR.md">Roadmap</a> · <a href="CHANGELOG.pt-BR.md">Changelog</a></p>
 
 <p align="center"><a href="README.md">English</a> · <b>Português</b></p>
+
+<p align="center"><img src="docs/img/explorer-light-pt.png" width="900" alt="O explorador do Guará mostrando fotos recuperadas agrupadas por mês, com a barra lateral para filtrar e o painel de detalhes à direita"><br><sub>A interface de verdade rodando sobre uma imagem de teste sintética (fotos geradas, sem dados reais).</sub></p>
 
 ---
 
@@ -65,7 +67,9 @@ Outros comandos (`inspect`, `health`, `hash`, `search`, `export`, `report`, `ver
 
 ## Interface gráfica
 
-App desktop (Tauri) no estilo de um gerenciador de arquivos, pensado para quando o Guará acha milhares de itens. O mesmo front-end roda no navegador com `guara ui`.
+App desktop (Tauri) no estilo de um gerenciador de arquivos, pensado para quando o Guará acha milhares de itens. O mesmo front-end roda no navegador com `guara ui`. Mais telas e detalhes em **[docs/pt-BR/interface.md](docs/pt-BR/interface.md)**.
+
+<p align="center"><img src="docs/img/explorer-dark-pt.png" width="640" alt="O explorador no tema escuro"> <img src="docs/img/settings-language-pt.png" width="250" alt="Configurações com o seletor de idioma"></p>
 
 - **Grade de miniaturas** ou **lista**, agrupamento por dia ou mês e rolagem virtual para dezenas de milhares de arquivos.
 - **Navegação lateral** por tipo, data real da foto (EXIF), pasta, câmera, confiança e GPS, com opção de ocultar duplicadas.

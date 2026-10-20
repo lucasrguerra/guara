@@ -2,9 +2,11 @@
 <h1 align="center">Guará</h1>
 <p align="center">Free file recovery for hard drives, SSDs and USB sticks.<br>Terminal and graphical interface · Windows, Linux and macOS · read-only on the source.</p>
 
-<p align="center"><a href="docs/support.md">What it supports</a> · <a href="docs/cli.md">Terminal</a> · <a href="docs/architecture.md">Architecture</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="CHANGELOG.md">Changelog</a></p>
+<p align="center"><a href="docs/support.md">What it supports</a> · <a href="docs/interface.md">Interface</a> · <a href="docs/cli.md">Terminal</a> · <a href="docs/architecture.md">Architecture</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="CHANGELOG.md">Changelog</a></p>
 
 <p align="center"><b>English</b> · <a href="README.pt-BR.md">Português</a></p>
+
+<p align="center"><img src="docs/img/explorer-light-en.png" width="900" alt="The Guará explorer showing recovered photos grouped by month, with a sidebar to filter and a details panel on the right"><br><sub>The real interface running on a synthetic test image (generated photos, no real data).</sub></p>
 
 ---
 
@@ -65,7 +67,9 @@ Other commands (`inspect`, `health`, `hash`, `search`, `export`, `report`, `veri
 
 ## Graphical interface
 
-A desktop app (Tauri) in the style of a file manager, designed for when Guará finds thousands of items. The same front end runs in the browser with `guara ui`.
+A desktop app (Tauri) in the style of a file manager, designed for when Guará finds thousands of items. The same front end runs in the browser with `guara ui`. More screenshots and details in **[docs/interface.md](docs/interface.md)**.
+
+<p align="center"><img src="docs/img/explorer-dark-en.png" width="640" alt="The explorer in the dark theme"> <img src="docs/img/settings-language-en.png" width="250" alt="Settings with the language selector"></p>
 
 - **Thumbnail grid** or **list**, grouping by day or month and virtual scrolling for tens of thousands of files.
 - **Sidebar navigation** by type, real photo date (EXIF), folder, camera, confidence and GPS, with an option to hide duplicates.
