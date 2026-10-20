@@ -26,7 +26,7 @@ pub fn run(port: u16, open: bool) -> Result<(), String> {
         .map(|a| a.port())
         .unwrap_or(port);
     let mut tok = [0u8; 16];
-    getrandom::getrandom(&mut tok).map_err(|e| e.to_string())?;
+    getrandom::fill(&mut tok).map_err(|e| e.to_string())?;
     let token: Arc<str> = tok
         .iter()
         .map(|b| format!("{b:02x}"))
