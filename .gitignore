@@ -6,6 +6,10 @@
 .claude/
 CLAUDE.md
 
+# Variáveis de ambiente locais (o setup do Superset copia da raiz)
+.env
+.env.*
+
 # Build
 target/
 node_modules/
