@@ -669,6 +669,8 @@ export function createExplorer(deps) {
     },
     query: () => toQuery(),
     destroy() { E.reloadToken++; stopPv?.(); stopLb?.(); host.innerHTML = ''; },
+    /** Idioma trocado em Configurações: refaz o que foi montado em JS (datas, meses, rótulos). */
+    relang() { paintCrumb(); paintChips(); paintNav(); paintActions(); paintInspector(); relayout(); },
     focus() { scroll.focus({ preventScroll: true }); },
   };
 }
