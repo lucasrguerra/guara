@@ -1,0 +1,5 @@
+{
+  "setup": ["./.superset/setup.sh"],
+  "teardown": ["./.superset/teardown.sh"],
+  "run": ["cargo run -p guara-cli -- ui --no-open"]
+}
