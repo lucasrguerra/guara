@@ -24,10 +24,11 @@ Legend: ✅ done · 🟡 partial · 🔜 planned · 🔭 long-term idea · ⛔ o
 | 0.5.0 | 2026-10-18 | SQLite viewer with deleted rows, SMART, English interface, recovery resume |
 | 0.6.0 | 2026-10-18 | Full disk health (ATA and NVMe SMART), `guara health`, new logo |
 | 1.0.0 | 2026-10-19 | ext4, HFS+, Btrfs, XFS, APFS; BitLocker, LUKS, FileVault 2; RAID and LVM; E01, Ex01, AFF4; fragmented JPEG; MP4 without moov |
+| 1.0.1 | 2026-10-20 | Documentation in English with Portuguese translations, complete English interface, screenshots, Docker image of the CLI |
 
 Details of each version in the [CHANGELOG](CHANGELOG.md).
 
-## Current status (1.0.0) against what is expected from a forensic suite
+## Current status (1.0.1) against what is expected from a forensic suite
 
 ### 1. File systems with metadata
 

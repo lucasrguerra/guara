@@ -4,6 +4,27 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [1.0.1] - 2026-10-20
+
+### Added
+- **Docker image of the command line tool** (`Dockerfile`, [docs/docker.md](https://github.com/lucasrguerra/guara/blob/main/docs/docker.md)): for Linux hosts, servers without a desktop and forensic image files. The graphical interface is not served from the container.
+- **Interface screenshots** in the README and in the new [docs/interface.md](https://github.com/lucasrguerra/guara/blob/main/docs/interface.md), taken from the real interface on a synthetic test image.
+- **Superset workspace configuration** (`.superset/`): setup, run and teardown scripts for parallel workspaces.
+
+### Changed
+- **Documentation:** English is now the main language. Portuguese versions live in `*.pt-BR.md` and `docs/pt-BR/`, with a language switch at the top of each file.
+- **English interface completed:** scan options, the disk image dialog, metadata labels (EXIF, PDF, MP4), file kinds, disk health fields, selection counters and preview messages were still showing in Portuguese.
+- **Language switch:** the explorer now redraws after changing the language in Settings, so dates and month headings follow it.
+- Dependencies: `getrandom` 0.4 and `windows-sys` 0.61. GitHub Actions updated (`checkout` 7, `setup-node` 7, `github-script` 9).
+
+### Fixed
+- White text on a white background in the Language and Sort drop-down lists with the dark theme (including Auto with the system in dark mode).
+- The "Format" field of the disk image dialog was translated as "Form factor" in English.
+
+### Notes
+- No change to scanning or recovery logic. The dependency updates touch the token of the local interface server (`getrandom`) and the Windows device bindings (`windows-sys`).
+- Error messages from the core, notifications and the terminal output are still in Portuguese.
+
 ## [1.0.0] - 2026-10-19
 
 ### Added
