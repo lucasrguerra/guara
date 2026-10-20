@@ -1,5 +1,7 @@
 # Arquitetura
 
+[English](../architecture.md) · **Português**
+
 O Guará é um workspace Rust com três partes: um núcleo (`guara-core`), um binário de terminal (`guara-cli`) e uma interface (`apps/gui`) que é a mesma página web servida de duas formas.
 
 ```

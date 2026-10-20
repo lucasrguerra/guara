@@ -1,3 +1,5 @@
-# Segurança
+# Security
 
-Guará abre dispositivos em modo somente leitura e processa dados potencialmente corrompidos ou maliciosos (sistemas de arquivos e arquivos forjados). Vulnerabilidades (corrupção de memória em parsers, escrita indevida na origem, escape de caminho na recuperação) devem ser reportadas em privado pela aba **Security → Report a vulnerability** do repositório no GitHub. Não abra issue pública antes da correção.
+[English](SECURITY.md) · [Português](SECURITY.pt-BR.md)
+
+Guará opens devices in read-only mode and processes potentially corrupted or malicious data (forged file systems and files). Vulnerabilities (memory corruption in parsers, improper writes to the source, path escape during recovery) must be reported privately through the **Security → Report a vulnerability** tab of the repository on GitHub. Do not open a public issue before the fix.

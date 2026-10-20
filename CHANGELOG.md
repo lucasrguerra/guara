@@ -1,118 +1,120 @@
 # Changelog
 
-Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
+[English](CHANGELOG.md) · [Português](CHANGELOG.pt-BR.md)
+
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
 ## [1.0.0] - 2026-10-19
 
-### Adicionado
-- **Sistemas de arquivos com metadados:** ext4 (inodes apagados e cópias antigas no diário), HFS+ (sobras de nós e diário), Btrfs (versões antigas das árvores; extensões zlib, zstd e lzo), XFS (inodes liberados e nomes de entradas liberadas) e APFS (instantâneos e nós antigos). ReFS ainda é só detectado.
-- **Volumes cifrados:** BitLocker (senha, chave de recuperação, .BEK, chave limpa), LUKS1/LUKS2 e FileVault 2 (Core Storage) abrem com a senha ou a chave e são varridos por dentro. As senhas nunca vão para o arquivo de sessão.
-- **RAID e LVM:** RAID 0, 1, 4, 5, 6, 10 e linear a partir de superblocos do mdadm, inclusive degradado; descoberta automática de nível, faixa, layout e ordem quando não há metadados; LVM2 (linear, em faixas, espelhado e RAID).
-- **Imagens forenses:** leitura de E01/Ex01 e AFF4; gravação de E01 e AFF4; comando `guara verify`.
-- **Carving:** JPEG fragmentado remontado (até três fragmentos), reconstrução do índice de MP4/MOV sem moov (H.264/HEVC, com vídeo de referência) e 24 formatos reconhecidos pela estrutura.
-- **Interface:** campos de senha, RAID, vídeo de referência e formato da imagem.
+### Added
+- **File systems with metadata:** ext4 (deleted inodes and old copies in the journal), HFS+ (node leftovers and journal), Btrfs (old versions of the trees; zlib, zstd and lzo extents), XFS (freed inodes and names of freed entries) and APFS (snapshots and old nodes). ReFS is still only detected.
+- **Encrypted volumes:** BitLocker (password, recovery key, .BEK, clear key), LUKS1/LUKS2 and FileVault 2 (Core Storage) open with the password or key and are scanned inside. Passwords are never written to the session file.
+- **RAID and LVM:** RAID 0, 1, 4, 5, 6, 10 and linear from mdadm superblocks, including degraded; automatic discovery of level, stripe size, layout and order when there is no metadata; LVM2 (linear, striped, mirrored and RAID).
+- **Forensic images:** reading of E01/Ex01 and AFF4; writing of E01 and AFF4; `guara verify` command.
+- **Carving:** fragmented JPEG reassembled (up to three fragments), index reconstruction for MP4/MOV without moov (H.264/HEVC, with a reference video) and 24 formats recognized by structure.
+- **Interface:** fields for password, RAID, reference video and image format.
 
-### Corrigido
-- Abrir de novo uma sessão recente já aberta não cria mais cópias iguais na aba de sessões.
+### Fixed
+- Reopening a recent session that is already open no longer creates identical copies in the sessions tab.
 
-### Limitações
-- Storage Spaces e ReFS (metadados) não suportados; XFS e APFS testados com exclusões simuladas; áudio não é reconstruído em MP4 sem moov.
+### Limitations
+- Storage Spaces and ReFS (metadata) are not supported; XFS and APFS tested with simulated deletions; audio is not reconstructed in MP4 without moov.
 
 ## [0.6.0] - 2026-10-18
 
-### Adicionado
-- **Saúde do disco no estilo do CrystalDiskInfo:** a tela do dispositivo mostra o estado (Bom, Atenção, Ruim) com a % de vida útil restante em SSD, temperatura, horas ligado, vezes ligado, total lido e total gravado. Também traz a ficha do dispositivo (modelo, firmware, nº de série, interface, modo de transferência, capacidade, rotação, formato e recursos como TRIM) e a tabela completa de atributos SMART, com ID, valor atual, pior, limite e bruto, e um indicador por atributo. Funciona com discos ATA/SATA e NVMe (nos NVMe, os campos do log de saúde viram a tabela).
-- **Partições:** ao abrir uma partição (`/dev/sda1`, `/dev/nvme0n1p2`, `/dev/disk2s1`), o SMART é lido do disco que a contém, e a tela avisa isso.
-- **Comando `guara health`** no terminal, com saída legível ou `--json`.
+### Added
+- **CrystalDiskInfo-style disk health:** the device screen shows the status (Good, Caution, Bad) with the % of remaining life on SSDs, temperature, power-on hours, power cycles, total read and total written. It also shows the device sheet (model, firmware, serial number, interface, transfer mode, capacity, rotation, form factor and features such as TRIM) and the full table of SMART attributes, with ID, current value, worst, threshold and raw value, and an indicator per attribute. Works with ATA/SATA and NVMe disks (on NVMe, the health log fields become the table).
+- **Partitions:** when opening a partition (`/dev/sda1`, `/dev/nvme0n1p2`, `/dev/disk2s1`), SMART is read from the disk that contains it, and the screen says so.
+- **`guara health` command** in the terminal, with readable output or `--json`.
 
-### Alterado
-- Um atributo SMART com valor normalizado no limite de falha (ou abaixo dele) agora marca o disco como "Ruim", mesmo que a autoavaliação geral ainda passe.
-- **Nova logo:** a cabeça do lobo-guará recortada das trilhas de um disco, inteiras de um lado (recuperado) e quebradas do outro (perdido), nas cores do app. Na interface ela acompanha o tema escolhido (claro ou escuro).
+### Changed
+- A SMART attribute with a normalized value at or below the failure threshold now marks the disk as "Bad", even if the overall self-assessment still passes.
+- **New logo:** the head of a maned wolf cut out of the tracks of a disk, whole on one side (recovered) and broken on the other (lost), in the app colors. In the interface it follows the chosen theme (light or dark).
 
 ## [0.5.0] - 2026-10-18
 
-### Adicionado
-- **Visualizador de bancos de dados:** arquivos SQLite (`.db`, `.sqlite`, `.sqlite3`, `.db3`, `.sdb`, `.sqlitedb`, `.storedata`) abrem na pré-visualização com esquema, tabelas paginadas, blobs e datas reconhecidas. Leitor próprio, só leitura, tolerante a arquivos truncados ou corrompidos. Também **recupera linhas apagadas** a partir do espaço livre das páginas.
-- **Saúde do disco (SMART):** antes de varrer, o Guará consulta o `smartctl` (quando instalado) e o contador de erros do kernel. Se o disco parece com defeito, recomenda criar a imagem primeiro e pede confirmação antes da varredura profunda.
-- **Notificação do sistema** quando uma varredura longa ou uma recuperação termina, ou pausa por desconexão.
-- **Retomar recuperação interrompida:** um diário na pasta de destino faz o Guará pular o que já foi copiado e conferido; o resultado mostra quantos foram pulados.
-- **Mapa das fotos com GPS** no painel de detalhes (opcional, usa a internet) e botão para abrir no OpenStreetMap.
-- **Interface em inglês**, com escolha de idioma (Auto, Português, English) na nova janela de Configurações, que também controla notificações e mapas online.
-- **Fechar a janela durante a varredura** pergunta se você quer pausar e sair, sair sem pausar ou continuar.
+### Added
+- **Database viewer:** SQLite files (`.db`, `.sqlite`, `.sqlite3`, `.db3`, `.sdb`, `.sqlitedb`, `.storedata`) open in the preview with schema, paginated tables, blobs and recognized dates. Own reader, read-only, tolerant of truncated or corrupted files. It also **recovers deleted rows** from the free space of pages.
+- **Disk health (SMART):** before scanning, Guará queries `smartctl` (when installed) and the kernel error counter. If the disk looks faulty, it recommends making the image first and asks for confirmation before the deep scan.
+- **System notification** when a long scan or a recovery finishes, or pauses because of a disconnection.
+- **Resume an interrupted recovery:** a journal in the destination folder makes Guará skip what was already copied and checked; the result shows how many were skipped.
+- **Map of photos with GPS** in the details panel (optional, uses the internet) and a button to open it in OpenStreetMap.
+- **English interface**, with a language choice (Auto, Português, English) in the new Settings window, which also controls notifications and online maps.
+- **Closing the window during a scan** asks whether you want to pause and quit, quit without pausing, or continue.
 
-### Notas
-- Mensagens de erro vindas do núcleo e o terminal continuam em português.
+### Notes
+- Error messages coming from the core and the terminal are still in Portuguese.
 
 ## [0.4.0] - 2026-10-18
 
-### Adicionado
-- **Reconexão do disco:** se o disco foi desconectado e voltou com outro nome (por exemplo `/dev/sda` virando `/dev/sdb`), o Guará o reconhece sozinho pelo tamanho e pela impressão digital do conteúdo (primeiro e último MiB) e religa a sessão. Se não conseguir, a tela mostra "Reconectar o disco" e "Escolher a origem…", com a lista dos discos conectados e o selo "mesmo disco". Uma origem com conteúdo diferente é recusada, a menos que você marque "usar mesmo assim" (útil para cópias).
-- **Desconexão no meio da varredura:** se as leituras falharem várias vezes seguidas, a varredura pausa sozinha com o ponto exato salvo e avisa para reconectar e continuar, em vez de seguir pulando blocos e terminar com buracos.
-- **Sessões salvas automaticamente** de tempos em tempos durante a varredura e ao terminar ou pausar, na pasta de configuração do usuário, e listadas em "Recentes" na barra lateral (`guara sessions` no terminal). Gravação atômica, sem risco de corromper a sessão se o programa fechar no meio.
-- **Organização ao recuperar:** pastas originais, por tipo, por data (ano e mês) ou tudo na mesma pasta (`--organize` no terminal).
-- **Verificação de espaço livre** no destino antes de copiar, com mensagem clara se não couber.
+### Added
+- **Disk reconnection:** if the disk was disconnected and came back under another name (for example `/dev/sda` becoming `/dev/sdb`), Guará recognizes it by itself by its size and a fingerprint of the content (first and last MiB) and reattaches the session. If it cannot, the screen shows "Reconnect the disk" and "Choose the source...", with the list of connected disks and a "same disk" badge. A source with different content is refused, unless you tick "use anyway" (useful for copies).
+- **Disconnection in the middle of a scan:** if reads fail several times in a row, the scan pauses by itself with the exact point saved and tells you to reconnect and continue, instead of skipping blocks and finishing with holes.
+- **Sessions saved automatically** from time to time during the scan and when it finishes or pauses, in the user's configuration folder, and listed under "Recent" in the sidebar (`guara sessions` in the terminal). Atomic writes, with no risk of corrupting the session if the program closes midway.
+- **Organization when recovering:** original folders, by type, by date (year and month) or everything in the same folder (`--organize` in the terminal).
+- **Free space check** at the destination before copying, with a clear message if it will not fit.
 
-### Corrigido
-- Em sessões pausadas não havia como escolher outra origem; só "Continuar", que falhava sem o disco.
+### Fixed
+- In paused sessions there was no way to choose another source; only "Continue", which failed without the disk.
 
 ## [0.3.2] - 2026-10-18
 
-### Corrigido
-- **Travamento ao clicar em um vídeo no app para Linux.** O AppImage traz o WebKitGTK sem os plugins de mídia do GStreamer: ao criar um `<video>` ou `<audio>` o processo da página morria e a janela ficava congelada. Agora o app para Linux nunca cria esses elementos; vídeo e áudio têm o botão "Abrir no player do sistema", que copia o arquivo para uma pasta temporária do usuário e o abre no player padrão (inclusive quando o Guará roda como administrador). No navegador (`guara ui`) e nos demais sistemas o vídeo continua tocando dentro do app, mas só na tela grande, nunca no painel pequeno.
+### Fixed
+- **Freeze when clicking a video in the Linux app.** The AppImage ships WebKitGTK without the GStreamer media plugins: when a `<video>` or `<audio>` was created the page process died and the window froze. Now the Linux app never creates those elements; video and audio have an "Open in system player" button, which copies the file to a temporary folder of the user and opens it in the default player (even when Guará runs as administrator). In the browser (`guara ui`) and on other systems the video still plays inside the app, but only in the large view, never in the small panel.
 
-### Alterado
-- Clicar na pré-visualização do painel de detalhes abre a visualização grande (imagem, PDF, documento e demais tipos), agora maior (até 98% da largura e 95% da altura da janela).
+### Changed
+- Clicking the preview in the details panel opens the large view (image, PDF, document and other types), now larger (up to 98% of the window width and 95% of its height).
 
 ## [0.3.1] - 2026-10-18
 
-### Adicionado
-- Filtros "Ocultar arquivos pequenos (menos de 30 KB)" e "Mais de 1 megapixel" no explorador, para separar fotos de ícones e miniaturas quando há milhares de imagens.
+### Added
+- "Hide small files (under 30 KB)" and "Over 1 megapixel" filters in the explorer, to separate photos from icons and thumbnails when there are thousands of images.
 
-### Corrigido
-- Abrir uma sessão salva falhava por inteiro quando a origem (por exemplo `/dev/sdb`) não estava acessível, e a mensagem de erro era vaga. Agora a sessão sempre abre: dá para navegar, exportar e gerar relatório, e o botão "Escolher a origem…" reconecta o disco ou uma imagem para voltar a pré-visualizar e recuperar.
-- Mensagens claras quando o arquivo de sessão não pode ser lido (por exemplo, criado como administrador em `/root`) ou não é uma sessão válida.
-- Teste automático garante que sessões gravadas pela v0.1.0 continuam abrindo.
-- Carving de PNG: texto ASCII logo após um PNG truncado era lido como um bloco de ~1,9 GB e gerava "fotos" gigantes de confiança baixa. Agora o bloco precisa ser plausível (tipo válido, tamanho razoável, dentro do disco) e o arquivo termina no último bloco válido.
-- Retomar uma varredura de sessão sem a origem disponível agora avisa na hora, em vez de falhar depois.
-- Rodando como administrador (sudo/pkexec), as pastas sugeridas passam a ser as do usuário que abriu o Guará e tudo que ele grava (sessões, CSV, relatórios, imagens e arquivos recuperados, com as pastas criadas) fica com o dono e as permissões desse usuário, e não do root.
+### Fixed
+- Opening a saved session failed entirely when the source (for example `/dev/sdb`) was not accessible, and the error message was vague. Now the session always opens: you can browse, export and generate a report, and the "Choose the source..." button reconnects the disk or an image to go back to previewing and recovering.
+- Clear messages when the session file cannot be read (for example, created as administrator in `/root`) or is not a valid session.
+- An automatic test ensures that sessions written by v0.1.0 still open.
+- PNG carving: ASCII text right after a truncated PNG was read as a block of about 1.9 GB and produced giant low-confidence "photos". Now the block must be plausible (valid type, reasonable size, inside the disk) and the file ends at the last valid block.
+- Resuming a scan of a session without the source available now warns immediately, instead of failing later.
+- When running as administrator (sudo/pkexec), the suggested folders are now those of the user who launched Guará, and everything it writes (sessions, CSV, reports, images and recovered files, with the folders created) keeps the owner and permissions of that user, not root.
 
 ## [0.3.0] - 2026-10-18
 
-### Adicionado
-- **Explorador de arquivos:** grade de miniaturas e lista com rolagem virtual (milhares de itens), agrupamento por dia/mês, navegação lateral por tipo, data da foto, pasta, câmera e confiança, seleção com Ctrl/Shift/teclado, painel de detalhes e visualização rápida em tela cheia.
-- **Miniaturas rápidas** geradas no núcleo (JPEG com redução na decodificação, PNG, GIF, BMP, WebP), com orientação EXIF e uso da miniatura embutida quando a imagem está danificada.
-- **Metadados:** EXIF (câmera, lente, datas, GPS), PDF, Office/OpenDocument e MP4/MOV; datas de criação, modificação e acesso do NTFS, FAT e exFAT.
-- **Perícia:** hashes MD5, SHA-1 e SHA-256, `guara hash`, `guara search` (texto no disco inteiro em UTF-8 e UTF-16), `guara export` (CSV), `guara report` (relatório HTML com cadeia de custódia) e detecção de duplicadas. Tudo também na interface gráfica.
-- Nova identidade visual: logo de pixels que se juntam num lobo-guará de silhueta lisa.
+### Added
+- **File explorer:** thumbnail grid and list with virtual scrolling (thousands of items), grouping by day/month, sidebar navigation by type, photo date, folder, camera and confidence, selection with Ctrl/Shift/keyboard, details panel and full-screen quick look.
+- **Fast thumbnails** generated in the core (JPEG with downscaling during decoding, PNG, GIF, BMP, WebP), with EXIF orientation and use of the embedded thumbnail when the image is damaged.
+- **Metadata:** EXIF (camera, lens, dates, GPS), PDF, Office/OpenDocument and MP4/MOV; creation, modification and access dates from NTFS, FAT and exFAT.
+- **Forensics:** MD5, SHA-1 and SHA-256 hashes, `guara hash`, `guara search` (text across the whole disk in UTF-8 and UTF-16), `guara export` (CSV), `guara report` (HTML report with chain of custody) and duplicate detection. All of it also in the graphical interface.
+- New visual identity: a pixel logo that comes together into a maned wolf with a smooth silhouette.
 
-### Alterado
-- A barra inferior e o painel de progresso não são mais recriados a cada atualização.
-- Textos sem travessões.
+### Changed
+- The bottom bar and the progress panel are no longer recreated on every update.
+- Text without em dashes.
 
 ## [0.2.0] - 2026-10-18
 
-### Adicionado
-- **Pré-visualização completa:** imagem (zoom), vídeo (MP4 e outros), áudio, PDF (pdf.js incluso, funciona offline), texto, Word/Excel/PowerPoint/OpenDocument, conteúdo de ZIP e hexadecimal; tela cheia com navegação por teclado (↑ ↓ ← → Espaço Esc). O conteúdo é lido sob demanda com suporte a Range, sem gravar em disco.
-- Seletor de tema **Auto / Claro / Escuro**; a escolha é salva e vale também no app reiniciado como administrador.
-- Nova identidade visual em verde-azulado, com logo de pixels que se juntam até formar um lobo-guará.
+### Added
+- **Full preview:** image (zoom), video (MP4 and others), audio, PDF (pdf.js included, works offline), text, Word/Excel/PowerPoint/OpenDocument, ZIP contents and hex; full screen with keyboard navigation (↑ ↓ ← → Space Esc). Content is read on demand with Range support, without writing to disk.
+- **Auto / Light / Dark** theme selector; the choice is saved and also applies to the app restarted as administrator.
+- New teal visual identity, with a pixel logo that comes together into a maned wolf.
 
-### Corrigido
-- Reiniciar como administrador no Linux: no AppImage o executável fica num ponto de montagem inacessível ao root; agora usa o próprio `.AppImage`, mostra o motivo se falhar e fecha o app antigo só quando o novo abre.
-- Barra de ações inferior piscava a cada atualização; agora é criada uma vez e só atualiza o texto. O painel de progresso também deixou de ser recriado a cada ciclo.
-- FAT32 em mídias pequenas (menos de 65 525 clusters) não era reconhecido.
-- O tema não acompanhava a escolha ao abrir como root (o WebView do root usava outro tema do sistema).
+### Fixed
+- Restarting as administrator on Linux: in the AppImage the executable sits on a mount point inaccessible to root; now it uses the `.AppImage` itself, shows the reason if it fails and closes the old app only when the new one opens.
+- The bottom action bar flickered on every update; now it is created once and only the text updates. The progress panel also stopped being recreated on every cycle.
+- FAT32 on small media (fewer than 65,525 clusters) was not recognized.
+- The theme did not follow the choice when opened as root (root's WebView used another system theme).
 
 ## [0.1.0] - 2026-10-18
 
-### Adicionado
-- Núcleo em Rust, somente leitura na origem: acesso a dispositivos e imagens (Windows, Linux, macOS).
-- Leitura de MBR/GPT, detecção de partições perdidas e de espaço não particionado.
-- Metadados de NTFS, FAT12/16/32 e exFAT: arquivos apagados com nome, pasta e data.
-- Carving por estrutura de JPEG, PNG, GIF, BMP, PDF, ZIP e derivados (DOCX, XLSX, PPTX, ODF, EPUB, APK, JAR), MP4/MOV/HEIC, AVI/WAV/WebP, SQLite, 7z, OLE, MP3 e PE.
-- Mapa de blocos livres do ext2/3/4 para varrer apenas o espaço livre.
-- Fusão sem duplicatas e confiança (alta/média/baixa) por arquivo.
-- Detecção de volumes cifrados (BitLocker, LUKS) e aviso de TRIM em SSD.
-- Imagem forense tolerante a setores ruins, pausar/retomar varredura e sessões salvas.
-- Recuperação com SHA-256 e manifesto; recusa de destino no disco de origem.
-- CLI `guara` e interface gráfica (Tauri) com tema claro/escuro e layout responsivo; modo `guara ui` no navegador.
-- CI (Linux/Windows/macOS) e releases automáticas por tag.
+### Added
+- Rust core, read-only on the source: access to devices and images (Windows, Linux, macOS).
+- Reading of MBR/GPT, detection of lost partitions and unpartitioned space.
+- Metadata from NTFS, FAT12/16/32 and exFAT: deleted files with name, folder and date.
+- Structure-aware carving of JPEG, PNG, GIF, BMP, PDF, ZIP and derivatives (DOCX, XLSX, PPTX, ODF, EPUB, APK, JAR), MP4/MOV/HEIC, AVI/WAV/WebP, SQLite, 7z, OLE, MP3 and PE.
+- Free block map of ext2/3/4 to scan only the free space.
+- Merging without duplicates and per-file confidence (high/medium/low).
+- Detection of encrypted volumes (BitLocker, LUKS) and TRIM warning on SSDs.
+- Forensic image tolerant of bad sectors, pause/resume of scans and saved sessions.
+- Recovery with SHA-256 and manifest; refusal of a destination on the source disk.
+- `guara` CLI and graphical interface (Tauri) with light/dark theme and responsive layout; `guara ui` mode in the browser.
+- CI (Linux/Windows/macOS) and automatic releases by tag.

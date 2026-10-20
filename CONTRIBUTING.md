@@ -1,12 +1,14 @@
-# Contribuindo com o Guará
+# Contributing to Guará
 
-Obrigado por ajudar! Regras de ouro:
+[English](CONTRIBUTING.md) · [Português](CONTRIBUTING.pt-BR.md)
 
-1. **Nunca escreva na origem.** Qualquer código que abra um dispositivo deve usar `source::open_path` (somente leitura). PRs que escrevem no disco de origem são recusados.
-2. **Teste com dados reais.** Novos detectores/leitores precisam de teste que recupera um arquivo conhecido bit a bit (veja `crates/guara-core/tests/` e `scripts/make-fixtures.sh`).
-3. **Seja honesto sobre confiança.** Se o conteúdo não puder ser validado, a confiança é no máximo média.
+Thanks for helping! Golden rules:
 
-## Fluxo
+1. **Never write to the source.** Any code that opens a device must use `source::open_path` (read-only). PRs that write to the source disk are rejected.
+2. **Test with real data.** New detectors/readers need a test that recovers a known file bit for bit (see `crates/guara-core/tests/` and `scripts/make-fixtures.sh`).
+3. **Be honest about confidence.** If the content cannot be validated, confidence is at most medium.
+
+## Workflow
 
 ```bash
 cargo fmt --all
@@ -14,26 +16,26 @@ cargo clippy --workspace --all-targets
 cargo test --workspace
 ```
 
-No Linux os testes geram imagens com `mtools`, `ntfs-3g`, `e2fsprogs`, `exfatprogs`, `imagemagick`, `zip` e `python3`. Sem essas ferramentas os testes com imagem são ignorados (defina `GUARA_REQUIRE_FIXTURES=1` para falhar).
+On Linux the tests build images with `mtools`, `ntfs-3g`, `e2fsprogs`, `exfatprogs`, `imagemagick`, `zip` and `python3`. Without these tools the image tests are skipped (set `GUARA_REQUIRE_FIXTURES=1` to make them fail).
 
-Para as imagens de referência externas (BitLocker, FileVault 2, dfvfs, AFF4), rode `scripts/fetch-testdata.sh`; sem elas esses testes são pulados. O teste de BitLocker leva cerca de 75 s.
+For the external reference images (BitLocker, FileVault 2, dfvfs, AFF4), run `scripts/fetch-testdata.sh`; without them those tests are skipped. The BitLocker test takes about 75 s.
 
-## Onde mexer
+## Where to make changes
 
-Mapa dos módulos em [docs/arquitetura.md](docs/arquitetura.md). O que falta e o que é bem-vindo está no [ROADMAP](ROADMAP.md).
+A map of the modules is in [docs/architecture.md](docs/architecture.md). What is missing and what is welcome is in the [ROADMAP](ROADMAP.md).
 
-## Adicionando um formato de arquivo
+## Adding a file format
 
-Detectores simples ficam em `crates/guara-core/src/signatures.rs`; os mais novos, em `formats.rs`. Acrescente o detector em `detect`, o primeiro byte em `might_start`, a extensão em `category_for_ext`/`matches_ext` e um arquivo real ao `scripts/make-fixtures.sh` com teste de bit-exatidão.
+Simple detectors live in `crates/guara-core/src/signatures.rs`; the newer ones in `formats.rs`. Add the detector to `detect`, the first byte to `might_start`, the extension to `category_for_ext`/`matches_ext` and a real file to `scripts/make-fixtures.sh` with a bit-exactness test.
 
-## Adicionando um sistema de arquivos
+## Adding a file system
 
-Crie o leitor em `crates/guara-core/src/fs/`, registre-o em `fs/mod.rs` e traga um teste com imagem real ou de referência. **Não entregamos leitor sem validação**: é por isso que ReFS e Storage Spaces ainda não existem. Imagens pequenas e sem dados pessoais são o melhor presente que se pode dar ao projeto.
+Create the reader in `crates/guara-core/src/fs/`, register it in `fs/mod.rs` and bring a test with a real or reference image. **We do not ship a reader without validation**: that is why ReFS and Storage Spaces do not exist yet. Small images without personal data are the best gift you can give the project.
 
-## Documentação
+## Documentation
 
-Português, sem travessões. Ao mudar um recurso, atualize [docs/suporte.md](docs/suporte.md), o [CHANGELOG](CHANGELOG.md) e, se for o caso, o [ROADMAP](ROADMAP.md).
+The main version is in English and every file has a Portuguese translation (`*.pt-BR.md`, `docs/pt-BR/`). No em dashes or en dashes. When you change a feature, update both versions (English and Portuguese) of [docs/support.md](docs/support.md), the [CHANGELOG](CHANGELOG.md) and, if applicable, the [ROADMAP](ROADMAP.md).
 
 ## Commits
 
-Mensagens curtas no imperativo (`corrige leitura de runs esparsos no NTFS`). Uma mudança lógica por PR.
+Short messages in the imperative (`fix reading of sparse runs in NTFS`). One logical change per PR.
