@@ -76,7 +76,9 @@ The interface is a single page (`apps/gui/ui`). There are two ways to run it:
 - **Desktop app (Tauri):** the window loads the page and talks to the core directly.
 - **`guara ui`:** the binary starts a token-protected server on `127.0.0.1` and opens the browser.
 
-Because the front end is the same, everything that exists in one exists in the other.
+Because the front end is the same, everything that exists in one exists in the other. See [interface.md](interface.md) for what it looks like.
+
+<p align="center"><img src="img/explorer-light-en.png" width="720" alt="The Guará explorer"></p>
 
 ## Design decisions
 
