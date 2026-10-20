@@ -2,7 +2,7 @@
 
 [English](../support.md) · **Português**
 
-Matriz do que existe hoje (versão 1.0.1). Para o que vem a seguir, veja o [ROADMAP](../../ROADMAP.pt-BR.md).
+Matriz do que existe hoje (versão 1.1.0). Para o que vem a seguir, veja o [ROADMAP](../../ROADMAP.pt-BR.md).
 
 ## Tabelas de partição
 

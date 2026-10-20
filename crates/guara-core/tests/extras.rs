@@ -139,6 +139,7 @@ fn configuracoes_antigas_ganham_os_valores_padrao_novos() {
     settings::save(&settings::Settings {
         theme: "light".into(),
         lang: "en".into(),
+        ui_lang: Some("en".into()),
         notify: false,
         maps: true,
     })
@@ -167,7 +168,10 @@ fn notificacao_chama_o_notify_send() {
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     let old = std::env::var("PATH").unwrap_or_default();
     std::env::set_var("PATH", format!("{}:{old}", bin.path().display()));
-    notify::send("Guará: varredura concluída", "7 arquivos");
+    notify::send(notify::Notice::ScanDone {
+        count: 7,
+        target: "disco".into(),
+    });
     for _ in 0..100 {
         if marker.exists() && !std::fs::read(&marker).unwrap().is_empty() {
             break;
@@ -176,8 +180,10 @@ fn notificacao_chama_o_notify_send() {
     }
     std::env::set_var("PATH", old);
     let got = String::from_utf8(std::fs::read(&marker).unwrap()).unwrap();
+    assert!(got.contains("Guará: "), "{got}");
     assert!(
-        got.contains("Guará: varredura concluída") && got.contains("7 arquivos"),
+        got.contains("7 arquivo(s) encontrados em disco.")
+            || got.contains("7 file(s) found in disco."),
         "{got}"
     );
 }

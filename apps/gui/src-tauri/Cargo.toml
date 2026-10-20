@@ -3,7 +3,7 @@
 [package]
 name = "guara-gui"
 description = "Guará: interface gráfica de recuperação de arquivos"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/lucasrguerra/guara"

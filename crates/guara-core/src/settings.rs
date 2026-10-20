@@ -13,6 +13,10 @@ pub struct Settings {
     /// Idioma da interface: "auto", "pt" ou "en".
     #[serde(default = "auto")]
     pub lang: String,
+    /// Idioma que a interface resolveu de fato ("pt" ou "en"), para as
+    /// notificações do sistema e a saída do terminal acompanharem a tela.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_lang: Option<String>,
     /// Notificação do sistema quando uma tarefa longa termina.
     #[serde(default = "yes")]
     pub notify: bool,
@@ -34,6 +38,7 @@ impl Default for Settings {
         Self {
             theme: auto(),
             lang: auto(),
+            ui_lang: None,
             notify: true,
             maps: false,
         }
@@ -99,6 +104,30 @@ pub fn load() -> Settings {
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default()
+}
+
+/// Idioma efetivo para textos gerados fora da interface (notificações e CLI).
+/// Usa o que a interface informou; sem isso, a preferência e o ambiente.
+pub fn ui_lang() -> String {
+    let s = load();
+    if let Some(l) = s.ui_lang.as_deref() {
+        if l == "pt" || l == "en" {
+            return l.to_string();
+        }
+    }
+    if s.lang == "pt" || s.lang == "en" {
+        return s.lang;
+    }
+    let env = std::env::var("LC_ALL")
+        .or_else(|_| std::env::var("LC_MESSAGES"))
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if env.starts_with("pt") {
+        "pt".into()
+    } else {
+        "en".into()
+    }
 }
 
 pub fn save(s: &Settings) -> Result<()> {

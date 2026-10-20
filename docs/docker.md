@@ -52,7 +52,8 @@ docker run --rm \
 
 - The destination must be on **another disk** than `/dev/sdb`.
 - Reading a raw device needs root inside the container, so do not pass `--user` here.
-- To read SMART, `--device` is not enough on some systems; `--cap-add=SYS_RAWIO` is the usual extra.
+- Verified locally with a loop device (Linux): `inspect`, `scan` and `recover` read through `--device=...:r`, and a write attempt (`dd of=/dev/loop0`) fails with `Operation not permitted`. Loop devices are hidden from `guara devices`, like other virtual devices, so pass the path explicitly; a real USB disk does appear in the list.
+- SMART depends on the host, the controller and the device. `--cap-add=SYS_RAWIO` is the usual addition when `--device` alone is not enough, but this was **not** verified with a loop device, which has no SMART data.
 - Avoid `--privileged`: it gives the container access to every device.
 
 ## Other commands

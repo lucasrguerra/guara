@@ -531,14 +531,10 @@ impl Engine {
                         && s.started.elapsed().as_secs() >= 8
                         && crate::settings::load().notify
                     {
-                        crate::notify::send(
-                            "Guará: recuperação concluída",
-                            &format!(
-                                "{} arquivo(s) salvos em {}",
-                                rep.recovered.len(),
-                                rep.destination
-                            ),
-                        );
+                        crate::notify::send(crate::notify::Notice::RecoverDone {
+                            count: rep.recovered.len(),
+                            destination: rep.destination.clone(),
+                        });
                     }
                     s.status = if rep.cancelled {
                         Status::Stopped
@@ -1300,14 +1296,10 @@ fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
                 s.status = Status::Done;
                 s.checkpoint = None;
                 if s.started.elapsed().as_secs() >= 20 && crate::settings::load().notify {
-                    crate::notify::send(
-                        "Guará: varredura concluída",
-                        &format!(
-                            "{} arquivo(s) encontrados em {}.",
-                            s.found.len(),
-                            job.target
-                        ),
-                    );
+                    crate::notify::send(crate::notify::Notice::ScanDone {
+                        count: s.found.len(),
+                        target: job.target.clone(),
+                    });
                 }
             }
             Outcome::Interrupted(cp) => {
@@ -1317,7 +1309,7 @@ fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
                     s.status = Status::Paused;
                     if cp.io_lost {
                         if crate::settings::load().notify {
-                            crate::notify::send("Guará: disco desconectado?", "A varredura foi pausada sem perder nada. Reconecte o disco e continue.");
+                            crate::notify::send(crate::notify::Notice::DiskLost);
                         }
                         s.warnings.push("A leitura do dispositivo falhou repetidamente: ele provavelmente foi desconectado. A varredura foi pausada sem perder nada. Reconecte o disco e clique em Continuar.".into());
                     }

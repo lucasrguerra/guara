@@ -4,6 +4,29 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [1.1.0] - 2026-10-20
+
+### Adicionado
+- **Verificação automática da tradução** (`scripts/check-ui-i18n.mjs`): varre o JS e o HTML da interface e os rótulos emitidos pelo núcleo em Rust, falha quando há texto em português sem entrada em inglês e quando há chave duplicada no dicionário. Roda no job de lint do CI.
+- **Grupo RustCrypto no Dependabot:** `sha2`, `sha1`, `md-5`, `hmac`, `pbkdf2`, `ripemd`, `aes`, `argon2`, `cipher` e `digest` passam a chegar numa única atualização, porque as traits só são compatíveis quando as versões andam juntas.
+
+### Alterado
+- **Interface em inglês para mensagens do núcleo:** os erros mais comuns do núcleo agora têm padrões com `{n}` no dicionário, então caminhos e tamanhos também são traduzidos.
+- **Notificações no idioma escolhido:** o núcleo monta as notificações de varredura e recuperação usando o idioma salvo da interface (`ui_lang` segue `lang` ou o locale do sistema quando não definido).
+- **Datas em ISO 8601:** as datas de metadados EXIF, PDF e MP4 saem como `YYYY-MM-DDTHH:MM:SS` (MP4 com `Z`) e são formatadas pela interface no locale escolhido, em vez de uma data brasileira já pronta.
+- **RustCrypto em digest 0.11 / cipher 0.5:** `aes` 0.9, `sha2` 0.11, `sha1` 0.11, `md-5` 0.11, `hmac` 0.13, `pbkdf2` 0.13, `ripemd` 0.2 e `argon2` 0.6. BitLocker, LUKS e FileVault 2 foram conferidos contra as imagens de referência.
+- **Fluxo de release:** `tauri-action` atualizado para v1; o job de publicação restaura o nome e as notas do CHANGELOG depois dos builds do desktop, para a v1 não sobrescrevê-las.
+- **Documentação do Docker:** `--device=...:r` foi verificado com um dispositivo de loop (`inspect`, `scan`, `recover` leem; escritas são recusadas). O texto sobre SMART/`SYS_RAWIO` agora diz o que foi e o que não foi verificado.
+- **Workspace do Superset:** setup, Run e teardown foram verificados em workspaces reais; duas interfaces recebem portas diferentes, e apagar um workspace encerra o `guara ui`.
+
+### Corrigido
+- Oito chaves duplicadas em `apps/gui/ui/i18n-en.js` (a última vencia em silêncio).
+- Trechos sem tradução separados por tags inline, rótulos de metadados e mensagens da pré-visualização que a passada manual anterior não pegou.
+
+### Notas
+- Nenhuma mudança na lógica de varredura ou recuperação. Os testes de volumes cifrados passam com `GUARA_REQUIRE_FIXTURES=1`.
+- A saída do terminal continua em português.
+
 ## [1.0.1] - 2026-10-20
 
 ### Adicionado

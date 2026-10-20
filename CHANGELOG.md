@@ -4,6 +4,29 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [1.1.0] - 2026-10-20
+
+### Added
+- **Automated translation check** (`scripts/check-ui-i18n.mjs`): scans the interface JS, HTML and the labels emitted by the Rust core, fails on Portuguese text without an English entry and on duplicate dictionary keys. It runs in the CI lint job.
+- **Dependabot group for RustCrypto:** `sha2`, `sha1`, `md-5`, `hmac`, `pbkdf2`, `ripemd`, `aes`, `argon2`, `cipher` and `digest` now arrive in one update, because their traits are only compatible when the versions move together.
+
+### Changed
+- **English interface for core messages:** the most common errors from the core now have `{n}` patterns in the dictionary, so paths and sizes are translated too.
+- **Notifications in the chosen language:** the core formats scan/recovery notifications using the saved interface language (`ui_lang` follows `lang` or the system locale when unset).
+- **ISO 8601 dates:** EXIF, PDF and MP4 metadata dates are emitted as `YYYY-MM-DDTHH:MM:SS` (MP4 with `Z`) and formatted by the interface in the selected locale, instead of a pre-formatted Brazilian date.
+- **RustCrypto on digest 0.11 / cipher 0.5:** `aes` 0.9, `sha2` 0.11, `sha1` 0.11, `md-5` 0.11, `hmac` 0.13, `pbkdf2` 0.13, `ripemd` 0.2 and `argon2` 0.6. BitLocker, LUKS and FileVault 2 were checked against the reference images.
+- **Release workflow:** `tauri-action` updated to v1; the publish job restores the release name and the CHANGELOG notes after the desktop builds, so v1 cannot overwrite them.
+- **Docker documentation:** `--device=...:r` was verified with a loop device (`inspect`, `scan`, `recover` read; writes are refused). The SMART/`SYS_RAWIO` wording now states what was and was not verified.
+- **Superset workspace:** setup, Run and teardown were verified in real workspaces; two interfaces get different ports, and deleting a workspace stops its `guara ui`.
+
+### Fixed
+- Eight duplicated keys in `apps/gui/ui/i18n-en.js` (the last one won silently).
+- Untranslated fragments split by inline tags, metadata labels and preview messages that the previous manual pass missed.
+
+### Notes
+- No change to scanning or recovery logic. The encrypted-volume tests pass with `GUARA_REQUIRE_FIXTURES=1`.
+- CLI output remains in Portuguese.
+
 ## [1.0.1] - 2026-10-20
 
 ### Added

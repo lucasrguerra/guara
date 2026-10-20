@@ -2,7 +2,7 @@
 //  • app Tauri: invoke('rpc')   • modo `guara ui`: POST /rpc/<método> com token.
 
 import { createExplorer } from './explorer.js';
-import { setLang, LOC } from './i18n.js';
+import { setLang, LOC, currentLang } from './i18n.js';
 
 const tauri = window.__TAURI__;
 const params = new URLSearchParams(location.search);
@@ -53,7 +53,7 @@ document.querySelectorAll('[data-theme-pick]').forEach((b) => (b.onclick = async
 
 // ------------------------------------------------------------------ configurações
 // (declarado antes do uso: `S` é definido mais abaixo, por isso o objeto fica aqui)
-const SETTINGS = { theme: 'auto', lang: 'auto', notify: true, maps: false };
+const SETTINGS = { theme: 'auto', lang: 'auto', ui_lang: null, notify: true, maps: false };
 async function saveSettings(patch) {
   Object.assign(SETTINGS, patch);
   try { await rpc('settings_set', SETTINGS); } catch { /* segue só com o armazenamento local */ }
@@ -750,8 +750,9 @@ $('#settingsBtn')?.addEventListener('click', () => {
   d.onclose = () => {
     if (d.returnValue !== 'ok') return;
     const patch = { lang: d.querySelector('[name=lang]').value, notify: d.querySelector('[name=notify]').checked, maps: d.querySelector('[name=maps]').checked };
-    saveSettings(patch);
     setLang(patch.lang);
+    patch.ui_lang = currentLang();
+    saveSettings(patch);
     EX?.relang?.();
     toast('Salvo');
   };
@@ -804,6 +805,7 @@ function watchClose() {
       try { localStorage.setItem('guara-theme', st.theme); } catch { /* */ }
     } catch { /* usa o local */ }
     setLang(SETTINGS.lang);
+    if (SETTINGS.ui_lang !== currentLang()) saveSettings({ ui_lang: currentLang() });
     watchClose();
     tauri?.event?.listen?.('elevate-failed', (e) => { toast(String(e.payload || 'Não foi possível reiniciar como administrador')); });
   } catch (e) {

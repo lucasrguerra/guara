@@ -3,6 +3,19 @@ updates:
   - package-ecosystem: cargo
     directory: /
     schedule: { interval: weekly }
+    groups:
+      rustcrypto:
+        patterns:
+          - sha2
+          - sha1
+          - md-5
+          - hmac
+          - pbkdf2
+          - ripemd
+          - aes
+          - argon2
+          - cipher
+          - digest
   - package-ecosystem: cargo
     directory: /apps/gui/src-tauri
     schedule: { interval: weekly }
