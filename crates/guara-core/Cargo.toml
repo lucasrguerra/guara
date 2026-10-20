@@ -23,7 +23,7 @@ bzip2 = "0.6"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 snap = "1"
 ruzstd = "0.9"
-lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode"] }
+lz4_flex = { version = "0.14", default-features = false, features = ["safe-decode", "safe-encode"] }
 aes = "0.9"
 hmac = "0.13"
 pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
