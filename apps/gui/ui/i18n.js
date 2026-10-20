@@ -7,6 +7,7 @@ import { EN } from './i18n-en.js';
 
 let lang = 'pt';
 export const isEn = () => lang === 'en';
+export const currentLang = () => lang;
 export const LOC = () => (lang === 'en' ? 'en-US' : 'pt-BR');
 
 export function resolveLang(pref) {

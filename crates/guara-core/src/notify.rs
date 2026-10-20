@@ -3,9 +3,59 @@
 
 use std::process::{Command, Stdio};
 
+/// Avisos que o núcleo envia ao sistema operacional. O texto é montado no
+/// idioma efetivo da interface (`settings::ui_lang`), porque notificações não
+/// passam pelo dicionário do DOM.
+pub enum Notice {
+    ScanDone { count: usize, target: String },
+    RecoverDone { count: usize, destination: String },
+    DiskLost,
+}
+
+impl Notice {
+    fn text(&self, lang: &str) -> (String, String) {
+        let en = lang == "en";
+        match self {
+            Notice::ScanDone { count, target } => (
+                "Guará: scan complete".into(),
+                if en {
+                    format!("{count} file(s) found in {target}.")
+                } else {
+                    format!("{count} arquivo(s) encontrados em {target}.")
+                },
+            ),
+            Notice::RecoverDone { count, destination } => (
+                if en {
+                    "Guará: recovery complete".into()
+                } else {
+                    "Guará: recuperação concluída".into()
+                },
+                if en {
+                    format!("{count} file(s) saved to {destination}")
+                } else {
+                    format!("{count} arquivo(s) salvos em {destination}")
+                },
+            ),
+            Notice::DiskLost => (
+                if en {
+                    "Guará: disk disconnected?".into()
+                } else {
+                    "Guará: disco desconectado?".into()
+                },
+                if en {
+                    "The scan was paused without losing anything. Reconnect the disk and continue."
+                        .into()
+                } else {
+                    "A varredura foi pausada sem perder nada. Reconecte o disco e continue.".into()
+                },
+            ),
+        }
+    }
+}
+
 /// Envia uma notificação sem bloquear. Falhas são ignoradas (é só um aviso).
-pub fn send(title: &str, body: &str) {
-    let (title, body) = (title.to_string(), body.to_string());
+pub fn send(notice: Notice) {
+    let (title, body) = notice.text(&crate::settings::ui_lang());
     std::thread::spawn(move || {
         if let Some(mut c) = command(&title, &body) {
             if let Ok(mut child) = c

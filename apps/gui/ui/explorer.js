@@ -150,6 +150,9 @@ export function createExplorer(deps) {
       : new Date(k + '-01T00:00:00Z').toLocaleDateString(LOC(), { timeZone: 'UTC', month: 'long', year: 'numeric' });
   };
   const fmtDate = (t) => (t == null ? 'sem data' : new Date(t * 1000).toLocaleString(LOC(), { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' }));
+  // Metadados do núcleo trazem datas em ISO 8601; o idioma decide a ordem.
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?$/;
+  const fmtMeta = (v) => ISO_DATE.test(v) ? new Date(v.endsWith('Z') ? v : v + 'Z').toLocaleString(LOC(), { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'medium' }) : v;
   const fmtDay = (t) => (t == null ? '' : new Date(t * 1000).toLocaleDateString(LOC(), { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }));
 
   function geometry() {
@@ -591,7 +594,7 @@ export function createExplorer(deps) {
       if (my !== metaToken || !$('#xpMeta')) return;
       const rows = (m.fields || []).filter(([k]) => !['Dimensões'].includes(k));
       if (!rows.length) return;
-      $('#xpMeta').innerHTML = `<h5>Metadados${m.kind ? ` · ${esc(m.kind)}` : ''}</h5><dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`
+      $('#xpMeta').innerHTML = `<h5>Metadados${m.kind ? ` · ${esc(m.kind)}` : ''}</h5><dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(fmtMeta(v))}</dd>`).join('')}</dl>`
         + (m.gps ? gpsHtml(m.gps) : '');
       $('#xpOsm')?.addEventListener('click', () => rpc('open_url', { url: `https://www.openstreetmap.org/?mlat=${m.gps[0]}&mlon=${m.gps[1]}#map=15/${m.gps[0]}/${m.gps[1]}` }).catch(() => {}));
     }).catch(() => {});

@@ -9,8 +9,7 @@ pub mod filevault;
 pub mod luks;
 
 use crate::source::Source;
-use aes::cipher::generic_array::GenericArray;
-use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
+use aes::cipher::{Block, BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use aes::{Aes128, Aes192, Aes256};
 use std::io;
 use std::sync::Arc;
@@ -33,7 +32,7 @@ impl AesAny {
         })
     }
     pub fn encrypt(&self, b: &mut [u8; 16]) {
-        let g = GenericArray::from_mut_slice(b);
+        let g: &mut Block<Aes128> = (&mut b[..]).try_into().expect("bloco AES de 16 bytes");
         match self {
             AesAny::A128(c) => c.encrypt_block(g),
             AesAny::A192(c) => c.encrypt_block(g),
@@ -41,7 +40,7 @@ impl AesAny {
         }
     }
     pub fn decrypt(&self, b: &mut [u8; 16]) {
-        let g = GenericArray::from_mut_slice(b);
+        let g: &mut Block<Aes128> = (&mut b[..]).try_into().expect("bloco AES de 16 bytes");
         match self {
             AesAny::A128(c) => c.decrypt_block(g),
             AesAny::A192(c) => c.decrypt_block(g),

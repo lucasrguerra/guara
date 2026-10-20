@@ -444,11 +444,11 @@ fn exif_epoch(s: &str) -> Option<i64> {
     Some(crate::fs::days_from_civil(y, mo, d) * 86400 + h * 3600 + mi * 60 + se)
 }
 
-/// "2023:07:14 18:22:05" -> "14/07/2023 18:22:05"
+/// "2023:07:14 18:22:05" -> "2023-07-14T18:22:05" (a interface formata por idioma)
 fn exif_date(s: &str) -> String {
     let b = s.as_bytes();
     if b.len() >= 19 && b[4] == b':' && b[7] == b':' {
-        format!("{}/{}/{} {}", &s[8..10], &s[5..7], &s[0..4], &s[11..19])
+        format!("{}-{}-{}T{}", &s[0..4], &s[5..7], &s[8..10], &s[11..19])
     } else {
         s.to_string()
     }
@@ -613,17 +613,17 @@ fn pdf_text(b: &[u8]) -> String {
     b.iter().map(|&c| c as char).collect()
 }
 
-/// "D:20230714182205-03'00'" -> "14/07/2023 18:22:05"
+/// "D:20230714182205-03'00'" -> "2023-07-14T18:22:05" (a interface formata por idioma)
 fn pdf_date(s: &str) -> String {
     let t = s.trim_start_matches("D:");
     let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
     if digits.len() >= 8 {
         let g = |a: usize, b: usize| digits.get(a..b).unwrap_or("00");
         return format!(
-            "{}/{}/{} {}:{}:{}",
-            g(6, 8),
-            g(4, 6),
+            "{}-{}-{}T{}:{}:{}",
             g(0, 4),
+            g(4, 6),
+            g(6, 8),
             g(8, 10),
             g(10, 12),
             g(12, 14)
@@ -733,21 +733,18 @@ fn unescape(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
-/// "2023-07-14T18:22:05Z" -> "14/07/2023 18:22:05 (UTC)"
+/// Datas ISO 8601 ficam como estão; a interface as formata no idioma escolhido.
 fn iso_date(s: &str) -> String {
     let b = s.as_bytes();
     if b.len() >= 19 && b[4] == b'-' && b[10] == b'T' {
-        let utc = if s.ends_with('Z') { " (UTC)" } else { "" };
-        return format!(
-            "{}/{}/{} {}{}",
-            &s[8..10],
-            &s[5..7],
-            &s[0..4],
-            &s[11..19],
-            utc
-        );
+        let mut out = s[..19].to_string();
+        if s.len() == 20 && s.ends_with('Z') {
+            out.push('Z');
+        }
+        out
+    } else {
+        s.to_string()
     }
-    s.to_string()
 }
 
 fn ooxml(fr: &Fr, m: &mut Meta) {
@@ -890,7 +887,7 @@ fn moov(d: &[u8], m: &mut Meta) {
                 if created > EPOCH_1904 {
                     m.add(
                         "Gravado em (metadado)",
-                        fmt_unix((created - EPOCH_1904) as i64),
+                        iso_unix((created - EPOCH_1904) as i64),
                     );
                 }
                 if ts > 0 && dur > 0 {
@@ -917,6 +914,19 @@ fn moov(d: &[u8], m: &mut Meta) {
             _ => {}
         }
     }
+}
+
+/// Instante em ISO 8601 UTC ("2023-07-14T18:22:05Z"), para a interface formatar.
+pub fn iso_unix(t: i64) -> String {
+    let days = t.div_euclid(86400);
+    let rem = t.rem_euclid(86400);
+    let (y, mo, d) = civil_from_days(days);
+    format!(
+        "{y:04}-{mo:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
 }
 
 pub fn fmt_unix(t: i64) -> String {

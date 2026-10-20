@@ -23,6 +23,11 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Cobertura da tradução da interface
+        run: node scripts/check-ui-i18n.mjs
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets
 

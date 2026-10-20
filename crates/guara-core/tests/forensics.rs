@@ -151,7 +151,7 @@ fn exif_camera_data_e_gps() {
     assert!(m
         .fields
         .iter()
-        .any(|(k, v)| k == "Foto tirada em" && v == "14/07/2023 18:22:05"));
+        .any(|(k, v)| k == "Foto tirada em" && v == "2023-07-14T18:22:05"));
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn metadados_de_pdf() {
     assert_eq!(get("Autor").as_deref(), Some("Maria (Perita) Silva"));
     assert_eq!(get("Criado com").as_deref(), Some("LibreOffice Writer"));
     assert_eq!(get("Gerado por").as_deref(), Some("PDF12"));
-    assert_eq!(get("Criado em").as_deref(), Some("14/07/2023 18:22:05"));
+    assert_eq!(get("Criado em").as_deref(), Some("2023-07-14T18:22:05"));
     assert_eq!(get("Páginas (aprox.)").as_deref(), Some("12"));
 }
 
@@ -279,10 +279,7 @@ fn metadados_de_documentos_office() {
         );
         assert_eq!(get("Autor").as_deref(), Some("Ana Souza"));
         assert_eq!(get("Última modificação por").as_deref(), Some("Bruno Lima"));
-        assert_eq!(
-            get("Criado em").as_deref(),
-            Some("14/07/2023 18:22:05 (UTC)")
-        );
+        assert_eq!(get("Criado em").as_deref(), Some("2023-07-14T18:22:05Z"));
         assert_eq!(get("Aplicativo").as_deref(), Some("Microsoft Office Word"));
         assert_eq!(get("Empresa").as_deref(), Some("ACME"));
     }
@@ -323,7 +320,7 @@ fn metadados_de_mp4() {
     assert_eq!(get("Duração").as_deref(), Some("0:02:05"));
     assert_eq!(
         get("Gravado em (metadado)").as_deref(),
-        Some("14/07/2023 18:22:05 (UTC)")
+        Some("2023-07-14T18:22:05Z")
     );
     assert_eq!(get("Dimensões").as_deref(), Some("1920 × 1080 px"));
 }
