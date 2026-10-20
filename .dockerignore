@@ -1,0 +1,11 @@
+.git
+target
+**/node_modules
+apps/gui/src-tauri
+docs
+scripts
+*.img
+*.guara-session.json
+.claude
+.wolf
+.superpowers

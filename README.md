@@ -46,6 +46,8 @@ Every file has a `.sha256` next to it. To build from source: `cargo build --rele
 
 Reading raw disks requires privileges: **administrator** (Windows), `sudo` (Linux and macOS). Even as root, Guará writes sessions, reports and recovered files with the owner and permissions of the user who launched it.
 
+There is also a Docker image of the command line tool, for Linux hosts and for working on image files: see [docs/docker.md](docs/docker.md).
+
 ## Getting started
 
 ```bash
