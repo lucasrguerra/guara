@@ -14,7 +14,7 @@ sha2 = "0.11"
 sha1 = "0.11"
 md-5 = "0.11"
 jpeg-decoder = { version = "0.3", default-features = false }
-jpeg-encoder = "0.6"
+jpeg-encoder = "0.7"
 image = { version = "0.25", default-features = false, features = ["png", "gif", "bmp", "webp"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 thiserror = "2"
