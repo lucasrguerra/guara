@@ -46,6 +46,8 @@ Cada arquivo tem um `.sha256` ao lado. Compilar do código: `cargo build --relea
 
 Ler discos brutos exige privilégios: **administrador** (Windows), `sudo` (Linux e macOS). Mesmo como root, o Guará grava sessões, relatórios e arquivos recuperados com o dono e as permissões do usuário que o abriu.
 
+Há também uma imagem Docker do terminal, para hospedeiros Linux e para trabalhar com arquivos de imagem: veja [docs/pt-BR/docker.md](docs/pt-BR/docker.md).
+
 ## Começando
 
 ```bash
