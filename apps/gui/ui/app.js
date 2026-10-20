@@ -467,7 +467,7 @@ async function startImage() {
   const base = (S.defaults.home || '') + (S.defaults.sep || '/');
   const f = await askForm({ title: 'Criar imagem do disco', text: 'Onde salvar o arquivo de imagem? Use <b>outro disco</b> com espaço suficiente e um nome que ainda não exista.', ok: 'Criar imagem', fields: [
     { name: 'dest', label: 'Arquivo de destino', value: base + 'disco-guara.img' },
-    { name: 'format', label: 'Formato', value: 'raw', options: [['raw', 'Bruta (.img)'], ['e01', 'Expert Witness (.E01, com hash e metadados)'], ['aff4', 'AFF4 (.aff4)']] },
+    { name: 'format', label: 'Formato da imagem', value: 'raw', options: [['raw', 'Bruta (.img)'], ['e01', 'Expert Witness (.E01, com hash e metadados)'], ['aff4', 'AFF4 (.aff4)']] },
     { name: 'case', label: 'Número do caso (E01/AFF4)', value: '' },
     { name: 'examiner', label: 'Examinador (E01/AFF4)', value: '' },
   ] });
