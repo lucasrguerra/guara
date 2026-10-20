@@ -752,6 +752,7 @@ $('#settingsBtn')?.addEventListener('click', () => {
     const patch = { lang: d.querySelector('[name=lang]').value, notify: d.querySelector('[name=notify]').checked, maps: d.querySelector('[name=maps]').checked };
     saveSettings(patch);
     setLang(patch.lang);
+    EX?.relang?.();
     toast('Salvo');
   };
   d.showModal();
