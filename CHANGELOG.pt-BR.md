@@ -4,6 +4,27 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [1.0.1] - 2026-10-20
+
+### Adicionado
+- **Imagem Docker do terminal** (`Dockerfile`, [docs/pt-BR/docker.md](https://github.com/lucasrguerra/guara/blob/main/docs/pt-BR/docker.md)): para hospedeiros Linux, servidores sem desktop e arquivos de imagem forense. A interface gráfica não é servida pelo container.
+- **Telas da interface** no README e na nova [docs/pt-BR/interface.md](https://github.com/lucasrguerra/guara/blob/main/docs/pt-BR/interface.md), tiradas da interface real sobre uma imagem de teste sintética.
+- **Configuração de workspaces do Superset** (`.superset/`): scripts de setup, run e teardown para workspaces em paralelo.
+
+### Alterado
+- **Documentação:** o inglês passa a ser o idioma principal. As versões em português ficam em `*.pt-BR.md` e `docs/pt-BR/`, com seletor de idioma no topo de cada arquivo.
+- **Interface em inglês completada:** opções de varredura, diálogo de imagem de disco, rótulos de metadados (EXIF, PDF, MP4), tipos de arquivo, campos de saúde do disco, contadores de seleção e mensagens da pré-visualização ainda apareciam em português.
+- **Troca de idioma:** o explorador agora se redesenha ao mudar o idioma em Configurações, e as datas e os títulos de mês acompanham.
+- Dependências: `getrandom` 0.4 e `windows-sys` 0.61. GitHub Actions atualizadas (`checkout` 7, `setup-node` 7, `github-script` 9).
+
+### Corrigido
+- Texto branco sobre fundo branco nas listas de Idioma e Ordenar com o tema escuro (inclusive Auto com o sistema em escuro).
+- O campo "Formato" do diálogo de imagem de disco era traduzido como "Form factor" em inglês.
+
+### Notas
+- Nenhuma mudança na lógica de varredura ou de recuperação. As atualizações de dependências tocam o token do servidor local da interface (`getrandom`) e as ligações de dispositivo do Windows (`windows-sys`).
+- Mensagens de erro do núcleo, notificações e a saída do terminal continuam em português.
+
 ## [1.0.0] - 2026-10-19
 
 ### Adicionado

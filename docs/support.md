@@ -2,7 +2,7 @@
 
 [English](support.md) · [Português](pt-BR/suporte.md)
 
-Matrix of what exists today (version 1.0.0). For what comes next, see the [ROADMAP](../ROADMAP.md).
+Matrix of what exists today (version 1.0.1). For what comes next, see the [ROADMAP](../ROADMAP.md).
 
 ## Partition tables
 

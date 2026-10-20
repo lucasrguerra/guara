@@ -24,10 +24,11 @@ Legenda: ✅ feito · 🟡 parcial · 🔜 planejado · 🔭 ideia a longo prazo
 | 0.5.0 | 2026-10-18 | Visualizador de SQLite com linhas apagadas, SMART, interface em inglês, retomada de recuperação |
 | 0.6.0 | 2026-10-18 | Saúde do disco completa (SMART ATA e NVMe), `guara health`, nova logo |
 | 1.0.0 | 2026-10-19 | ext4, HFS+, Btrfs, XFS, APFS; BitLocker, LUKS, FileVault 2; RAID e LVM; E01, Ex01, AFF4; JPEG fragmentado; MP4 sem moov |
+| 1.0.1 | 2026-10-20 | Documentação em inglês com tradução em português, interface completa em inglês, telas, imagem Docker do terminal |
 
 Detalhes de cada versão no [CHANGELOG](CHANGELOG.pt-BR.md).
 
-## Situação atual (1.0.0) contra o que se espera de uma suíte forense
+## Situação atual (1.0.1) contra o que se espera de uma suíte forense
 
 ### 1. Sistemas de arquivos com metadados
 
