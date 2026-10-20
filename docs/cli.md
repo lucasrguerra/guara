@@ -1,124 +1,126 @@
-# Referência do terminal
+# Terminal reference
 
-Ler disco bruto exige privilégios: administrador no Windows, `sudo` no Linux e no macOS. Use `guara <comando> --help` para a lista completa de opções.
+[English](cli.md) · [Português](pt-BR/cli.md)
 
-## Comandos
+Reading a raw disk requires privileges: administrator on Windows, `sudo` on Linux and macOS. Use `guara <command> --help` for the full list of options.
 
-| Comando | Para que serve |
+## Commands
+
+| Command | What it does |
 |---|---|
-| `devices` | Lista discos e pendrives, avisa TRIM e volumes montados |
-| `inspect <origem>` | Partições, espaço não particionado, cifragem |
-| `health <origem>` | Saúde do disco (SMART); requer `smartmontools` |
-| `scan <origem>` | Varredura de arquivos apagados e perdidos |
-| `resume <sessão>` | Continua uma varredura pausada |
-| `recover <sessão> <destino>` | Recupera os arquivos de uma sessão |
-| `image <origem> <destino>` | Imagem forense (bruta, E01 ou AFF4) |
-| `verify <imagem>` | Confere uma imagem E01 ou Ex01 contra o hash gravado |
-| `hash <origem>` | MD5, SHA-1 e SHA-256 do dispositivo |
-| `search <origem> <termos...>` | Texto no disco inteiro, UTF-8 e UTF-16 |
-| `export <sessão> <csv>` | Planilha dos achados |
-| `report <sessão> <html>` | Relatório HTML imprimível |
-| `sessions` | Sessões salvas automaticamente |
-| `ui` | Interface no navegador (127.0.0.1, com token) |
+| `devices` | Lists disks and USB sticks, warns about TRIM and mounted volumes |
+| `inspect <source>` | Partitions, unpartitioned space, encryption |
+| `health <source>` | Disk health (SMART); requires `smartmontools` |
+| `scan <source>` | Scan for deleted and lost files |
+| `resume <session>` | Continues a paused scan |
+| `recover <session> <destination>` | Recovers the files of a session |
+| `image <source> <destination>` | Forensic image (raw, E01 or AFF4) |
+| `verify <image>` | Checks an E01 or Ex01 image against the stored hash |
+| `hash <source>` | MD5, SHA-1 and SHA-256 of the device |
+| `search <source> <terms...>` | Text across the whole disk, UTF-8 and UTF-16 |
+| `export <session> <csv>` | Spreadsheet of the findings |
+| `report <session> <html>` | Printable HTML report |
+| `sessions` | Automatically saved sessions |
+| `ui` | Interface in the browser (127.0.0.1, with token) |
 
-`--json` existe em `devices`, `inspect`, `health` e `scan`.
+`--json` exists on `devices`, `inspect`, `health` and `scan`.
 
-## Varredura
+## Scanning
 
 ```bash
-sudo guara scan /dev/sdb --session s.json --list     # profunda, com lista
-sudo guara scan /dev/sdb --quick                     # só metadados, em segundos
-guara scan disco.img --category image,document --min-confidence medium
-guara scan disco.img --recover /mnt/outro-disco/Recuperados
+sudo guara scan /dev/sdb --session s.json --list     # deep, with listing
+sudo guara scan /dev/sdb --quick                     # metadata only, in seconds
+guara scan disk.img --category image,document --min-confidence medium
+guara scan disk.img --recover /mnt/other-disk/Recovered
 ```
 
-Filtros (valem em `scan`, `recover`, `export` e `report`):
+Filters (valid on `scan`, `recover`, `export` and `report`):
 
-| Opção | Efeito |
+| Option | Effect |
 |---|---|
-| `--category` | `image`, `document`, `video`, `audio`, `archive`, `database`, `other` (separe por vírgula) |
-| `--min-confidence` | `low`, `medium` ou `high` |
-| `--name` | só nomes e caminhos que contenham o texto |
-| `--organize` | como gravar: `folders` (pastas originais), `type`, `date` ou `flat` |
+| `--category` | `image`, `document`, `video`, `audio`, `archive`, `database`, `other` (comma separated) |
+| `--min-confidence` | `low`, `medium` or `high` |
+| `--name` | only names and paths that contain the text |
+| `--organize` | how to write: `folders` (original folders), `type`, `date` or `flat` |
 
-## Recuperação
+## Recovery
 
 ```bash
-guara recover s.json /mnt/outro-disco/Recuperados --category image
+guara recover s.json /mnt/other-disk/Recovered --category image
 guara resume s.json
 ```
 
-O destino precisa estar em **outro disco**. Cada recuperação grava `guara-manifesto.json` com MD5, SHA-1 e SHA-256 de todos os arquivos. Se a recuperação for interrompida, repetir o comando pula o que já foi copiado e conferido.
+The destination must be on **another disk**. Every recovery writes `guara-manifesto.json` with the MD5, SHA-1 and SHA-256 of every file. If the recovery is interrupted, repeating the command skips what was already copied and checked.
 
-## Volumes cifrados
+## Encrypted volumes
 
 ```bash
 sudo guara scan /dev/sdb1 --ask-password
 sudo guara scan /dev/sdb1 --recovery-key 111111-222222-333333-444444-555555-666666-777777-888888
-sudo guara scan /dev/sdb1 --key-file chave.BEK
+sudo guara scan /dev/sdb1 --key-file key.BEK
 sudo guara scan /dev/sdb1 --volume-key 4f2a...
 ```
 
-| Opção | Uso |
+| Option | Use |
 |---|---|
-| `--ask-password` | Pergunta no terminal, sem mostrar. **Preferida** |
-| `GUARA_PASSWORD` | Variável de ambiente com a senha |
-| `--password` | Senha na linha de comando (fica no histórico do shell) |
-| `--recovery-key` | Chave numérica do BitLocker |
-| `--key-file` | `.BEK` do BitLocker ou keyfile do LUKS |
-| `--volume-key` | Chave do volume em hexadecimal (a que o Guará mostra ao abrir um volume) |
-| `--remember-keys` | Guarda na sessão as chaves dos volumes abertos (nunca a senha) |
+| `--ask-password` | Asks in the terminal, without echo. **Preferred** |
+| `GUARA_PASSWORD` | Environment variable with the password |
+| `--password` | Password on the command line (stays in the shell history) |
+| `--recovery-key` | BitLocker numeric key |
+| `--key-file` | BitLocker `.BEK` or LUKS keyfile |
+| `--volume-key` | Volume key in hexadecimal (the one Guará shows when it opens a volume) |
+| `--remember-keys` | Stores the keys of opened volumes in the session (never the password) |
 
-## RAID e LVM
+## RAID and LVM
 
-Passe o disco principal e os outros membros com `--member`, repetido. Use `-` para um disco ausente.
+Pass the main disk and the other members with `--member`, repeated. Use `-` for a missing disk.
 
 ```bash
-# Com metadados do mdadm ou do LVM: o Guará lê tudo sozinho
-guara inspect disco1.img --member disco2.img --member disco3.img
+# With mdadm or LVM metadata: Guará reads everything by itself
+guara inspect disk1.img --member disk2.img --member disk3.img
 
-# Sem metadados: descobre nível, faixa, layout e ordem
-guara scan disco1.img --member disco2.img --member disco3.img --raid
+# Without metadata: discovers level, stripe size, layout and order
+guara scan disk1.img --member disk2.img --member disk3.img --raid
 
-# Fixando o que você já sabe
-guara scan disco1.img --member disco2.img --member - --raid \
+# Fixing what you already know
+guara scan disk1.img --member disk2.img --member - --raid \
   --raid-level 5 --raid-chunk-kb 64 --raid-layout left-symmetric --raid-order 0,1,2
 ```
 
-## Imagem forense
+## Forensic image
 
 ```bash
-sudo guara image /dev/sdb /mnt/outro-disco/sdb.img                      # bruta, com mapa de erros
-sudo guara image /dev/sdb /mnt/outro-disco/sdb --format e01 \
-  --case 2026-001 --examiner "Nome" --evidence E1 --description "HD do notebook"
-sudo guara image /dev/sdb /mnt/outro-disco/sdb --format aff4
-guara verify /mnt/outro-disco/sdb.E01
+sudo guara image /dev/sdb /mnt/other-disk/sdb.img                      # raw, with error map
+sudo guara image /dev/sdb /mnt/other-disk/sdb --format e01 \
+  --case 2026-001 --examiner "Name" --evidence E1 --description "Laptop HDD"
+sudo guara image /dev/sdb /mnt/other-disk/sdb --format aff4
+guara verify /mnt/other-disk/sdb.E01
 ```
 
-Para E01: `--segment-mib` (tamanho de cada segmento, padrão 1500, 0 para um arquivo só) e `--compression` (0 a 9, padrão 1).
+For E01: `--segment-mib` (size of each segment, default 1500, 0 for a single file) and `--compression` (0 to 9, default 1).
 
-## Vídeo sem índice (MP4 sem moov)
+## Video without an index (MP4 without moov)
 
-Passe um vídeo **íntegro da mesma câmera ou drone** para o Guará refazer o índice:
+Pass an **intact video from the same camera or drone** so Guará can rebuild the index:
 
 ```bash
-guara scan cartao.img --reference VIDEO_BOM.MP4 --category video
+guara scan card.img --reference GOOD_VIDEO.MP4 --category video
 ```
 
-`--reference` pode ser repetido. O áudio não é reconstruído.
+`--reference` can be repeated. Audio is not reconstructed.
 
-## Busca de texto
+## Text search
 
 ```bash
-sudo guara search /dev/sdb "contrato" "cpf" --case-sensitive --max 500
+sudo guara search /dev/sdb "contract" "ssn" --case-sensitive --max 500
 ```
 
-Procura em UTF-8 e UTF-16 (`--no-utf16` desliga), inclusive no espaço livre e fora de partições. Mostra posição, partição e contexto. `--max` limita os resultados (padrão 200).
+Searches in UTF-8 and UTF-16 (`--no-utf16` turns it off), including free space and areas outside partitions. Shows position, partition and context. `--max` limits the results (default 200).
 
-## Relatório
+## Report
 
 ```bash
-guara report s.json relatorio.html --case 2026-001 --examiner "Nome" --hash-source
+guara report s.json report.html --case 2026-001 --examiner "Name" --hash-source
 ```
 
-Traz identificação do caso, origem, partições, resumo, hashes e a lista dos arquivos. `--hash-source` inclui o hash da origem inteira.
+Includes case identification, source, partitions, summary, hashes and the list of files. `--hash-source` adds the hash of the whole source.

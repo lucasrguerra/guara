@@ -1,132 +1,134 @@
 <p align="center"><img src="apps/gui/ui/guara-logo.svg" width="360" alt="Guará"></p>
 <h1 align="center">Guará</h1>
-<p align="center">Recuperação de arquivos livre e gratuita para HD, SSD e pendrive.<br>Terminal e interface gráfica · Windows, Linux e macOS · somente leitura na origem.</p>
+<p align="center">Free file recovery for hard drives, SSDs and USB sticks.<br>Terminal and graphical interface · Windows, Linux and macOS · read-only on the source.</p>
 
-<p align="center"><a href="docs/suporte.md">O que suporta</a> · <a href="docs/cli.md">Terminal</a> · <a href="docs/arquitetura.md">Arquitetura</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="CHANGELOG.md">Changelog</a></p>
+<p align="center"><a href="docs/support.md">What it supports</a> · <a href="docs/cli.md">Terminal</a> · <a href="docs/architecture.md">Architecture</a> · <a href="ROADMAP.md">Roadmap</a> · <a href="CHANGELOG.md">Changelog</a></p>
+
+<p align="center"><b>English</b> · <a href="README.pt-BR.md">Português</a></p>
 
 ---
 
-O Guará junta, numa única varredura, o que ferramentas como Recuva, PhotoRec, TestDisk e Disk Drill fazem separadamente:
+In a single scan, Guará does what tools like Recuva, PhotoRec, TestDisk and Disk Drill do separately:
 
-- **Metadados do sistema de arquivos:** acha arquivos apagados **com nome, pasta e data** em NTFS, FAT12/16/32, exFAT, ext2/3/4, HFS+, Btrfs, XFS e APFS.
-- **Carving por estrutura** no espaço livre, em partições danificadas e no espaço não particionado. Os detectores leem a estrutura real de dezenas de formatos para saber o **tamanho exato** e a **confiança**.
-- **Volumes cifrados:** abre BitLocker, LUKS e FileVault 2 com a sua senha ou chave e varre por dentro.
-- **RAID e LVM:** remonta arrays a partir de discos soltos (RAID 0, 1, 4, 5, 6, 10, LVM2), descobrindo nível, faixa e ordem sozinho quando não há metadados.
-- **Arquivos fragmentados:** remonta JPEG em pedaços e refaz o índice de vídeos MP4/MOV sem `moov`.
-- **Imagens forenses:** lê e grava imagem bruta, **E01/Ex01** e **AFF4**.
-- **Partições perdidas:** lê MBR/GPT e procura volumes por assinatura onde a tabela falhou.
-- **Fusão sem duplicatas:** um arquivo achado por mais de um método aparece uma vez, com a melhor evidência.
-- **Confiança por arquivo** (alta, média, baixa): estrutura íntegra, clusters reutilizados, conteúdo zerado (TRIM) ou que não confere com a extensão.
+- **File system metadata:** finds deleted files **with name, folder and date** on NTFS, FAT12/16/32, exFAT, ext2/3/4, HFS+, Btrfs, XFS and APFS.
+- **Structure-aware carving** in free space, damaged partitions and unpartitioned space. The detectors read the real structure of dozens of formats to learn the **exact size** and a **confidence** level.
+- **Encrypted volumes:** opens BitLocker, LUKS and FileVault 2 with your password or key and scans inside.
+- **RAID and LVM:** reassembles arrays from loose disks (RAID 0, 1, 4, 5, 6, 10, LVM2), working out level, stripe size and order by itself when there is no metadata.
+- **Fragmented files:** reassembles JPEGs stored in pieces and rebuilds the index of MP4/MOV videos that lost their `moov`.
+- **Forensic images:** reads and writes raw images, **E01/Ex01** and **AFF4**.
+- **Lost partitions:** reads MBR/GPT and searches for volumes by signature where the table failed.
+- **Merge without duplicates:** a file found by more than one method appears once, with the best evidence.
+- **Per-file confidence** (high, medium, low): intact structure, reused clusters, zeroed content (TRIM) or content that does not match the extension.
 
-Matriz completa, com limites de cada item, em [docs/suporte.md](docs/suporte.md).
+The full matrix, with the limits of each item, is in [docs/support.md](docs/support.md).
 
-## Segurança dos dados
+## Data safety
 
-- A origem é aberta **somente para leitura**. Nada no núcleo escreve no dispositivo recuperado.
-- A recuperação **recusa destinos no mesmo disco** da origem (Linux e macOS).
-- **Imagem forense** tolerante a setores ruins, com mapa de erros e hash: trabalhe sempre na cópia de um disco com defeito.
-- Cada recuperação grava `guara-manifesto.json` com **MD5, SHA-1 e SHA-256** de todos os arquivos.
-- **Senhas nunca vão para o arquivo de sessão.**
+- The source is opened **read-only**. Nothing in the core writes to the device being recovered.
+- Recovery **refuses destinations on the same disk** as the source (Linux and macOS).
+- **Forensic imaging** tolerates bad sectors, with an error map and hash: always work on the copy of a failing disk.
+- Every recovery writes `guara-manifesto.json` with the **MD5, SHA-1 and SHA-256** of every file.
+- **Passwords are never written to the session file.**
 
-## Instalação
+## Installation
 
-Baixe o pacote do seu sistema em **[Releases](../../releases)**:
+Download the package for your system from **[Releases](../../releases)**:
 
-| | CLI | App gráfico |
+| | CLI | Graphical app |
 |---|---|---|
-| Windows | `guara-*-windows-x86_64.zip` | instalador `.msi` / `.exe` |
+| Windows | `guara-*-windows-x86_64.zip` | `.msi` / `.exe` installer |
 | macOS | `guara-*-macos-{aarch64,x86_64}.tar.gz` | `.dmg` |
 | Linux | `guara-*-linux-{x86_64,aarch64}.tar.gz` | `.AppImage` / `.deb` |
 
-Cada arquivo tem um `.sha256` ao lado. Compilar do código: `cargo build --release -p guara-cli` (Rust 1.80+).
+Every file has a `.sha256` next to it. To build from source: `cargo build --release -p guara-cli` (Rust 1.80+).
 
-> Os binários ainda **não são assinados**: o Windows SmartScreen e o Gatekeeper do macOS vão avisar. Confira o SHA-256.
+> The binaries are **not signed yet**: Windows SmartScreen and macOS Gatekeeper will warn you. Check the SHA-256.
 
-Ler discos brutos exige privilégios: **administrador** (Windows), `sudo` (Linux e macOS). Mesmo como root, o Guará grava sessões, relatórios e arquivos recuperados com o dono e as permissões do usuário que o abriu.
+Reading raw disks requires privileges: **administrator** (Windows), `sudo` (Linux and macOS). Even as root, Guará writes sessions, reports and recovered files with the owner and permissions of the user who launched it.
 
-## Começando
-
-```bash
-sudo guara devices                                  # que discos existem
-sudo guara scan /dev/sdb --session s.json --list    # varredura profunda
-guara recover s.json /mnt/outro-disco/Recuperados   # recupera, em OUTRO disco
-```
-
-Disco com defeito? Faça a imagem primeiro e trabalhe na cópia:
+## Getting started
 
 ```bash
-sudo guara image /dev/sdb /mnt/outro-disco/sdb.img
-guara scan /mnt/outro-disco/sdb.img --session s.json
+sudo guara devices                                  # which disks exist
+sudo guara scan /dev/sdb --session s.json --list    # deep scan
+guara recover s.json /mnt/other-disk/Recovered      # recover, onto ANOTHER disk
 ```
 
-Outros comandos (`inspect`, `health`, `hash`, `search`, `export`, `report`, `verify`, `ui`, volumes cifrados, RAID) estão em **[docs/cli.md](docs/cli.md)**.
+Failing disk? Make the image first and work on the copy:
 
-## Interface gráfica
+```bash
+sudo guara image /dev/sdb /mnt/other-disk/sdb.img
+guara scan /mnt/other-disk/sdb.img --session s.json
+```
 
-App desktop (Tauri) no estilo de um gerenciador de arquivos, pensado para quando o Guará acha milhares de itens. O mesmo front-end roda no navegador com `guara ui`.
+Other commands (`inspect`, `health`, `hash`, `search`, `export`, `report`, `verify`, `ui`, encrypted volumes, RAID) are in **[docs/cli.md](docs/cli.md)**.
 
-- **Grade de miniaturas** ou **lista**, agrupamento por dia ou mês e rolagem virtual para dezenas de milhares de arquivos.
-- **Navegação lateral** por tipo, data real da foto (EXIF), pasta, câmera, confiança e GPS, com opção de ocultar duplicadas.
-- **Seleção como no Finder ou Explorer** e **visualização rápida** em tela cheia (Espaço, Enter ou duplo clique).
-- **Painel de detalhes** com pré-visualização, datas e metadados.
-- Campos para senha, RAID, vídeo de referência e formato da imagem; saúde do disco (SMART); pausar e continuar; temas Auto, Claro e Escuro; interface em português e inglês.
+## Graphical interface
 
-**Pré-visualização antes de recuperar**, lida direto do disco sem gravar nada: imagens, vídeo, áudio, PDF, texto, Word/Excel/PowerPoint/OpenDocument, conteúdo de ZIP, **bancos SQLite** (com linhas apagadas) e hexadecimal. No Linux, a reprodução de vídeo depende dos plugins `gstreamer1.0-libav` e `gstreamer1.0-plugins-good`; sem eles, o botão "Abrir no player do sistema" cobre o caso.
+A desktop app (Tauri) in the style of a file manager, designed for when Guará finds thousands of items. The same front end runs in the browser with `guara ui`.
 
-## Recursos periciais
+- **Thumbnail grid** or **list**, grouping by day or month and virtual scrolling for tens of thousands of files.
+- **Sidebar navigation** by type, real photo date (EXIF), folder, camera, confidence and GPS, with an option to hide duplicates.
+- **Finder or Explorer style selection** and full-screen **quick look** (Space, Enter or double click).
+- **Details panel** with preview, dates and metadata.
+- Fields for password, RAID, reference video and image format; disk health (SMART); pause and resume; Auto, Light and Dark themes; interface in English and Portuguese, chosen in Settings.
 
-- **Hashes** MD5, SHA-1 e SHA-256 de cada arquivo recuperado, da imagem e do dispositivo.
-- **Metadados:** EXIF (câmera, lente, número de série, GPS), PDF, Office e OpenDocument, MP4/MOV.
-- **Linha do tempo:** datas de criação, modificação e acesso do NTFS, FAT e exFAT.
-- **Busca de texto no disco inteiro**, inclusive espaço livre, em UTF-8 e UTF-16.
-- **CSV** (abre no Excel) e **relatório HTML** imprimível com caso, examinador, origem, partições, resumo e hashes.
-- **Sessões automáticas** e reconexão: o Guará reconhece o mesmo disco que volta com outro nome.
-- **Detecção de duplicadas** por assinatura de conteúdo.
+**Preview before recovering**, read straight from the disk without writing anything: images, video, audio, PDF, text, Word/Excel/PowerPoint/OpenDocument, ZIP contents, **SQLite databases** (with deleted rows) and hex. On Linux, video playback depends on the `gstreamer1.0-libav` and `gstreamer1.0-plugins-good` plugins; without them, the "Open in system player" button covers the case.
 
-> **Atenção:** o Guará ainda **não foi validado externamente** (por exemplo, nos testes do NIST CFTT) e não tem registro de auditoria nem relatório assinado. Serve bem para recuperação e triagem; para uso em juízo, confira os resultados por outro meio. O caminho para isso está no [ROADMAP](ROADMAP.md).
+## Forensic features
 
-## Limites conhecidos
+- **Hashes** MD5, SHA-1 and SHA-256 of every recovered file, of the image and of the device.
+- **Metadata:** EXIF (camera, lens, serial number, GPS), PDF, Office and OpenDocument, MP4/MOV.
+- **Timeline:** creation, modification and access dates from NTFS, FAT and exFAT.
+- **Text search across the whole disk**, including free space, in UTF-8 and UTF-16.
+- **CSV** (opens in Excel) and a printable **HTML report** with case, examiner, source, partitions, summary and hashes.
+- **Automatic sessions** and reconnection: Guará recognizes the same disk coming back under another name.
+- **Duplicate detection** by content signature.
 
-- **Dados sobrescritos não voltam.** Em SSD com TRIM o disco pode zerar blocos apagados; o Guará avisa, mas não faz milagre.
-- **Fragmentos:** só JPEG (até três pedaços) e MP4 sem índice são remontados. Os demais formatos, se fragmentados, saem truncados com confiança baixa.
-- **ReFS e Storage Spaces** não são suportados (ReFS só é detectado).
-- **APFS:** sem mapa de espaço livre. **XFS e APFS:** recuperação de exclusão testada só em simulação.
-- **NTFS:** arquivos comprimidos, EFS e registros muito fragmentados são ignorados ou marcados como incompletos.
-- **exFAT:** validado com imagem sintética; faltam mídias reais.
-- **Celulares:** o Guará trabalha com mídias de armazenamento e **não** desbloqueia aparelhos nem contorna senhas.
-- **Windows e macOS:** o código compila e é testado em CI, mas os testes com imagens reais rodam só no Linux. Relatos de mídias reais são muito bem-vindos.
-- **GUI:** no Linux e macOS o app reinicia inteiro como administrador (`pkexec` ou `osascript`) em vez de usar um processo auxiliar.
+> **Warning:** Guará has **not been externally validated** yet (for example, in the NIST CFTT tests) and has no audit log or signed report. It is well suited to recovery and triage; for use in court, check the results by other means. The path to get there is in the [ROADMAP](ROADMAP.md).
 
-## Para onde vai
+## Known limits
 
-Resumo do [ROADMAP](ROADMAP.md):
+- **Overwritten data does not come back.** On an SSD with TRIM the disk may zero deleted blocks; Guará warns you, but it cannot work miracles.
+- **Fragments:** only JPEG (up to three pieces) and MP4 without an index are reassembled. Other formats, if fragmented, come out truncated with low confidence.
+- **ReFS and Storage Spaces** are not supported (ReFS is only detected).
+- **APFS:** no free-space map. **XFS and APFS:** deletion recovery tested only in simulation.
+- **NTFS:** compressed files, EFS and heavily fragmented records are skipped or marked as incomplete.
+- **exFAT:** validated with a synthetic image; real media are still missing.
+- **Phones:** Guará works with storage media and does **not** unlock devices or bypass passwords.
+- **Windows and macOS:** the code builds and is tested in CI, but the tests with real images run only on Linux. Reports from real media are very welcome.
+- **GUI:** on Linux and macOS the app restarts entirely as administrator (`pkexec` or `osascript`) instead of using a helper process.
+
+## Where it is going
+
+Summary of the [ROADMAP](ROADMAP.md):
 
 | | |
 |---|---|
-| **Feito** | Metadados de 8 sistemas de arquivos, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, JPEG fragmentado, MP4 sem índice, leitor de SQLite, SMART |
-| **Próximo** | Registro de auditoria, relatório assinado e em PDF, mapa livre do APFS, testes em Windows e macOS |
-| **Depois** | NSRL e listas de hashes, busca em conteúdo, linha do tempo unificada, interpretação de navegadores, registro do Windows e apps de mensagem, ataque de dicionário e força bruta a volumes cifrados |
-| **Sem imagem de referência** | ReFS e Storage Spaces: só entram com validação |
-| **Longo prazo** | Backups de iOS e Android (iTunes, ADB), OCR, validação NIST CFTT, acesso físico a celulares por exploit de bootloader/chip |
+| **Done** | Metadata from 8 file systems, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, fragmented JPEG, MP4 without an index, SQLite reader, SMART |
+| **Next** | Audit log, signed and PDF report, APFS free map, tests on Windows and macOS |
+| **Later** | NSRL and hash lists, content search, unified timeline, browser interpretation, Windows registry and messaging apps, dictionary and brute-force attacks on encrypted volumes |
+| **No reference image** | ReFS and Storage Spaces: they only land with validation |
+| **Long term** | iOS and Android backups (iTunes, ADB), OCR, NIST CFTT validation, physical phone access through bootloader/chip exploits |
 
-## Desenvolvimento
+## Development
 
 ```
-crates/guara-core   núcleo: leitura, partições, sistemas de arquivos, cifra, RAID, carving, recuperação
-crates/guara-cli    binário `guara` (CLI + servidor local da UI)
-apps/gui            interface (ui/ = HTML, CSS e JS; src-tauri/ = app desktop)
-scripts/            imagens de teste e dados de referência
-docs/               suporte, terminal e arquitetura
+crates/guara-core   core: reading, partitions, file systems, encryption, RAID, carving, recovery
+crates/guara-cli    `guara` binary (CLI + local UI server)
+apps/gui            interface (ui/ = HTML, CSS and JS; src-tauri/ = desktop app)
+scripts/            test images and reference data
+docs/               support, terminal and architecture
 ```
 
 ```bash
-cargo test --workspace        # no Linux gera imagens reais com mtools, ntfs-3g, e2fsprogs
-scripts/fetch-testdata.sh     # opcional: imagens de referência (BitLocker, FileVault 2, dfvfs, AFF4)
+cargo test --workspace        # on Linux this builds real images with mtools, ntfs-3g, e2fsprogs
+scripts/fetch-testdata.sh     # optional: reference images (BitLocker, FileVault 2, dfvfs, AFF4)
 cargo clippy --workspace --all-targets
 ```
 
-Veja [CONTRIBUTING.md](CONTRIBUTING.md) e [docs/arquitetura.md](docs/arquitetura.md). Versões seguem [SemVer](https://semver.org/lang/pt-BR/); mudanças em [CHANGELOG.md](CHANGELOG.md). Para publicar: `git tag vX.Y.Z && git push --tags` (o workflow `release` compila e publica tudo). Vulnerabilidades: [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/architecture.md](docs/architecture.md). Versions follow [SemVer](https://semver.org/); changes are in [CHANGELOG.md](CHANGELOG.md). To publish: `git tag vX.Y.Z && git push --tags` (the `release` workflow builds and publishes everything). Vulnerabilities: [SECURITY.md](SECURITY.md).
 
-## Licença
+## License
 
-[MIT](LICENSE-MIT) ou [Apache-2.0](LICENSE-APACHE), à sua escolha.
+[MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

@@ -1,178 +1,180 @@
 # Roadmap
 
-Onde o Guará esteve, onde está e para onde vai. O que está marcado como feito existe no código e tem teste; o que está planejado é intenção, não promessa, e não tem data.
+[English](ROADMAP.md) · [Português](ROADMAP.pt-BR.md)
 
-Legenda: ✅ feito · 🟡 parcial · 🔜 planejado · 🔭 ideia a longo prazo · ⛔ fora do escopo
+Where Guará has been, where it is and where it is going. What is marked as done exists in the code and has a test; what is planned is intent, not a promise, and has no date.
 
-## Princípios que não mudam
+Legend: ✅ done · 🟡 partial · 🔜 planned · 🔭 long-term idea · ⛔ out of scope
 
-1. **A origem é somente leitura.** Nada no núcleo escreve no dispositivo recuperado.
-2. **Não entregar sem validar.** Um recurso só entra com teste contra imagem real ou de referência. Por isso ReFS e Storage Spaces ainda não existem: não há imagem de referência para conferir.
-3. **Confiança honesta.** Se o conteúdo não pôde ser conferido, a confiança é baixa ou média, nunca alta.
-4. **Livre e auditável.** Código aberto (MIT ou Apache-2.0), sem telemetria, e cada resultado pode ser reproduzido.
+## Principles that do not change
 
-## Histórico
+1. **The source is read-only.** Nothing in the core writes to the device being recovered.
+2. **Do not ship without validating.** A feature only lands with a test against a real or reference image. That is why ReFS and Storage Spaces do not exist yet: there is no reference image to check against.
+3. **Honest confidence.** If the content could not be checked, confidence is low or medium, never high.
+4. **Free and auditable.** Open source (MIT or Apache-2.0), no telemetry, and every result can be reproduced.
 
-| Versão | Data | Marco |
+## History
+
+| Version | Date | Milestone |
 |---|---|---|
-| 0.1.0 | 2026-10-18 | Núcleo somente leitura, MBR/GPT, NTFS, FAT, exFAT, carving por estrutura, imagem forense, sessões, CLI e interface |
-| 0.2.0 | 2026-10-18 | Pré-visualização completa (imagem, vídeo, áudio, PDF, Office, ZIP, hexadecimal) e temas |
-| 0.3.0 | 2026-10-18 | Explorador com miniaturas, metadados (EXIF, GPS), hashes, busca no disco, CSV, relatório HTML e duplicadas |
-| 0.4.0 | 2026-10-18 | Reconexão de disco, sessões automáticas, organização ao recuperar |
-| 0.5.0 | 2026-10-18 | Visualizador de SQLite com linhas apagadas, SMART, interface em inglês, retomada de recuperação |
-| 0.6.0 | 2026-10-18 | Saúde do disco completa (SMART ATA e NVMe), `guara health`, nova logo |
-| 1.0.0 | 2026-10-19 | ext4, HFS+, Btrfs, XFS, APFS; BitLocker, LUKS, FileVault 2; RAID e LVM; E01, Ex01, AFF4; JPEG fragmentado; MP4 sem moov |
+| 0.1.0 | 2026-10-18 | Read-only core, MBR/GPT, NTFS, FAT, exFAT, structure-aware carving, forensic image, sessions, CLI and interface |
+| 0.2.0 | 2026-10-18 | Full preview (image, video, audio, PDF, Office, ZIP, hex) and themes |
+| 0.3.0 | 2026-10-18 | Explorer with thumbnails, metadata (EXIF, GPS), hashes, disk search, CSV, HTML report and duplicates |
+| 0.4.0 | 2026-10-18 | Disk reconnection, automatic sessions, organization when recovering |
+| 0.5.0 | 2026-10-18 | SQLite viewer with deleted rows, SMART, English interface, recovery resume |
+| 0.6.0 | 2026-10-18 | Full disk health (ATA and NVMe SMART), `guara health`, new logo |
+| 1.0.0 | 2026-10-19 | ext4, HFS+, Btrfs, XFS, APFS; BitLocker, LUKS, FileVault 2; RAID and LVM; E01, Ex01, AFF4; fragmented JPEG; MP4 without moov |
 
-Detalhes de cada versão no [CHANGELOG](CHANGELOG.md).
+Details of each version in the [CHANGELOG](CHANGELOG.md).
 
-## Situação atual (1.0.0) contra o que se espera de uma suíte forense
+## Current status (1.0.0) against what is expected from a forensic suite
 
-### 1. Sistemas de arquivos com metadados
+### 1. File systems with metadata
 
-| Item | Estado | Observação |
+| Item | Status | Note |
 |---|---|---|
-| NTFS, FAT12/16/32, exFAT | ✅ | Desde a 0.1.0. NTFS ignora arquivos comprimidos e EFS |
-| ext2/3/4 | ✅ | Inodes apagados e cópias antigas no diário |
-| HFS+ | ✅ | Sobras de nós da árvore e diário |
-| Btrfs | ✅ | Versões antigas das árvores; extensões zlib, zstd e lzo |
-| XFS | ✅ | Inodes liberados e nomes de entradas liberadas. Testado só com exclusão simulada |
-| APFS | 🟡 | Contêiner, mapa de objetos, instantâneos e nós antigos. **Falta o mapa de espaço livre**; exclusão testada só em simulação |
-| ReFS | 🔜 | Hoje só é detectado; a recuperação depende do carving. Falta imagem de referência |
-| Storage Spaces | 🔜 | Não feito. Falta imagem de referência |
-| NTFS: atributos comprimidos, EFS, lista de atributos | 🔜 | Hoje marcados como incompletos |
-| Validação de XFS e APFS com exclusão real | 🔜 | Trocar a simulação por imagens de dispositivos reais |
+| NTFS, FAT12/16/32, exFAT | ✅ | Since 0.1.0. NTFS skips compressed and EFS files |
+| ext2/3/4 | ✅ | Deleted inodes and old copies in the journal |
+| HFS+ | ✅ | Tree node leftovers and journal |
+| Btrfs | ✅ | Old versions of the trees; zlib, zstd and lzo extents |
+| XFS | ✅ | Freed inodes and names of freed entries. Tested only with simulated deletion |
+| APFS | 🟡 | Container, object map, snapshots and old nodes. **Free-space map is missing**; deletion tested only in simulation |
+| ReFS | 🔜 | Only detected today; recovery depends on carving. Reference image missing |
+| Storage Spaces | 🔜 | Not done. Reference image missing |
+| NTFS: compressed attributes, EFS, attribute list | 🔜 | Marked as incomplete today |
+| XFS and APFS validation with real deletion | 🔜 | Replace the simulation with images from real devices |
 
-### 2. Volumes cifrados
+### 2. Encrypted volumes
 
-| Item | Estado |
+| Item | Status |
 |---|---|
-| BitLocker (senha, chave de recuperação, .BEK, chave limpa) | ✅ |
-| LUKS1 e LUKS2 | ✅ |
+| BitLocker (password, recovery key, .BEK, clear key) | ✅ |
+| LUKS1 and LUKS2 | ✅ |
 | FileVault 2 (Core Storage) | ✅ |
-| FileVault 2 em APFS com volume cifrado | 🔜 |
-| Chave a partir de memória (hibernação, despejo de RAM) | 🔭 |
-| Ataque de dicionário e força bruta (BitLocker, LUKS, FileVault, RAR, ZIP e demais volumes/arquivos cifrados) | 🔜 |
+| FileVault 2 on APFS with an encrypted volume | 🔜 |
+| Key from memory (hibernation, RAM dump) | 🔭 |
+| Dictionary and brute-force attacks (BitLocker, LUKS, FileVault, RAR, ZIP and other encrypted volumes/files) | 🔜 |
 
-Hoje o Guará abre volumes quando você **já tem** a senha ou a chave. Recuperação de senha por dicionário e força bruta (com GPU, como Hashcat) é um recurso planejado, central no uso pericial.
+Today Guará opens volumes when you **already have** the password or key. Password recovery by dictionary and brute force (with a GPU, like Hashcat) is a planned feature, central to forensic use.
 
-### 3. Imagens forenses
+### 3. Forensic images
 
-| Item | Estado |
+| Item | Status |
 |---|---|
-| Imagem bruta (dd) tolerante a setores ruins, com mapa de erros | ✅ |
-| E01 e Ex01: leitura, gravação e `guara verify` | ✅ |
-| AFF4: leitura e gravação | ✅ |
-| Outros contêineres (VMDK, VHD/VHDX, QCOW2, DMG) | 🔜 |
-| Imagem de dispositivo móvel (ver item 7) | 🔭 |
+| Raw image (dd) tolerant of bad sectors, with an error map | ✅ |
+| E01 and Ex01: read, write and `guara verify` | ✅ |
+| AFF4: read and write | ✅ |
+| Other containers (VMDK, VHD/VHDX, QCOW2, DMG) | 🔜 |
+| Mobile device image (see item 7) | 🔭 |
 
-### 4. Montagem de discos soltos
+### 4. Assembling loose disks
 
-| Item | Estado |
+| Item | Status |
 |---|---|
-| RAID 0, 1, 4, 5, 6, 10 e linear (mdadm), inclusive degradado | ✅ |
-| Descoberta automática de nível, faixa, layout e ordem sem metadados | ✅ |
-| LVM2 (linear, em faixas, espelhado e RAID) | ✅ |
+| RAID 0, 1, 4, 5, 6, 10 and linear (mdadm), including degraded | ✅ |
+| Automatic discovery of level, stripe size, layout and order without metadata | ✅ |
+| LVM2 (linear, striped, mirrored and RAID) | ✅ |
 | Storage Spaces | 🔜 |
-| Btrfs e ZFS multidisco (RAID do próprio sistema de arquivos) | 🔭 |
-| RAID de controladoras proprietárias (Dell PERC, HP Smart Array) | 🔭 |
+| Multi-disk Btrfs and ZFS (the file system's own RAID) | 🔭 |
+| Proprietary controller RAID (Dell PERC, HP Smart Array) | 🔭 |
 
 ### 5. Carving
 
-| Item | Estado |
+| Item | Status |
 |---|---|
-| Detecção pela estrutura real, com tamanho exato e confiança | ✅ Desde a 0.1.0 (JPEG, PNG, GIF, BMP, PDF, ZIP e derivados, MP4/MOV/HEIC, AVI/WAV/WebP, SQLite, 7z, OLE, MP3, PE) e, na 1.0.0, mais 24 (gzip, zstd, Matroska/WebM, Ogg, MPEG-TS, FLV, ASF, MIDI, RAR, ar, SWF, ELF, TIFF, ICO, registro do Windows, EVTX, PST, RTF, pcap e outros) |
-| JPEG fragmentado remontado (até três fragmentos) | ✅ |
-| MP4/MOV sem `moov` reconstruído (H.264 e HEVC) a partir de um vídeo de referência | ✅ |
-| Fragmentos: mais de três, e formatos além de JPEG (PNG, DOC, ZIP, SQLite) | 🔜 |
-| Reconstrução de vídeo sem referência, áudio em MP4 sem `moov`, vídeos de drone e câmeras de ação em outros contêineres | 🔜 |
-| Mais formatos validados por estrutura | 🔜 contínuo |
+| Detection by real structure, with exact size and confidence | ✅ Since 0.1.0 (JPEG, PNG, GIF, BMP, PDF, ZIP and derivatives, MP4/MOV/HEIC, AVI/WAV/WebP, SQLite, 7z, OLE, MP3, PE) and, in 1.0.0, 24 more (gzip, zstd, Matroska/WebM, Ogg, MPEG-TS, FLV, ASF, MIDI, RAR, ar, SWF, ELF, TIFF, ICO, Windows registry, EVTX, PST, RTF, pcap and others) |
+| Fragmented JPEG reassembled (up to three fragments) | ✅ |
+| MP4/MOV without `moov` rebuilt (H.264 and HEVC) from a reference video | ✅ |
+| Fragments: more than three, and formats beyond JPEG (PNG, DOC, ZIP, SQLite) | 🔜 |
+| Video reconstruction without a reference, audio in MP4 without `moov`, drone and action camera videos in other containers | 🔜 |
+| More formats validated by structure | 🔜 ongoing |
 
-### 6. Interpretação de artefatos
+### 6. Artifact interpretation
 
-O Guará **identifica e recupera** esses arquivos, mas só interpreta alguns.
+Guará **identifies and recovers** these files, but only interprets some of them.
 
-| Item | Estado |
+| Item | Status |
 |---|---|
-| Banco SQLite: esquema, tabelas, blobs, datas e linhas apagadas | ✅ |
-| Metadados: EXIF e GPS, PDF, Office e OpenDocument, MP4/MOV | ✅ |
-| Carving de registro do Windows (`regf`), EVTX, PST, pcap | 🟡 só reconhece e recupera, não interpreta |
-| Interpretar o registro do Windows (usuários, programas, USB, histórico de execução) | 🔜 |
-| Histórico, cookies e downloads de navegadores (Chrome, Firefox, Safari) | 🔜 base no leitor de SQLite |
-| Mensagens, contatos e localização de apps (WhatsApp, Telegram, Signal e outros) | 🔜 base no leitor de SQLite |
-| Logs do sistema e eventos do Windows (EVTX) | 🔜 |
-| **Linha do tempo unificada** de todos os artefatos | 🔜 |
+| SQLite database: schema, tables, blobs, dates and deleted rows | ✅ |
+| Metadata: EXIF and GPS, PDF, Office and OpenDocument, MP4/MOV | ✅ |
+| Carving of Windows registry (`regf`), EVTX, PST, pcap | 🟡 only recognizes and recovers, does not interpret |
+| Interpret the Windows registry (users, programs, USB, execution history) | 🔜 |
+| Browser history, cookies and downloads (Chrome, Firefox, Safari) | 🔜 built on the SQLite reader |
+| Messages, contacts and location from apps (WhatsApp, Telegram, Signal and others) | 🔜 built on the SQLite reader |
+| System logs and Windows events (EVTX) | 🔜 |
+| **Unified timeline** of all artifacts | 🔜 |
 
-### 7. Extração de dispositivos móveis
+### 7. Mobile device extraction
 
-Aqui o salto é de natureza, não de recurso. Hoje o Guará trabalha com **mídias de armazenamento**.
+Here the leap is one of kind, not of feature. Today Guará works with **storage media**.
 
-| Item | Estado |
+| Item | Status |
 |---|---|
-| Android por ADB e backups | 🔭 |
-| iOS por backups do iTunes ou Finder (inclusive cifrados com senha) | 🔭 |
-| Acesso físico por exploits de bootloader e de chip | 🔭 |
+| Android through ADB and backups | 🔭 |
+| iOS through iTunes or Finder backups (including password-encrypted ones) | 🔭 |
+| Physical access through bootloader and chip exploits | 🔭 |
 
-O acesso físico é o diferencial de ferramentas comerciais como a Cellebrite. Depende de equipes de pesquisa de vulnerabilidades em tempo integral e muitas dessas técnicas não são publicáveis em código aberto, o que torna esse item o mais distante do roadmap. A direção mais próxima é ler o que o usuário ou o perito consegue exportar de forma legítima (backups e ADB) e interpretar esses dados com o item 6; o acesso físico por exploit fica como ideia de longo prazo, a perseguir conforme o projeto crescer.
+Physical access is the differentiator of commercial tools like Cellebrite. It depends on full-time vulnerability research teams, and many of those techniques cannot be published as open source, which makes this the most distant item on the roadmap. The closest direction is to read what the user or examiner can legitimately export (backups and ADB) and interpret that data with item 6; physical access by exploit stays as a long-term idea, to pursue as the project grows.
 
-### 8. Cadeia de custódia e validade em tribunal
+### 8. Chain of custody and validity in court
 
-| Item | Estado |
+| Item | Status |
 |---|---|
-| MD5, SHA-1 e SHA-256 de cada arquivo, da imagem e do dispositivo | ✅ |
-| Manifesto `guara-manifesto.json` em toda recuperação | ✅ |
-| Relatório HTML com caso, examinador, origem, partições, resumo e hashes | ✅ |
-| Verificação de imagem E01/Ex01 contra o hash gravado | ✅ |
-| **Registro de auditoria** de cada ação do perito (quem, quando, o quê) | 🔜 |
-| **Relatórios assinados** digitalmente e manifesto com carimbo de tempo | 🔜 |
-| **Reprodutibilidade:** repetir o procedimento gravado e obter o mesmo resultado | 🔜 |
-| Relatório em PDF | 🔜 |
-| **Validação externa:** testes do NIST CFTT (Computer Forensic Tool Testing) e publicação dos resultados | 🔭 |
-| Binários assinados (Windows e macOS) | 🔜 |
+| MD5, SHA-1 and SHA-256 of every file, of the image and of the device | ✅ |
+| `guara-manifesto.json` manifest in every recovery | ✅ |
+| HTML report with case, examiner, source, partitions, summary and hashes | ✅ |
+| Verification of an E01/Ex01 image against the stored hash | ✅ |
+| **Audit log** of every examiner action (who, when, what) | 🔜 |
+| **Digitally signed reports** and a timestamped manifest | 🔜 |
+| **Reproducibility:** replay the recorded procedure and get the same result | 🔜 |
+| PDF report | 🔜 |
+| **External validation:** NIST CFTT (Computer Forensic Tool Testing) tests and publication of the results | 🔭 |
+| Signed binaries (Windows and macOS) | 🔜 |
 
-A validação externa é o que faz um laudo ser aceito. Sem ela, o Guará serve para triagem, recuperação e apoio, e o perito deve conferir os resultados por outro meio.
+External validation is what makes a report accepted. Without it, Guará is good for triage, recovery and support, and the examiner must check the results by other means.
 
-### 9. Análise
+### 9. Analysis
 
-| Item | Estado |
+| Item | Status |
 |---|---|
-| Busca por texto em todo o disco, UTF-8 e UTF-16, inclusive espaço livre | ✅ `guara search` |
-| Detecção de duplicadas | ✅ |
-| Busca por expressão regular e por palavra-chave em **conteúdo de arquivos** (Office, PDF, e-mail) | 🔜 |
-| Hashes conhecidos: **NSRL** para ignorar arquivos de sistema | 🔜 |
-| Listas de hashes de material ilícito (importadas pelo perito) | 🔜 |
-| Detecção de imagens por conteúdo (similaridade, classificação) | 🔭 |
-| **OCR** em imagens e PDF digitalizados | 🔭 |
+| Text search across the whole disk, UTF-8 and UTF-16, including free space | ✅ `guara search` |
+| Duplicate detection | ✅ |
+| Regular expression and keyword search in **file content** (Office, PDF, e-mail) | 🔜 |
+| Known hashes: **NSRL** to ignore system files | 🔜 |
+| Hash lists of illicit material (imported by the examiner) | 🔜 |
+| Image detection by content (similarity, classification) | 🔭 |
+| **OCR** on scanned images and PDFs | 🔭 |
 
-### 10. Plataforma e distribuição
+### 10. Platform and distribution
 
-| Item | Estado |
+| Item | Status |
 |---|---|
-| CLI e interface para Windows, Linux e macOS | ✅ |
-| CI em três sistemas, release automática por tag | ✅ |
-| Testes com imagens reais em Windows e macOS (hoje só Linux) | 🔜 |
-| GUI: processo auxiliar privilegiado em vez de reiniciar o app inteiro como administrador | 🔜 |
-| Binários assinados e notarizados | 🔜 |
-| Pacotes em gerenciadores (winget, Homebrew, Flatpak) | 🔭 |
+| CLI and interface for Windows, Linux and macOS | ✅ |
+| CI on three systems, automatic release by tag | ✅ |
+| Tests with real images on Windows and macOS (Linux only today) | 🔜 |
+| GUI: privileged helper process instead of restarting the whole app as administrator | 🔜 |
+| Signed and notarized binaries | 🔜 |
+| Packages in package managers (winget, Homebrew, Flatpak) | 🔭 |
 
-## Próximos marcos sugeridos
+## Suggested next milestones
 
-Sem datas, na ordem em que fazem mais sentido.
+No dates, in the order that makes the most sense.
 
-**1.1: confiança e custódia**
-Registro de auditoria, relatório em PDF, manifesto assinado, mapa de espaço livre do APFS, validação de XFS e APFS com exclusões reais, testes com imagens reais no Windows e macOS.
+**1.1: trust and custody**
+Audit log, PDF report, signed manifest, APFS free-space map, XFS and APFS validation with real deletions, tests with real images on Windows and macOS.
 
-**1.2: análise**
-NSRL e listas de hashes, busca em conteúdo de arquivos, linha do tempo unificada.
+**1.2: analysis**
+NSRL and hash lists, search in file content, unified timeline.
 
-**1.3: artefatos**
-Registro do Windows, navegadores, EVTX e os apps de mensagem mais comuns, apoiados no leitor de SQLite.
+**1.3: artifacts**
+Windows registry, browsers, EVTX and the most common messaging apps, built on the SQLite reader.
 
-**1.4: mais estrutura**
-ReFS e Storage Spaces (quando houver imagem de referência), outros contêineres de imagem (VMDK, VHD, QCOW2), carving fragmentado ampliado.
+**1.4: more structure**
+ReFS and Storage Spaces (once there is a reference image), other image containers (VMDK, VHD, QCOW2), expanded fragmented carving.
 
-**2.0: dispositivos móveis e validação**
-Backups do iTunes, ADB e backups do Android; submissão aos testes do NIST CFTT.
+**2.0: mobile devices and validation**
+iTunes backups, ADB and Android backups; submission to the NIST CFTT tests.
 
-## Como ajudar
+## How to help
 
-O gargalo mais comum é **imagem de referência**: um volume ReFS, um pool de Storage Spaces ou um XFS com exclusão real, de preferência pequeno e sem dados pessoais. Se você tem um, abra uma issue. Veja também o [CONTRIBUTING](CONTRIBUTING.md).
+The most common bottleneck is a **reference image**: a ReFS volume, a Storage Spaces pool or an XFS with real deletion, preferably small and without personal data. If you have one, open an issue. See also [CONTRIBUTING](CONTRIBUTING.md).

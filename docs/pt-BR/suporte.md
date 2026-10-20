@@ -1,6 +1,8 @@
 # O que o Guará suporta
 
-Matriz do que existe hoje (versão 1.0.0). Para o que vem a seguir, veja o [ROADMAP](../ROADMAP.md).
+[English](../support.md) · **Português**
+
+Matriz do que existe hoje (versão 1.0.0). Para o que vem a seguir, veja o [ROADMAP](../../ROADMAP.pt-BR.md).
 
 ## Tabelas de partição
 
@@ -99,4 +101,4 @@ A pré-visualização é lida direto do disco, sem gravar nada: imagem, vídeo, 
 - Recuperar dados **sobrescritos**. Em SSD com TRIM o próprio disco pode zerar blocos apagados.
 - Desbloquear celulares ou contornar senhas e travas de segurança.
 - Substituir uma ferramenta de extração de dispositivos móveis.
-- Produzir laudo com validade pericial por si só: ainda não passou por validação externa (NIST CFTT). Veja o [ROADMAP](../ROADMAP.md).
+- Produzir laudo com validade pericial por si só: ainda não passou por validação externa (NIST CFTT). Veja o [ROADMAP](../../ROADMAP.pt-BR.md).
