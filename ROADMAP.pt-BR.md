@@ -26,10 +26,11 @@ Legenda: ✅ feito · 🟡 parcial · 🔜 planejado · 🔭 ideia a longo prazo
 | 1.0.0 | 2026-10-19 | ext4, HFS+, Btrfs, XFS, APFS; BitLocker, LUKS, FileVault 2; RAID e LVM; E01, Ex01, AFF4; JPEG fragmentado; MP4 sem moov |
 | 1.0.1 | 2026-10-20 | Documentação em inglês com tradução em português, interface completa em inglês, telas, imagem Docker do terminal |
 | 1.1.0 | 2026-10-20 | Mensagens do núcleo e datas em inglês, verificação automática da tradução, RustCrypto em digest 0.11, acesso a dispositivo no Docker e workspaces do Superset verificados |
+| 1.2.0 | 2026-10-22 | Discos virtuais QCOW2, VMDK, VHD, VHDX e DMG, trilha de auditoria encadeada por hash, relatório em PDF, mapa de espaço livre do APFS |
 
 Detalhes de cada versão no [CHANGELOG](CHANGELOG.pt-BR.md).
 
-## Situação atual (1.1.0) contra o que se espera de uma suíte forense
+## Situação atual (1.2.0) contra o que se espera de uma suíte forense
 
 ### 1. Sistemas de arquivos com metadados
 
@@ -40,7 +41,7 @@ Detalhes de cada versão no [CHANGELOG](CHANGELOG.pt-BR.md).
 | HFS+ | ✅ | Sobras de nós da árvore e diário |
 | Btrfs | ✅ | Versões antigas das árvores; extensões zlib, zstd e lzo |
 | XFS | ✅ | Inodes liberados e nomes de entradas liberadas. Testado só com exclusão simulada |
-| APFS | 🟡 | Contêiner, mapa de objetos, instantâneos e nós antigos. **Falta o mapa de espaço livre**; exclusão testada só em simulação |
+| APFS | 🟡 | Contêiner, mapa de objetos, mapa de espaço livre (spaceman e bitmaps), instantâneos e nós antigos. Exclusão testada só em simulação; contêineres com blocos de endereço de chunk-info (grandes) voltam a varrer o volume inteiro |
 | ReFS | 🔜 | Hoje só é detectado; a recuperação depende do carving. Falta imagem de referência |
 | Storage Spaces | 🔜 | Não feito. Falta imagem de referência |
 | NTFS: atributos comprimidos, EFS, lista de atributos | 🔜 | Hoje marcados como incompletos |
@@ -66,7 +67,8 @@ Hoje o Guará abre volumes quando você **já tem** a senha ou a chave. Recupera
 | Imagem bruta (dd) tolerante a setores ruins, com mapa de erros | ✅ |
 | E01 e Ex01: leitura, gravação e `guara verify` | ✅ |
 | AFF4: leitura e gravação | ✅ |
-| Outros contêineres (VMDK, VHD/VHDX, QCOW2, DMG) | 🔜 |
+| Contêineres de disco virtual: QCOW2, VMDK, VHD, VHDX e DMG (leitura) | ✅ |
+| QCOW2 com arquivo de apoio, snapshots de VMDK, DMG com LZFSE ou com senha | 🔜 |
 | Imagem de dispositivo móvel (ver item 7) | 🔭 |
 
 ### 4. Montagem de discos soltos
@@ -126,10 +128,10 @@ O acesso físico é o diferencial de ferramentas comerciais como a Cellebrite. D
 | Manifesto `guara-manifesto.json` em toda recuperação | ✅ |
 | Relatório HTML com caso, examinador, origem, partições, resumo e hashes | ✅ |
 | Verificação de imagem E01/Ex01 contra o hash gravado | ✅ |
-| **Registro de auditoria** de cada ação do perito (quem, quando, o quê) | 🔜 |
+| **Trilha de auditoria** de cada ação do perito (quem, quando, o quê), encadeada por hash, com `guara audit --verify` | ✅ |
 | **Relatórios assinados** digitalmente e manifesto com carimbo de tempo | 🔜 |
 | **Reprodutibilidade:** repetir o procedimento gravado e obter o mesmo resultado | 🔜 |
-| Relatório em PDF | 🔜 |
+| Relatório em PDF (A4, próprio) | ✅ |
 | **Validação externa:** testes do NIST CFTT (Computer Forensic Tool Testing) e publicação dos resultados | 🔭 |
 | Binários assinados (Windows e macOS) | 🔜 |
 
@@ -163,7 +165,7 @@ A validação externa é o que faz um laudo ser aceito. Sem ela, o Guará serve 
 Sem datas, na ordem em que fazem mais sentido.
 
 **1.1: confiança e custódia**
-Registro de auditoria, relatório em PDF, manifesto assinado, mapa de espaço livre do APFS, validação de XFS e APFS com exclusões reais, testes com imagens reais no Windows e macOS.
+Manifesto assinado, validação de XFS e APFS com exclusões reais, testes com imagens reais no Windows e macOS.
 
 **1.2: análise**
 NSRL e listas de hashes, busca em conteúdo de arquivos, linha do tempo unificada.

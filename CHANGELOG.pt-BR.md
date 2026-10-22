@@ -4,6 +4,24 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [1.2.0] - 2026-10-22
+
+### Adicionado
+- **Contêineres de disco virtual (somente leitura):** QCOW2 (v2 e v3, clusters comprimidos com deflate ou zstd), VMDK (esparso, `streamOptimized` e descritores de texto com extensões flat e zero), VHD e VHDX (fixo, dinâmico e diferencial, seguindo a cadeia de pais) e DMG (UDIF com chunks zerados, brutos, ADC, zlib e bzip2). Abrem pelo mesmo caminho do E01 e do AFF4, então partições, sistemas de arquivos e volumes cifrados funcionam dentro deles. Imagens que seriam lidas errado são recusadas com o motivo: QCOW2 com arquivo de apoio ou cifrado, VMDK com pai ou em SEsparse, DMG protegido por senha, DMG com chunks LZFSE. O log do VHDX não é reproduzido.
+- **Trilha de auditoria** (`auditoria.jsonl`, `guara audit`): toda ação sobre a evidência (`inspect`, `scan`, `recover`, `image`, `hash`, `search`, `verify`, exportações e sessões) é registrada com hora UTC, usuário do sistema, máquina, versão e detalhes, encadeada por SHA-256. `guara audit --verify` aponta a entrada onde a cadeia quebra. Defina `GUARA_EXAMINER` para registrar o perito; senhas e chaves nunca são gravadas.
+- **Relatório em PDF:** `guara report saida.pdf` (e o botão de relatório da interface, pela extensão do arquivo) gera um PDF A4 com as mesmas seções do HTML, com gerador próprio, fontes padrão e nenhuma dependência nova. Os dois formatos passam a mostrar a situação da trilha de auditoria e o hash da última entrada.
+- **Mapa de espaço livre do APFS:** o gerenciador de espaço do contêiner (spaceman), os chunk-info blocks e os bitmaps são lidos, e a varredura profunda de um volume APFS cobre só os blocos não alocados. Contêineres que usam blocos de endereço de chunk-info voltam a varrer o volume todo, com aviso.
+- `scripts/fetch-testdata.sh` também baixa as imagens de disco virtual do dfvfs usadas nos testes dos contêineres.
+
+### Alterado
+- O aviso da partição APFS deixa de dizer que não há suporte a metadados; informa que o mapa de espaço livre é lido e que volumes cifrados (FileVault) precisam da chave.
+- O diálogo de relatório da interface explica que a extensão do arquivo escolhe PDF ou HTML.
+
+### Notas
+- Os contêineres foram conferidos por hash contra um leitor independente (7-Zip) em imagens reais do dfvfs e do VirtualBox, inclusive VHD e VHDX diferenciais; os fixtures pequenos de `tests/fixtures/vdisk` rodam no CI.
+- A exclusão no APFS continua testada só em simulação, por isso o APFS segue 🟡 no roadmap.
+- A saída da CLI continua em português.
+
 ## [1.1.0] - 2026-10-20
 
 ### Adicionado

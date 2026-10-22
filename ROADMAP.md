@@ -26,10 +26,11 @@ Legend: ✅ done · 🟡 partial · 🔜 planned · 🔭 long-term idea · ⛔ o
 | 1.0.0 | 2026-10-19 | ext4, HFS+, Btrfs, XFS, APFS; BitLocker, LUKS, FileVault 2; RAID and LVM; E01, Ex01, AFF4; fragmented JPEG; MP4 without moov |
 | 1.0.1 | 2026-10-20 | Documentation in English with Portuguese translations, complete English interface, screenshots, Docker image of the CLI |
 | 1.1.0 | 2026-10-20 | Core messages and dates in English, automated translation check, RustCrypto on digest 0.11, verified Docker device access and Superset workspaces |
+| 1.2.0 | 2026-10-22 | QCOW2, VMDK, VHD, VHDX and DMG virtual disks, hash-chained audit trail, PDF report, APFS free-space map |
 
 Details of each version in the [CHANGELOG](CHANGELOG.md).
 
-## Current status (1.1.0) against what is expected from a forensic suite
+## Current status (1.2.0) against what is expected from a forensic suite
 
 ### 1. File systems with metadata
 
@@ -40,7 +41,7 @@ Details of each version in the [CHANGELOG](CHANGELOG.md).
 | HFS+ | ✅ | Tree node leftovers and journal |
 | Btrfs | ✅ | Old versions of the trees; zlib, zstd and lzo extents |
 | XFS | ✅ | Freed inodes and names of freed entries. Tested only with simulated deletion |
-| APFS | 🟡 | Container, object map, snapshots and old nodes. **Free-space map is missing**; deletion tested only in simulation |
+| APFS | 🟡 | Container, object map, free-space map (spaceman and bitmaps), snapshots and old nodes. Deletion tested only in simulation; containers with chunk-info address blocks (large ones) fall back to scanning the whole volume |
 | ReFS | 🔜 | Only detected today; recovery depends on carving. Reference image missing |
 | Storage Spaces | 🔜 | Not done. Reference image missing |
 | NTFS: compressed attributes, EFS, attribute list | 🔜 | Marked as incomplete today |
@@ -66,7 +67,8 @@ Today Guará opens volumes when you **already have** the password or key. Passwo
 | Raw image (dd) tolerant of bad sectors, with an error map | ✅ |
 | E01 and Ex01: read, write and `guara verify` | ✅ |
 | AFF4: read and write | ✅ |
-| Other containers (VMDK, VHD/VHDX, QCOW2, DMG) | 🔜 |
+| Virtual disk containers: QCOW2, VMDK, VHD, VHDX and DMG (read) | ✅ |
+| QCOW2 with a backing file, VMDK snapshots, DMG with LZFSE or a password | 🔜 |
 | Mobile device image (see item 7) | 🔭 |
 
 ### 4. Assembling loose disks
@@ -126,10 +128,10 @@ Physical access is the differentiator of commercial tools like Cellebrite. It de
 | `guara-manifesto.json` manifest in every recovery | ✅ |
 | HTML report with case, examiner, source, partitions, summary and hashes | ✅ |
 | Verification of an E01/Ex01 image against the stored hash | ✅ |
-| **Audit log** of every examiner action (who, when, what) | 🔜 |
+| **Audit trail** of every examiner action (who, when, what), chained by hash, with `guara audit --verify` | ✅ |
 | **Digitally signed reports** and a timestamped manifest | 🔜 |
 | **Reproducibility:** replay the recorded procedure and get the same result | 🔜 |
-| PDF report | 🔜 |
+| PDF report (A4, built in) | ✅ |
 | **External validation:** NIST CFTT (Computer Forensic Tool Testing) tests and publication of the results | 🔭 |
 | Signed binaries (Windows and macOS) | 🔜 |
 
@@ -163,7 +165,7 @@ External validation is what makes a report accepted. Without it, Guará is good 
 No dates, in the order that makes the most sense.
 
 **1.1: trust and custody**
-Audit log, PDF report, signed manifest, APFS free-space map, XFS and APFS validation with real deletions, tests with real images on Windows and macOS.
+Signed manifest, XFS and APFS validation with real deletions, tests with real images on Windows and macOS.
 
 **1.2: analysis**
 NSRL and hash lists, search in file content, unified timeline.

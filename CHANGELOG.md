@@ -4,6 +4,24 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [1.2.0] - 2026-10-22
+
+### Added
+- **Virtual disk containers (read-only):** QCOW2 (v2 and v3, compressed clusters with deflate or zstd), VMDK (sparse, `streamOptimized`, and text descriptors with flat and zero extents), VHD and VHDX (fixed, dynamic and differencing, following the parent chain) and DMG (UDIF with zero, raw, ADC, zlib and bzip2 chunks). They open through the same path as E01 and AFF4, so partitions, file systems and encrypted volumes work inside them. Images that would read wrong are refused with the reason: QCOW2 with a backing file or encryption, VMDK with a parent or in SEsparse, password-protected DMG, DMG with LZFSE chunks. The VHDX log is not replayed.
+- **Audit trail** (`auditoria.jsonl`, `guara audit`): every action on evidence (`inspect`, `scan`, `recover`, `image`, `hash`, `search`, `verify`, exports and sessions) is recorded with UTC time, system user, host, version and details, chained by SHA-256. `guara audit --verify` reports the entry where the chain breaks. Set `GUARA_EXAMINER` to record the examiner; passwords and keys are never written.
+- **PDF report:** `guara report out.pdf` (and the interface's report button, by file extension) writes an A4 PDF with the same sections as the HTML, using a built-in writer with the standard fonts and no new dependency. Both formats now show the audit trail status and the hash of its last entry.
+- **APFS free-space map:** the container's space manager (spaceman), chunk-info blocks and bitmaps are read, so deep scans of an APFS volume cover only unallocated blocks. Containers that use chunk-info address blocks fall back to the whole volume, with a warning.
+- `scripts/fetch-testdata.sh` also downloads the dfvfs virtual disk images used by the container tests.
+
+### Changed
+- The APFS partition warning no longer says metadata is unsupported; it says the free-space map is read and that encrypted (FileVault) volumes need the key.
+- The interface's report dialog explains that the file extension chooses PDF or HTML.
+
+### Notes
+- Containers were checked by hash against an independent reader (7-Zip) on real images from dfvfs and VirtualBox, including differencing VHD and VHDX; the small fixtures in `tests/fixtures/vdisk` run in CI.
+- APFS deletion is still tested only in simulation, so APFS stays 🟡 in the roadmap.
+- CLI output remains in Portuguese.
+
 ## [1.1.0] - 2026-10-20
 
 ### Added
