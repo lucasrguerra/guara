@@ -88,6 +88,20 @@ enum Cmd {
     },
     /// Confere uma imagem E01/Ex01: recalcula o MD5 e compara com o gravado na própria imagem
     Verify { path: String },
+    /// Mostra a trilha de auditoria (quem fez o quê e quando) ou confere o encadeamento por hash
+    Audit {
+        /// Arquivo da trilha (padrão: auditoria.jsonl na pasta de configuração ou GUARA_AUDIT_LOG)
+        #[arg(long)]
+        log: Option<String>,
+        /// Só confere a cadeia de hashes; sai com erro se ela estiver quebrada
+        #[arg(long)]
+        verify: bool,
+        /// Mostra só as últimas N entradas
+        #[arg(long)]
+        tail: Option<usize>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Exporta os achados de uma sessão para CSV (abre no Excel)
     Export {
         session: String,
@@ -427,52 +441,20 @@ fn run(cli: Cli) -> Result<(), String> {
             eng.save_session(&job, &session).map_err(s)?;
             Ok(())
         }
-        Cmd::Verify { path } if path.to_ascii_lowercase().ends_with(".aff4") => {
-            let a = guara_core::aff4::Aff4Source::open(std::path::Path::new(&path)).map_err(s)?;
-            println!("Formato: AFF4");
-            for (k, v) in &a.info {
-                println!("{k}: {v}");
-            }
-            eprintln!("Recalculando o hash...");
-            match a.verify_stream_md5().map_err(s)? {
-                Some(true) => {
-                    println!("MD5 gravado e recalculado conferem.");
-                    Ok(())
-                }
-                Some(false) => Err("O MD5 recalculado difere do gravado na imagem.".into()),
-                None => {
-                    println!("Esta imagem não traz MD5 para conferir.");
-                    Ok(())
-                }
-            }
-        }
         Cmd::Verify { path } => {
-            let e = guara_core::ewf::EwfSource::open(std::path::Path::new(&path)).map_err(s)?;
-            println!(
-                "Formato: {}",
-                if e.info.version == 2 {
-                    "Ex01 (EnCase 7)"
-                } else {
-                    "E01 (EnCase)"
-                }
+            let r = verify_image(&path);
+            guara_core::audit::record(
+                "verify",
+                json!({ "path": path, "result": match &r { Ok(Some(true)) => "conferem", Ok(Some(false)) => "diferem", Ok(None) => "sem hash gravado", Err(_) => "erro" } }),
             );
-            println!("Segmentos: {}", e.info.segments);
-            for (k, v) in &e.info.fields {
-                println!("{k}: {v}");
-            }
-            eprintln!("Recalculando o hash...");
-            match e.verify().map_err(s)? {
-                Some(true) => {
-                    println!("MD5 gravado e recalculado conferem: {}", e.info.md5.clone().unwrap_or_default());
-                    Ok(())
-                }
-                Some(false) => Err("O MD5 recalculado difere do gravado na imagem: ela está corrompida ou foi alterada.".into()),
-                None => {
-                    println!("Esta imagem não traz hash gravado para conferir.");
-                    Ok(())
-                }
-            }
+            r.map(|_| ())
         }
+        Cmd::Audit {
+            log,
+            verify,
+            tail,
+            json,
+        } => audit(log, verify, tail, json),
         Cmd::Image {
             path,
             dest,
@@ -787,6 +769,115 @@ fn recover_job(
         "Manifesto com SHA-256: {}/guara-manifesto.json",
         dest.trim_end_matches('/')
     );
+    Ok(())
+}
+
+/// Confere o hash gravado numa imagem E01/Ex01 ou AFF4. `Some(true)` = confere.
+fn verify_image(path: &str) -> Result<Option<bool>, String> {
+    if path.to_ascii_lowercase().ends_with(".aff4") {
+        let a = guara_core::aff4::Aff4Source::open(std::path::Path::new(path)).map_err(s)?;
+        println!("Formato: AFF4");
+        for (k, v) in &a.info {
+            println!("{k}: {v}");
+        }
+        eprintln!("Recalculando o hash...");
+        return match a.verify_stream_md5().map_err(s)? {
+            Some(true) => {
+                println!("MD5 gravado e recalculado conferem.");
+                Ok(Some(true))
+            }
+            Some(false) => Err("O MD5 recalculado difere do gravado na imagem.".into()),
+            None => {
+                println!("Esta imagem não traz MD5 para conferir.");
+                Ok(None)
+            }
+        };
+    }
+    let e = guara_core::ewf::EwfSource::open(std::path::Path::new(path)).map_err(s)?;
+    println!(
+        "Formato: {}",
+        if e.info.version == 2 {
+            "Ex01 (EnCase 7)"
+        } else {
+            "E01 (EnCase)"
+        }
+    );
+    println!("Segmentos: {}", e.info.segments);
+    for (k, v) in &e.info.fields {
+        println!("{k}: {v}");
+    }
+    eprintln!("Recalculando o hash...");
+    match e.verify().map_err(s)? {
+        Some(true) => {
+            println!(
+                "MD5 gravado e recalculado conferem: {}",
+                e.info.md5.clone().unwrap_or_default()
+            );
+            Ok(Some(true))
+        }
+        Some(false) => Err(
+            "O MD5 recalculado difere do gravado na imagem: ela está corrompida ou foi alterada."
+                .into(),
+        ),
+        None => {
+            println!("Esta imagem não traz hash gravado para conferir.");
+            Ok(None)
+        }
+    }
+}
+
+/// `guara audit`: lista a trilha ou confere a cadeia de hashes.
+fn audit(log: Option<String>, verify: bool, tail: Option<usize>, json: bool) -> Result<(), String> {
+    let log = match log {
+        Some(p) => guara_core::audit::Log::at(p),
+        None => guara_core::audit::Log::open_default(),
+    };
+    let v = log.verify().map_err(s)?;
+    if verify {
+        if json {
+            println!("{}", serde_json::to_string_pretty(&v).unwrap());
+        } else if v.ok {
+            println!("Cadeia íntegra: {} entradas.", v.entries);
+            if v.entries > 0 {
+                println!(
+                    "Hash da última entrada (guarde-o fora desta máquina): {}",
+                    v.head
+                );
+            }
+        }
+        return match v.broken_at {
+            None => Ok(()),
+            Some((n, why)) => Err(format!("cadeia quebrada na entrada {n}: {why}")),
+        };
+    }
+    let mut entries = log.entries().map_err(s)?;
+    if let Some(n) = tail {
+        let skip = entries.len().saturating_sub(n);
+        entries.drain(..skip);
+    }
+    if json {
+        println!("{}", serde_json::to_string_pretty(&entries).unwrap());
+    } else if entries.is_empty() {
+        println!("Trilha vazia ({}).", log.path().display());
+    } else {
+        for e in &entries {
+            let who = match &e.examiner {
+                Some(x) => format!("{}/{x}", e.user),
+                None => e.user.clone(),
+            };
+            println!(
+                "#{:<4} {}  {who}@{}  {}  {}",
+                e.seq, e.time, e.host, e.action, e.detail
+            );
+        }
+    }
+    if !v.ok {
+        let (n, why) = v.broken_at.unwrap_or_default();
+        eprintln!(
+            "{} cadeia quebrada na entrada {n}: {why}",
+            paint("31", "atenção:")
+        );
+    }
     Ok(())
 }
 

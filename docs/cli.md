@@ -20,6 +20,7 @@ Reading a raw disk requires privileges: administrator on Windows, `sudo` on Linu
 | `search <source> <terms...>` | Text across the whole disk, UTF-8 and UTF-16 |
 | `export <session> <csv>` | Spreadsheet of the findings |
 | `report <session> <html>` | Printable HTML report |
+| `audit` | Audit trail of every action (who, when, what); `--verify` checks the hash chain |
 | `sessions` | Automatically saved sessions |
 | `ui` | Interface in the browser (127.0.0.1, with token) |
 
@@ -98,6 +99,18 @@ guara verify /mnt/other-disk/sdb.E01
 ```
 
 For E01: `--segment-mib` (size of each segment, default 1500, 0 for a single file) and `--compression` (0 to 9, default 1).
+
+## Audit trail
+
+Every action that touches evidence is appended to `auditoria.jsonl` in the configuration folder (or to the file named by `GUARA_AUDIT_LOG`): opening a source (`inspect`, `scan`), `recover`, `image`, `hash`, `search`, `verify`, exports and sessions. Each line has the time (UTC), the system user (the one behind `sudo`), the host, the Guará version and the details; set `GUARA_EXAMINER` to also record the examiner's name. Passwords and keys are never written.
+
+```bash
+guara audit                  # lists the entries
+guara audit --tail 20 --json
+guara audit --verify         # checks the chain; exits with an error if it is broken
+```
+
+The lines are chained: each one carries the SHA-256 of the previous hash plus its own content, so editing, removing or reordering an entry is detected and `--verify` says which one. Cutting the end of the file cannot be detected by the file alone: keep the hash printed by `--verify` somewhere else (for example in the case notes).
 
 ## Video without an index (MP4 without moov)
 

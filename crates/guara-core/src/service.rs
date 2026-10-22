@@ -247,6 +247,13 @@ impl Engine {
             }
             s.warnings.extend(asm.notes.iter().cloned());
         }
+        crate::audit::record(
+            "scan.start",
+            json!({
+                "job": job.id, "source": path, "size": asm.source.size(),
+                "fingerprint": fp, "encrypted_volumes_opened": asm.unlocked.len(),
+            }),
+        );
         *job.fingerprint.lock().unwrap() = fp;
         *job.session_file.lock().unwrap() = Some(new_session_path(path));
         spawn_scan(job.clone(), None);
@@ -487,6 +494,13 @@ impl Engine {
             }
         }
         recover::check_destination(Some(Path::new(&sj.target)), &dest_path)?;
+        crate::audit::record(
+            "recover.start",
+            json!({
+                "scan_job": sj.id, "source": sj.target, "destination": dest,
+                "files": files.len(), "bytes": total,
+            }),
+        );
         let job = self.register(
             JobKind::Recover,
             dest.to_string(),
@@ -525,6 +539,15 @@ impl Engine {
             let mut s = j2.st.lock().unwrap();
             match res {
                 Ok(rep) => {
+                    crate::audit::record(
+                        "recover.finish",
+                        json!({
+                            "scan_job": parent.id, "destination": rep.destination,
+                            "recovered": rep.recovered.len(), "failed": rep.failed.len(),
+                            "skipped": rep.skipped, "bytes": rep.total_bytes,
+                            "cancelled": rep.cancelled,
+                        }),
+                    );
                     s.report = serde_json::to_value(&rep).ok();
                     parent.st.lock().unwrap().recoveries.push(rep.clone());
                     if !rep.cancelled
@@ -571,6 +594,10 @@ impl Engine {
             Some(Path::new(path)),
             Path::new(dest).parent().unwrap_or(Path::new(".")),
         )?;
+        crate::audit::record(
+            "image.start",
+            json!({ "source": path, "destination": dest, "format": format!("{format:?}").split([' ', '{']).next().unwrap_or("").to_lowercase() }),
+        );
         let job = self.register(
             JobKind::Image,
             dest.to_string(),
@@ -592,6 +619,14 @@ impl Engine {
             let mut s = j2.st.lock().unwrap();
             match res {
                 Ok(rep) => {
+                    crate::audit::record(
+                        "image.finish",
+                        json!({
+                            "destination": dest, "bytes": rep.bytes, "md5": rep.md5,
+                            "sha1": rep.sha1, "sha256": rep.sha256,
+                            "unreadable_ranges": rep.bad_ranges.len(), "cancelled": rep.cancelled,
+                        }),
+                    );
                     s.status = if rep.cancelled {
                         Status::Stopped
                     } else {
@@ -620,6 +655,10 @@ impl Engine {
             None => s.found.iter().collect(),
         };
         crate::owner::write_owned(Path::new(path), crate::report::csv(&items))?;
+        crate::audit::record(
+            "export.csv",
+            json!({ "job": id, "source": j.target, "path": path, "rows": items.len() }),
+        );
         Ok(items.len())
     }
 
@@ -649,6 +688,10 @@ impl Engine {
             source_hashes: hashes.as_ref(),
         });
         crate::owner::write_owned(Path::new(path), html)?;
+        crate::audit::record(
+            "export.report",
+            json!({ "job": id, "source": j.target, "path": path, "case": case.case_id, "examiner": case.examiner }),
+        );
         Ok(())
     }
 
@@ -659,6 +702,10 @@ impl Engine {
             return Err(Error::msg("informe pelo menos um termo"));
         }
         let src = open_path(Path::new(path)).map_err(|e| open_error(path, e))?;
+        crate::audit::record(
+            "search.start",
+            json!({ "source": path, "terms": opts.terms }),
+        );
         let job = self.register(
             JobKind::Search,
             path.to_string(),
@@ -751,7 +798,15 @@ impl Engine {
             } else if pos < size {
                 s.status = Status::Stopped;
             } else {
-                s.report = serde_json::to_value(h.finalize()).ok();
+                let hashes = h.finalize();
+                crate::audit::record(
+                    "hash.finish",
+                    json!({
+                        "source": j2.target, "bytes": size, "md5": hashes.md5,
+                        "sha1": hashes.sha1, "sha256": hashes.sha256,
+                    }),
+                );
+                s.report = serde_json::to_value(hashes).ok();
                 s.status = Status::Done;
             }
             s.finished_in = Some(s.started.elapsed().as_secs_f64());
@@ -763,7 +818,12 @@ impl Engine {
 
     pub fn save_session(&self, id: &str, path: &str) -> Result<()> {
         let j = self.job(id)?;
-        write_session(&j, Path::new(path))
+        write_session(&j, Path::new(path))?;
+        crate::audit::record(
+            "session.save",
+            json!({ "job": id, "source": j.target, "path": path }),
+        );
+        Ok(())
     }
 
     pub fn load_session(&self, path: &str) -> Result<String> {
@@ -834,6 +894,10 @@ impl Engine {
         }
         // continua salvando automaticamente no mesmo arquivo se a varredura for retomada
         *job.session_file.lock().unwrap() = Some(PathBuf::from(path));
+        crate::audit::record(
+            "session.load",
+            json!({ "job": job.id, "source": data.target, "path": path }),
+        );
         if data.done {
             spawn_enrich(job.clone());
         }
@@ -1021,6 +1085,10 @@ impl Engine {
                     .transpose()?
                     .unwrap_or_default();
                 let raw = open_path(Path::new(&path)).map_err(|e| open_error(&path, e))?;
+                crate::audit::record(
+                    "inspect",
+                    json!({ "source": path, "size": raw.size(), "fingerprint": crate::source::fingerprint(raw.as_ref()) }),
+                );
                 let a = crate::assemble::assemble_source(raw, &asm)?;
                 let mut layout = partition::analyze(a.source.as_ref(), false);
                 if a.skip_primary {
@@ -1319,6 +1387,13 @@ fn spawn_scan(job: Arc<Job>, cp: Option<Checkpoint>) {
         }
         s.finished_in = Some(s.started.elapsed().as_secs_f64());
         let done = s.status == Status::Done;
+        crate::audit::record(
+            "scan.finish",
+            json!({
+                "job": job.id, "source": job.target,
+                "status": format!("{:?}", s.status).to_lowercase(), "found": s.found.len(),
+            }),
+        );
         drop(s);
         if done {
             spawn_enrich(job);

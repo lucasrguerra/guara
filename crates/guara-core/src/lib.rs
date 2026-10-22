@@ -12,6 +12,7 @@
 
 pub mod aff4;
 pub mod assemble;
+pub mod audit;
 pub mod carve;
 pub mod crypt;
 pub mod defrag;

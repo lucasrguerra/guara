@@ -43,6 +43,7 @@ recover                       copies with MD5, SHA-1 and SHA-256 and writes the 
 | `source`, `device` | Open devices and images read-only; list disks |
 | `image` | Raw image tolerant of bad sectors, with an error map |
 | `ewf`, `aff4` | Read and write E01/Ex01 and AFF4 |
+| `audit` | Hash-chained audit trail of every examiner action |
 | `vdisk/` | Read QCOW2, VMDK, VHD, VHDX and DMG as the disk they contain |
 | `assemble` | Builds the virtual disk: image, RAID, LVM and encrypted volume |
 | `raid`, `raid_detect`, `lvm` | RAID reassembly (with automatic parameter discovery) and LVM2 |
