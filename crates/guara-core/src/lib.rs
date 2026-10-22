@@ -12,6 +12,7 @@
 
 pub mod aff4;
 pub mod assemble;
+pub mod audit;
 pub mod carve;
 pub mod crypt;
 pub mod defrag;
@@ -33,6 +34,7 @@ pub mod mp4rebuild;
 pub mod notify;
 pub mod owner;
 pub mod partition;
+pub mod pdf;
 pub mod raid;
 pub mod raid_detect;
 pub mod reconnect;
@@ -47,6 +49,7 @@ pub mod source;
 pub mod sqlite;
 pub mod thumb;
 pub mod types;
+pub mod vdisk;
 pub mod volume;
 
 pub use error::{Error, Result};

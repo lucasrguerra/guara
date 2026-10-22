@@ -19,6 +19,14 @@ pub struct CaseInfo {
     pub notes: String,
 }
 
+/// Situação da trilha de auditoria no momento do relatório.
+pub struct AuditNote {
+    pub entries: usize,
+    pub ok: bool,
+    /// Hash da última entrada, para guardar fora da máquina.
+    pub head: String,
+}
+
 pub struct ReportInput<'a> {
     pub case: &'a CaseInfo,
     pub target: &'a str,
@@ -30,6 +38,7 @@ pub struct ReportInput<'a> {
     pub elapsed: f64,
     pub recoveries: &'a [RecoverReport],
     pub source_hashes: Option<&'a Hashes>,
+    pub audit: Option<AuditNote>,
 }
 
 fn cell(s: &str) -> String {
@@ -190,6 +199,15 @@ footer{margin-top:34px;color:#5b6f6d;font-size:12px}@media print{body{background
         if r.options.include_allocated { ", incluindo áreas em uso" } else { "" }
     ));
 
+    if let Some(a) = &r.audit {
+        o.push_str(&format!(
+            "<h2>Trilha de auditoria</h2><table class=\"kv\"><tr><td>Entradas</td><td>{}</td></tr><tr><td>Encadeamento</td><td>{}</td></tr><tr><td>Hash da última entrada</td><td class=\"mono\">{}</td></tr></table>",
+            a.entries,
+            if a.ok { "íntegro" } else { "QUEBRADO: confira com guara audit --verify" },
+            esc(&a.head)
+        ));
+    }
+
     if let Some(l) = r.layout {
         o.push_str("<h2>Partições</h2><table><tr><th>#</th><th>Sistema</th><th>Início (bytes)</th><th>Tamanho</th><th>Rótulo</th><th>Observação</th></tr>");
         for p in &l.partitions {
@@ -298,4 +316,362 @@ footer{margin-top:34px;color:#5b6f6d;font-size:12px}@media print{body{background
     }
     o.push_str("</table><footer>Este relatório descreve o que o Guará encontrou e recuperou. Arquivos de confiança baixa podem estar incompletos ou sobrescritos. Datas dos metadados do sistema de arquivos estão em UTC. Guará é software livre, sem garantias.</footer></main></body></html>");
     o
+}
+
+/// Relatório em PDF (A4), com as mesmas seções do HTML.
+pub fn pdf(r: &ReportInput) -> Vec<u8> {
+    use crate::pdf::{Col, Font, Pdf, BLACK, GRAY};
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let stamp = crate::audit::utc_iso(now);
+    let version = env!("CARGO_PKG_VERSION");
+    let mut d = Pdf::new(
+        "Guará: relatório de recuperação",
+        &format!("Guará {version}"),
+    );
+    d.title(
+        "Relatório de recuperação de arquivos",
+        &format!("Gerado pelo Guará {version} em {}", fmt_unix(now)),
+    );
+
+    let nf = |v: &str| {
+        if v.is_empty() {
+            "não informado".to_string()
+        } else {
+            v.to_string()
+        }
+    };
+    d.heading("Identificação do caso");
+    let mut rows = vec![
+        ("Número do caso", nf(&r.case.case_id), Font::Regular),
+        (
+            "Responsável pelo exame",
+            nf(&r.case.examiner),
+            Font::Regular,
+        ),
+        ("Organização", nf(&r.case.organization), Font::Regular),
+    ];
+    if !r.case.notes.is_empty() {
+        rows.push(("Observações", r.case.notes.clone(), Font::Regular));
+    }
+    let rows: Vec<(&str, &str, Font)> = rows.iter().map(|(k, v, f)| (*k, v.as_str(), *f)).collect();
+    d.kv(&rows);
+
+    d.heading("Origem examinada");
+    let mut rows: Vec<(&str, String, Font)> =
+        vec![("Dispositivo / imagem", r.target.to_string(), Font::Mono)];
+    if let Some(l) = r.layout {
+        rows.push((
+            "Tamanho",
+            format!("{} ({} bytes)", human(l.size), l.size),
+            Font::Regular,
+        ));
+        rows.push(("Tabela de partições", l.table.to_uppercase(), Font::Regular));
+    }
+    rows.push((
+        "Hash da origem",
+        match r.source_hashes {
+            Some(h) => format!("MD5 {}\nSHA-1 {}\nSHA-256 {}", h.md5, h.sha1, h.sha256),
+            None => "não calculado nesta sessão (use guara hash ou guara image)".into(),
+        },
+        if r.source_hashes.is_some() {
+            Font::Mono
+        } else {
+            Font::Regular
+        },
+    ));
+    if let Some(t) = r.started_unix {
+        rows.push(("Início da varredura", fmt_unix(t), Font::Regular));
+    }
+    rows.push((
+        "Duração da varredura",
+        format!("{:.1} s", r.elapsed),
+        Font::Regular,
+    ));
+    rows.push((
+        "Modo",
+        format!(
+            "{}{}",
+            if r.options.mode == ScanMode::Deep {
+                "profunda (metadados + assinatura)"
+            } else {
+                "rápida (metadados)"
+            },
+            if r.options.include_allocated {
+                ", incluindo áreas em uso"
+            } else {
+                ""
+            }
+        ),
+        Font::Regular,
+    ));
+    rows.push((
+        "Garantia de leitura",
+        "A origem foi aberta somente para leitura; nenhuma escrita foi feita nela.".into(),
+        Font::Regular,
+    ));
+    let rows: Vec<(&str, &str, Font)> = rows.iter().map(|(k, v, f)| (*k, v.as_str(), *f)).collect();
+    d.kv(&rows);
+
+    if let Some(a) = &r.audit {
+        d.heading("Trilha de auditoria");
+        let ok = if a.ok {
+            "íntegro"
+        } else {
+            "QUEBRADO: confira com guara audit --verify"
+        };
+        d.kv(&[
+            ("Entradas", &a.entries.to_string(), Font::Regular),
+            ("Encadeamento", ok, Font::Regular),
+            ("Hash da última entrada", &a.head, Font::Mono),
+        ]);
+    }
+
+    if let Some(l) = r.layout {
+        d.heading("Partições");
+        let cols = [
+            Col {
+                title: "#",
+                width: 22.0,
+                font: Font::Regular,
+                right: false,
+            },
+            Col {
+                title: "Sistema",
+                width: 80.0,
+                font: Font::Regular,
+                right: false,
+            },
+            Col {
+                title: "Início (bytes)",
+                width: 90.0,
+                font: Font::Regular,
+                right: true,
+            },
+            Col {
+                title: "Tamanho",
+                width: 65.0,
+                font: Font::Regular,
+                right: true,
+            },
+            Col {
+                title: "Rótulo",
+                width: 90.0,
+                font: Font::Regular,
+                right: false,
+            },
+            Col {
+                title: "Observação",
+                width: 168.28,
+                font: Font::Regular,
+                right: false,
+            },
+        ];
+        let mut rows: Vec<Vec<String>> = l
+            .partitions
+            .iter()
+            .map(|p| {
+                let obs = [
+                    p.lost.then_some("encontrada por varredura".to_string()),
+                    p.encrypted
+                        .as_ref()
+                        .map(|e| format!("cifrada ({e}), não examinada")),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join("; ");
+                vec![
+                    (p.index + 1).to_string(),
+                    p.fs.name().to_string(),
+                    p.start.to_string(),
+                    human(p.len),
+                    p.label.clone().unwrap_or_default(),
+                    obs,
+                ]
+            })
+            .collect();
+        for g in &l.gaps {
+            rows.push(vec![
+                "-".into(),
+                "espaço não particionado".into(),
+                g.start.to_string(),
+                human(g.len),
+                String::new(),
+                String::new(),
+            ]);
+        }
+        d.table(&cols, &rows);
+    }
+
+    let mut by_cat = std::collections::BTreeMap::new();
+    let mut conf = [0usize; 3];
+    let mut bytes = 0u64;
+    for f in r.found {
+        *by_cat.entry(f.category.label_pt()).or_insert(0usize) += 1;
+        conf[f.confidence as usize] += 1;
+        bytes += f.size;
+    }
+    d.heading("Resumo dos achados");
+    d.kv(&[
+        (
+            "Arquivos encontrados",
+            &format!("{} ({})", r.found.len(), human(bytes)),
+            Font::Bold,
+        ),
+        (
+            "Confiança",
+            &format!(
+                "alta {}  ·  média {}  ·  baixa {}",
+                conf[2], conf[1], conf[0]
+            ),
+            Font::Regular,
+        ),
+        (
+            "Por tipo",
+            &by_cat
+                .iter()
+                .map(|(k, v)| format!("{k}: {v}"))
+                .collect::<Vec<_>>()
+                .join("  ·  "),
+            Font::Regular,
+        ),
+    ]);
+    for w in r.warnings {
+        d.note(w);
+    }
+
+    if !r.recoveries.is_empty() {
+        d.heading("Arquivos recuperados (integridade)");
+        for rec in r.recoveries {
+            d.paragraph(
+                &format!(
+                    "Destino: {}, {} arquivo(s), {}{}",
+                    rec.destination,
+                    rec.recovered.len(),
+                    human(rec.total_bytes),
+                    if rec.failed.is_empty() {
+                        String::new()
+                    } else {
+                        format!(", {} falha(s)", rec.failed.len())
+                    }
+                ),
+                9.0,
+                Font::Regular,
+                BLACK,
+            );
+            let cols = [
+                Col {
+                    title: "Arquivo",
+                    width: 140.0,
+                    font: Font::Mono,
+                    right: false,
+                },
+                Col {
+                    title: "Tamanho",
+                    width: 55.0,
+                    font: Font::Regular,
+                    right: true,
+                },
+                Col {
+                    title: "Hashes",
+                    width: 320.28,
+                    font: Font::Mono,
+                    right: false,
+                },
+            ];
+            let rows: Vec<Vec<String>> = rec
+                .recovered
+                .iter()
+                .take(MAX_ROWS)
+                .map(|f| {
+                    vec![
+                        f.path.clone(),
+                        human(f.size),
+                        format!("MD5 {}\nSHA-1 {}\nSHA-256 {}", f.md5, f.sha1, f.sha256),
+                    ]
+                })
+                .collect();
+            d.table(&cols, &rows);
+        }
+    }
+
+    d.heading("Relação de arquivos encontrados");
+    if r.found.len() > MAX_ROWS {
+        d.note(&format!(
+            "Mostrando os primeiros {MAX_ROWS} de {}. Use a exportação CSV para a lista completa.",
+            r.found.len()
+        ));
+    }
+    let cols = [
+        Col {
+            title: "Nome",
+            width: 110.0,
+            font: Font::Regular,
+            right: false,
+        },
+        Col {
+            title: "Pasta",
+            width: 110.0,
+            font: Font::Regular,
+            right: false,
+        },
+        Col {
+            title: "Tamanho",
+            width: 50.0,
+            font: Font::Regular,
+            right: true,
+        },
+        Col {
+            title: "Modificado (UTC)",
+            width: 92.0,
+            font: Font::Regular,
+            right: false,
+        },
+        Col {
+            title: "Origem",
+            width: 50.0,
+            font: Font::Regular,
+            right: false,
+        },
+        Col {
+            title: "Conf.",
+            width: 32.0,
+            font: Font::Regular,
+            right: false,
+        },
+        Col {
+            title: "Posição",
+            width: 71.28,
+            font: Font::Mono,
+            right: true,
+        },
+    ];
+
+    let rows: Vec<Vec<String>> = r
+        .found
+        .iter()
+        .take(MAX_ROWS)
+        .map(|f| {
+            vec![
+                f.name.clone(),
+                f.dir.clone().unwrap_or_default(),
+                human(f.size),
+                iso(f.modified),
+                f.origin.label().to_string(),
+                f.confidence.label_pt().to_string(),
+                f.first_offset().map(|o| o.to_string()).unwrap_or_default(),
+            ]
+        })
+        .collect();
+    d.table(&cols, &rows);
+    d.paragraph(
+        "Este relatório descreve o que o Guará encontrou e recuperou. Arquivos de confiança baixa podem estar incompletos ou sobrescritos. Datas dos metadados do sistema de arquivos estão em UTC. Guará é software livre, sem garantias.",
+        8.0,
+        Font::Regular,
+        GRAY,
+    );
+    d.finish(&stamp.replace(['-', ':', 'T', 'Z'], ""))
 }

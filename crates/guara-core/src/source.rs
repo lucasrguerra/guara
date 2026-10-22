@@ -286,7 +286,13 @@ pub fn open_path(path: &Path) -> io::Result<Arc<dyn Source>> {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         return Ok(Arc::new(e));
     }
-    Ok(Arc::new(file))
+    drop(file);
+    if let Some(v) = crate::vdisk::open(path)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?
+    {
+        return Ok(Arc::new(v));
+    }
+    Ok(Arc::new(FileSource::open(path)?))
 }
 
 /// Identidade do conteúdo de um disco: SHA-256 do tamanho + primeiro e último MiB

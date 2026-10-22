@@ -43,6 +43,8 @@ recover                       copia com MD5, SHA-1 e SHA-256 e grava o manifesto
 | `source`, `device` | Abrir dispositivos e imagens somente para leitura; listar discos |
 | `image` | Imagem bruta tolerante a setores ruins, com mapa de erros |
 | `ewf`, `aff4` | Ler e gravar E01/Ex01 e AFF4 |
+| `audit` | Trilha de auditoria encadeada por hash de cada ação do perito |
+| `vdisk/` | Ler QCOW2, VMDK, VHD, VHDX e DMG como o disco que contêm |
 | `assemble` | Monta o disco virtual: imagem, RAID, LVM e volume cifrado |
 | `raid`, `raid_detect`, `lvm` | Remontagem de RAID (com descoberta automática de parâmetros) e LVM2 |
 | `crypt/` | BitLocker, LUKS e FileVault 2 |
@@ -63,7 +65,7 @@ recover                       copia com MD5, SHA-1 e SHA-256 e grava o manifesto
 |---|---|
 | `recover` | Copia os arquivos, confere os hashes, grava o manifesto, retoma recuperação |
 | `hashing`, `search` | Hashes e busca de texto no disco inteiro |
-| `report`, `explorer` | Relatório HTML, CSV, filtros e agrupamentos do explorador |
+| `report`, `pdf`, `explorer` | Relatório HTML e PDF (o gerador de PDF é próprio, sem biblioteca externa), CSV, filtros e agrupamentos do explorador |
 | `health`, `external` | SMART e ferramentas externas (`smartctl`) |
 
 ### Serviço

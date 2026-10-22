@@ -667,7 +667,7 @@ async function onProgressClick(e) {
     const path = await ask({ title: 'Exportar para CSV', text: 'Grava os arquivos da vista atual (com os filtros aplicados). O arquivo abre direto no Excel.', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-achados.csv', ok: 'Exportar' });
     if (path) { try { const r = await rpc('export_csv', { job: S.job, path, query: EX?.query() }); toast(`${r.rows.toLocaleString(LOC())} linhas gravadas`); } catch (err) { toast(err.message); } }
   } else if (act === 'report') {
-    const f = await askForm({ title: 'Relatório de recuperação', text: 'Gera um relatório HTML pronto para imprimir, com a origem examinada, os achados e os hashes dos arquivos recuperados.', ok: 'Gerar relatório', fields: [
+    const f = await askForm({ title: 'Relatório de recuperação', text: 'Gera um relatório pronto para imprimir, com a origem examinada, os achados e os hashes dos arquivos recuperados. Termine o nome em .pdf para gerar PDF; com .html sai uma página web.', ok: 'Gerar relatório', fields: [
       { name: 'path', label: 'Salvar em', value: (S.defaults.home || '') + (S.defaults.sep || '/') + 'guara-relatorio.html' },
       { name: 'case_id', label: 'Número do caso' }, { name: 'examiner', label: 'Responsável pelo exame' }, { name: 'organization', label: 'Organização' },
       { name: 'notes', label: 'Observações', multiline: true } ] });

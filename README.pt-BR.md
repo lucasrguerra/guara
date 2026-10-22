@@ -17,7 +17,7 @@ O Guará junta, numa única varredura, o que ferramentas como Recuva, PhotoRec, 
 - **Volumes cifrados:** abre BitLocker, LUKS e FileVault 2 com a sua senha ou chave e varre por dentro.
 - **RAID e LVM:** remonta arrays a partir de discos soltos (RAID 0, 1, 4, 5, 6, 10, LVM2), descobrindo nível, faixa e ordem sozinho quando não há metadados.
 - **Arquivos fragmentados:** remonta JPEG em pedaços e refaz o índice de vídeos MP4/MOV sem `moov`.
-- **Imagens forenses:** lê e grava imagem bruta, **E01/Ex01** e **AFF4**.
+- **Imagens forenses:** lê e grava imagem bruta, **E01/Ex01** e **AFF4**, e lê discos virtuais **QCOW2, VMDK, VHD, VHDX** e **DMG**.
 - **Partições perdidas:** lê MBR/GPT e procura volumes por assinatura onde a tabela falhou.
 - **Fusão sem duplicatas:** um arquivo achado por mais de um método aparece uma vez, com a melhor evidência.
 - **Confiança por arquivo** (alta, média, baixa): estrutura íntegra, clusters reutilizados, conteúdo zerado (TRIM) ou que não confere com a extensão.
@@ -111,8 +111,8 @@ Resumo do [ROADMAP](ROADMAP.pt-BR.md):
 
 | | |
 |---|---|
-| **Feito** | Metadados de 8 sistemas de arquivos, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, JPEG fragmentado, MP4 sem índice, leitor de SQLite, SMART |
-| **Próximo** | Registro de auditoria, relatório assinado e em PDF, mapa livre do APFS, testes em Windows e macOS |
+| **Feito** | Metadados de 8 sistemas de arquivos, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, JPEG fragmentado, MP4 sem índice, leitor de SQLite, SMART, QCOW2/VMDK/VHD/VHDX/DMG, trilha de auditoria encadeada por hash, relatório em PDF, mapa livre do APFS |
+| **Próximo** | Relatório assinado digitalmente, testes em Windows e macOS |
 | **Depois** | NSRL e listas de hashes, busca em conteúdo, linha do tempo unificada, interpretação de navegadores, registro do Windows e apps de mensagem, ataque de dicionário e força bruta a volumes cifrados |
 | **Sem imagem de referência** | ReFS e Storage Spaces: só entram com validação |
 | **Longo prazo** | Backups de iOS e Android (iTunes, ADB), OCR, validação NIST CFTT, acesso físico a celulares por exploit de bootloader/chip |

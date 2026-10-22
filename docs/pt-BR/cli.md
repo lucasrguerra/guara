@@ -19,7 +19,8 @@ Ler disco bruto exige privilégios: administrador no Windows, `sudo` no Linux e 
 | `hash <origem>` | MD5, SHA-1 e SHA-256 do dispositivo |
 | `search <origem> <termos...>` | Texto no disco inteiro, UTF-8 e UTF-16 |
 | `export <sessão> <csv>` | Planilha dos achados |
-| `report <sessão> <html>` | Relatório HTML imprimível |
+| `report <sessão> <arquivo>` | Relatório imprimível, HTML ou PDF (pela extensão do arquivo) |
+| `audit` | Trilha de auditoria de cada ação (quem, quando, o quê); `--verify` confere o encadeamento por hash |
 | `sessions` | Sessões salvas automaticamente |
 | `ui` | Interface no navegador (127.0.0.1, com token) |
 
@@ -99,6 +100,18 @@ guara verify /mnt/outro-disco/sdb.E01
 
 Para E01: `--segment-mib` (tamanho de cada segmento, padrão 1500, 0 para um arquivo só) e `--compression` (0 a 9, padrão 1).
 
+## Trilha de auditoria
+
+Toda ação que mexe na evidência é acrescentada a `auditoria.jsonl` na pasta de configuração (ou ao arquivo indicado em `GUARA_AUDIT_LOG`): abrir uma origem (`inspect`, `scan`), `recover`, `image`, `hash`, `search`, `verify`, exportações e sessões. Cada linha traz a hora (UTC), o usuário do sistema (o que está por trás do `sudo`), a máquina, a versão do Guará e os detalhes; defina `GUARA_EXAMINER` para registrar também o nome do perito. Senhas e chaves nunca são gravadas.
+
+```bash
+guara audit                  # lista as entradas
+guara audit --tail 20 --json
+guara audit --verify         # confere a cadeia; sai com erro se estiver quebrada
+```
+
+As linhas são encadeadas: cada uma leva o SHA-256 do hash anterior mais o próprio conteúdo, então editar, remover ou reordenar uma entrada é detectado e o `--verify` diz qual. Cortar o fim do arquivo não é detectável só pelo arquivo: guarde o hash que o `--verify` imprime em outro lugar (por exemplo nas notas do caso).
+
 ## Vídeo sem índice (MP4 sem moov)
 
 Passe um vídeo **íntegro da mesma câmera ou drone** para o Guará refazer o índice:
@@ -123,4 +136,4 @@ Procura em UTF-8 e UTF-16 (`--no-utf16` desliga), inclusive no espaço livre e f
 guara report s.json relatorio.html --case 2026-001 --examiner "Nome" --hash-source
 ```
 
-Traz identificação do caso, origem, partições, resumo, hashes e a lista dos arquivos. `--hash-source` inclui o hash da origem inteira.
+Traz identificação do caso, origem, partições, resumo, hashes, a situação da trilha de auditoria e a lista dos arquivos. `--hash-source` inclui o hash da origem inteira. O formato segue a extensão: `relatorio.pdf` gera um PDF A4 (fontes padrão, nada externo); qualquer outra gera HTML.

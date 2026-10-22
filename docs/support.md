@@ -55,6 +55,12 @@ Passwords are **never** written to the session file. With `--remember-keys` the 
 | Raw (dd, `.img`) | ✅ | ✅ with a bad sector error map |
 | E01 and Ex01 (Expert Witness) | ✅ | ✅ with case metadata and segmentation |
 | AFF4 | ✅ | ✅ |
+| QCOW2 (QEMU), versions 2 and 3 | ✅ including compressed clusters (deflate, zstd) | ❌ |
+| VMDK (VMware, VirtualBox) | ✅ sparse, `streamOptimized` and descriptors with flat/zero extents | ❌ |
+| VHD and VHDX (Hyper-V) | ✅ fixed, dynamic and differencing (follows the parent chain) | ❌ |
+| DMG (Apple UDIF) | ✅ zero, raw, ADC, zlib and bzip2 chunks | ❌ |
+
+Virtual disk containers are opened as the disk they hold, with no conversion. Images that cannot be read correctly are refused with the reason: QCOW2 with a backing file or encryption, VMDK with a parent (snapshot) or in SEsparse, password-protected DMG and DMG with LZFSE chunks. The VHDX transaction log is not replayed (nothing is ever written to the image).
 
 `guara verify` recomputes the MD5 of an E01 or Ex01 image and compares it with the one stored in it.
 

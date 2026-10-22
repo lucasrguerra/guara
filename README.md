@@ -17,7 +17,7 @@ In a single scan, Guará does what tools like Recuva, PhotoRec, TestDisk and Dis
 - **Encrypted volumes:** opens BitLocker, LUKS and FileVault 2 with your password or key and scans inside.
 - **RAID and LVM:** reassembles arrays from loose disks (RAID 0, 1, 4, 5, 6, 10, LVM2), working out level, stripe size and order by itself when there is no metadata.
 - **Fragmented files:** reassembles JPEGs stored in pieces and rebuilds the index of MP4/MOV videos that lost their `moov`.
-- **Forensic images:** reads and writes raw images, **E01/Ex01** and **AFF4**.
+- **Forensic images:** reads and writes raw images, **E01/Ex01** and **AFF4**, and reads **QCOW2, VMDK, VHD, VHDX** and **DMG** virtual disks.
 - **Lost partitions:** reads MBR/GPT and searches for volumes by signature where the table failed.
 - **Merge without duplicates:** a file found by more than one method appears once, with the best evidence.
 - **Per-file confidence** (high, medium, low): intact structure, reused clusters, zeroed content (TRIM) or content that does not match the extension.
@@ -111,8 +111,8 @@ Summary of the [ROADMAP](ROADMAP.md):
 
 | | |
 |---|---|
-| **Done** | Metadata from 8 file systems, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, fragmented JPEG, MP4 without an index, SQLite reader, SMART |
-| **Next** | Audit log, signed and PDF report, APFS free map, tests on Windows and macOS |
+| **Done** | Metadata from 8 file systems, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, fragmented JPEG, MP4 without an index, SQLite reader, SMART, QCOW2/VMDK/VHD/VHDX/DMG, hash-chained audit trail, PDF report, APFS free map |
+| **Next** | Digitally signed report, tests on Windows and macOS |
 | **Later** | NSRL and hash lists, content search, unified timeline, browser interpretation, Windows registry and messaging apps, dictionary and brute-force attacks on encrypted volumes |
 | **No reference image** | ReFS and Storage Spaces: they only land with validation |
 | **Long term** | iOS and Android backups (iTunes, ADB), OCR, NIST CFTT validation, physical phone access through bootloader/chip exploits |
