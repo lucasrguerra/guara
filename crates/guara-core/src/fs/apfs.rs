@@ -3,7 +3,7 @@
 //! antigos da árvore (copy-on-write) que ainda estão no disco. Volumes cifrados (FileVault) são
 //! detectados e deixados para a varredura por assinatura.
 
-use super::{make_found, Ctx, NewFound, VolumeScan};
+use super::{make_found, merge_extents, Ctx, NewFound, VolumeScan};
 use crate::source::{read_vec, Source};
 use crate::types::{Confidence, DataLoc, Extent, Origin};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -27,6 +27,9 @@ fn le64(b: &[u8], o: usize) -> u64 {
 const OBJ_TYPE_MASK: u32 = 0xFFFF;
 const T_BTREE_ROOT: u32 = 2;
 const T_BTREE_NODE: u32 = 3;
+const T_SPACEMAN: u32 = 5;
+const T_CIB: u32 = 7;
+const T_CHECKPOINT_MAP: u32 = 0x0C;
 const SUBTYPE_FSTREE: u32 = 0x0E;
 
 // tipos de registro da árvore de arquivos
@@ -169,6 +172,112 @@ impl<'a> Apfs<'a> {
             v.sort();
         }
         m
+    }
+
+    /// Endereço físico de um objeto ephemeral (spaceman), achado no mapa de checkpoint mais novo.
+    fn ephemeral_paddr(&self, nx: &[u8], oid: u64) -> Option<u64> {
+        let desc_blocks = le32(nx, 104) as u64;
+        let desc_base = le64(nx, 112);
+        let max_entries = (self.bs as usize).saturating_sub(40) / 40;
+        let mut best: Option<(u64, u64)> = None;
+        for i in 0..desc_blocks {
+            let Some(b) = self.checked_block(desc_base + i) else {
+                continue;
+            };
+            if le32(&b, 24) & OBJ_TYPE_MASK != T_CHECKPOINT_MAP {
+                continue;
+            }
+            let xid = le64(&b, 16);
+            if best.is_some_and(|(x, _)| x >= xid) {
+                continue;
+            }
+            let count = (le32(&b, 36) as usize).min(max_entries);
+            for j in 0..count {
+                let o = 40 + j * 40;
+                if le64(&b, o + 24) == oid {
+                    best = Some((xid, le64(&b, o + 32)));
+                    break;
+                }
+            }
+        }
+        best.map(|(_, p)| p)
+    }
+
+    /// Mapa de espaço livre do contêiner: percorre o spaceman, os chunk-info blocks e os bitmaps
+    /// (bit 1 = bloco em uso).
+    fn free_map(&self, nx: &[u8]) -> Option<Vec<Extent>> {
+        let sm_oid = le64(nx, 152);
+        if sm_oid == 0 {
+            return None;
+        }
+        let sm = self.checked_block(self.ephemeral_paddr(nx, sm_oid)?)?;
+        if le32(&sm, 24) & OBJ_TYPE_MASK != T_SPACEMAN {
+            return None;
+        }
+        // Com CABs (contêineres grandes) os endereços dos CIBs não ficam no spaceman.
+        if le32(&sm, 68) != 0 {
+            return None;
+        }
+        let cib_count = le32(&sm, 64) as usize;
+        let addr_off = le32(&sm, 80) as usize;
+        let end = addr_off.checked_add(cib_count.checked_mul(8)?)?;
+        if cib_count == 0 || end > sm.len() {
+            return None;
+        }
+        let per_cib = (self.bs as usize).saturating_sub(40) / 32;
+        let mut free = vec![];
+        for ci in 0..cib_count {
+            let cp = le64(&sm, addr_off + ci * 8);
+            let Some(cib) = self.checked_block(cp) else {
+                continue;
+            };
+            if le32(&cib, 24) & OBJ_TYPE_MASK != T_CIB {
+                continue;
+            }
+            let count = (le32(&cib, 36) as usize).min(per_cib);
+            for j in 0..count {
+                let o = 40 + j * 32;
+                let addr = le64(&cib, o + 8);
+                let n = le32(&cib, o + 16) as u64;
+                let bm = le64(&cib, o + 24);
+                if n == 0 || addr >= self.blocks {
+                    continue;
+                }
+                let n = n.min(self.blocks - addr);
+                if bm == 0 {
+                    free.push(Extent::new(self.base + addr * self.bs, n * self.bs));
+                    continue;
+                }
+                let Some(b) = self.block(bm) else {
+                    continue;
+                };
+                let mut run: Option<u64> = None;
+                for k in 0..n {
+                    let used = b
+                        .get((k / 8) as usize)
+                        .map(|x| x >> (k % 8) & 1 == 1)
+                        .unwrap_or(true);
+                    match (used, run) {
+                        (false, None) => run = Some(k),
+                        (true, Some(s)) => {
+                            free.push(Extent::new(
+                                self.base + (addr + s) * self.bs,
+                                (k - s) * self.bs,
+                            ));
+                            run = None;
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(s) = run {
+                    free.push(Extent::new(
+                        self.base + (addr + s) * self.bs,
+                        (n - s) * self.bs,
+                    ));
+                }
+            }
+        }
+        Some(merge_extents(free))
     }
 }
 
@@ -399,6 +508,13 @@ pub fn scan(ctx: &mut Ctx, base: u64, part_len: u64) -> VolumeScan {
         return res;
     };
     let _ = cont_omap_block;
+    res.free = a.free_map(&nx);
+    if res.free.is_none() {
+        res.warnings.push(
+            "APFS: não foi possível ler o mapa de espaço livre; a varredura profunda usará todo o volume."
+                .into(),
+        );
+    }
     let container_omap = a.omap(le64(&nx, 160));
     let max_fs = le32(&nx, 180).min(100) as usize;
     let mut vols: Vec<Volume> = vec![];
@@ -608,6 +724,12 @@ fn scan_volume(ctx: &mut Ctx, a: &Apfs, v: &Volume, allow_stale_scan: bool, res:
         (ctx.emit)(f);
     }
     let _ = res;
+}
+
+/// Trechos livres (absolutos) do contêiner, segundo o spaceman.
+pub fn free_extents(src: &dyn Source, base: u64) -> Option<Vec<Extent>> {
+    let (a, nx) = open_container(src, base)?;
+    a.free_map(&nx)
 }
 
 /// Arquivos e pastas atuais do primeiro volume sem cifragem (caminho, tamanho, é pasta).
