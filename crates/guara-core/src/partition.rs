@@ -261,7 +261,7 @@ pub fn analyze(src: &dyn Source, search_lost: bool) -> DiskLayout {
         }
         if p.fs == FsKind::Apfs {
             layout.warnings.push(format!(
-                "Partição {} é APFS: leitura de metadados ainda não suportada; usando apenas varredura por assinatura. Se estiver cifrada (FileVault), nada será encontrado.",
+                "Partição {} é APFS: o mapa de espaço livre é lido do spaceman; se o volume estiver cifrado (FileVault), nada será encontrado sem a chave.",
                 p.index + 1
             ));
         }

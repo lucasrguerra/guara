@@ -2,8 +2,8 @@
 
 mod common;
 use common::*;
-use guara_core::fs::apfs::{fletcher64, live_paths};
-use guara_core::source::FileSource;
+use guara_core::fs::apfs::{fletcher64, free_extents, live_paths};
+use guara_core::source::{FileSource, Source};
 use guara_core::*;
 use std::path::PathBuf;
 
@@ -24,6 +24,17 @@ fn reads_the_live_tree_of_the_reference_image() {
         names.iter().any(|n| n.ends_with("passwords.txt")),
         "{names:?}"
     );
+}
+
+#[test]
+fn free_space_map_matches_the_spaceman() {
+    let Some(p) = img() else { return };
+    let src = FileSource::open(&p).unwrap();
+    let free = free_extents(&src, 0).expect("mapa de espaço livre");
+    let bytes: u64 = free.iter().map(|e| e.len).sum();
+    assert_eq!(bytes, 904 * 4096);
+    assert_eq!(free.first().unwrap().offset, 110 * 4096);
+    assert!(free.iter().all(|e| e.end() <= src.size()));
 }
 
 #[test]
