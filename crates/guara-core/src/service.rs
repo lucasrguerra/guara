@@ -675,7 +675,16 @@ impl Engine {
         let elapsed = s
             .finished_in
             .unwrap_or_else(|| s.started.elapsed().as_secs_f64());
-        let html = crate::report::html(&crate::report::ReportInput {
+        let audit = crate::audit::Log::open_default()
+            .verify()
+            .ok()
+            .filter(|v| v.entries > 0)
+            .map(|v| crate::report::AuditNote {
+                entries: v.entries,
+                ok: v.ok,
+                head: v.head,
+            });
+        let input = crate::report::ReportInput {
             case: &case,
             target: &j.target,
             options: &j.opts,
@@ -686,8 +695,17 @@ impl Engine {
             elapsed,
             recoveries: &s.recoveries,
             source_hashes: hashes.as_ref(),
-        });
-        crate::owner::write_owned(Path::new(path), html)?;
+            audit,
+        };
+        let as_pdf = Path::new(path)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("pdf"));
+        let bytes = if as_pdf {
+            crate::report::pdf(&input)
+        } else {
+            crate::report::html(&input).into_bytes()
+        };
+        crate::owner::write_owned(Path::new(path), bytes)?;
         crate::audit::record(
             "export.report",
             json!({ "job": id, "source": j.target, "path": path, "case": case.case_id, "examiner": case.examiner }),

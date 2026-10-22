@@ -65,7 +65,7 @@ recover                       copies with MD5, SHA-1 and SHA-256 and writes the 
 |---|---|
 | `recover` | Copies the files, checks the hashes, writes the manifest, resumes recovery |
 | `hashing`, `search` | Hashes and text search across the whole disk |
-| `report`, `explorer` | HTML report, CSV, explorer filters and groupings |
+| `report`, `pdf`, `explorer` | HTML and PDF report (the PDF writer is built in, no external library), CSV, explorer filters and groupings |
 | `health`, `external` | SMART and external tools (`smartctl`) |
 
 ### Service

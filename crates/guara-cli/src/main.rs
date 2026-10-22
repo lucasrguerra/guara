@@ -110,10 +110,10 @@ enum Cmd {
         #[command(flatten)]
         filter: FilterArgs,
     },
-    /// Gera o relatório HTML de recuperação (identificação do caso, origem, achados, hashes)
+    /// Gera o relatório de recuperação (identificação do caso, origem, achados, hashes): PDF se o arquivo terminar em .pdf, senão HTML
     Report {
         session: String,
-        /// Arquivo HTML de saída
+        /// Arquivo de saída (.pdf ou .html)
         out: String,
         #[arg(long, default_value = "")]
         case: String,

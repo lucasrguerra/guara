@@ -65,7 +65,7 @@ recover                       copia com MD5, SHA-1 e SHA-256 e grava o manifesto
 |---|---|
 | `recover` | Copia os arquivos, confere os hashes, grava o manifesto, retoma recuperação |
 | `hashing`, `search` | Hashes e busca de texto no disco inteiro |
-| `report`, `explorer` | Relatório HTML, CSV, filtros e agrupamentos do explorador |
+| `report`, `pdf`, `explorer` | Relatório HTML e PDF (o gerador de PDF é próprio, sem biblioteca externa), CSV, filtros e agrupamentos do explorador |
 | `health`, `external` | SMART e ferramentas externas (`smartctl`) |
 
 ### Serviço

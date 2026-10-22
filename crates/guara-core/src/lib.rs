@@ -34,6 +34,7 @@ pub mod mp4rebuild;
 pub mod notify;
 pub mod owner;
 pub mod partition;
+pub mod pdf;
 pub mod raid;
 pub mod raid_detect;
 pub mod reconnect;

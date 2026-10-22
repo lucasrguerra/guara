@@ -19,7 +19,7 @@ Ler disco bruto exige privilégios: administrador no Windows, `sudo` no Linux e 
 | `hash <origem>` | MD5, SHA-1 e SHA-256 do dispositivo |
 | `search <origem> <termos...>` | Texto no disco inteiro, UTF-8 e UTF-16 |
 | `export <sessão> <csv>` | Planilha dos achados |
-| `report <sessão> <html>` | Relatório HTML imprimível |
+| `report <sessão> <arquivo>` | Relatório imprimível, HTML ou PDF (pela extensão do arquivo) |
 | `audit` | Trilha de auditoria de cada ação (quem, quando, o quê); `--verify` confere o encadeamento por hash |
 | `sessions` | Sessões salvas automaticamente |
 | `ui` | Interface no navegador (127.0.0.1, com token) |
@@ -136,4 +136,4 @@ Procura em UTF-8 e UTF-16 (`--no-utf16` desliga), inclusive no espaço livre e f
 guara report s.json relatorio.html --case 2026-001 --examiner "Nome" --hash-source
 ```
 
-Traz identificação do caso, origem, partições, resumo, hashes e a lista dos arquivos. `--hash-source` inclui o hash da origem inteira.
+Traz identificação do caso, origem, partições, resumo, hashes, a situação da trilha de auditoria e a lista dos arquivos. `--hash-source` inclui o hash da origem inteira. O formato segue a extensão: `relatorio.pdf` gera um PDF A4 (fontes padrão, nada externo); qualquer outra gera HTML.

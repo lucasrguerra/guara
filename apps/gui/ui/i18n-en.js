@@ -320,7 +320,7 @@ export const EN = {
   '{n} linhas gravadas': '{n} rows written',
   'Relatório de recuperação': 'Recovery report',
   'Gerar relatório': 'Generate report',
-  'Gera um relatório HTML pronto para imprimir, com a origem examinada, os achados e os hashes dos arquivos recuperados.': 'Generates a print-ready HTML report with the examined source, the findings and the hashes of recovered files.',
+  'Gera um relatório pronto para imprimir, com a origem examinada, os achados e os hashes dos arquivos recuperados. Termine o nome em .pdf para gerar PDF; com .html sai uma página web.': 'Generates a print-ready report with the examined source, the findings and the hashes of recovered files. End the name in .pdf for a PDF; with .html you get a web page.',
   'Salvar em': 'Save to',
   'Número do caso': 'Case number',
   'Responsável pelo exame': 'Examiner',

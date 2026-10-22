@@ -111,8 +111,8 @@ Resumo do [ROADMAP](ROADMAP.pt-BR.md):
 
 | | |
 |---|---|
-| **Feito** | Metadados de 8 sistemas de arquivos, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, JPEG fragmentado, MP4 sem índice, leitor de SQLite, SMART |
-| **Próximo** | Registro de auditoria, relatório assinado e em PDF, mapa livre do APFS, testes em Windows e macOS |
+| **Feito** | Metadados de 8 sistemas de arquivos, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, JPEG fragmentado, MP4 sem índice, leitor de SQLite, SMART, QCOW2/VMDK/VHD/VHDX/DMG, trilha de auditoria encadeada por hash, relatório em PDF, mapa livre do APFS |
+| **Próximo** | Relatório assinado digitalmente, testes em Windows e macOS |
 | **Depois** | NSRL e listas de hashes, busca em conteúdo, linha do tempo unificada, interpretação de navegadores, registro do Windows e apps de mensagem, ataque de dicionário e força bruta a volumes cifrados |
 | **Sem imagem de referência** | ReFS e Storage Spaces: só entram com validação |
 | **Longo prazo** | Backups de iOS e Android (iTunes, ADB), OCR, validação NIST CFTT, acesso físico a celulares por exploit de bootloader/chip |

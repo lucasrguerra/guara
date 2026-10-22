@@ -417,8 +417,14 @@ fn relatorio_html_escapa_conteudo_e_traz_o_caso() {
         elapsed: 1.5,
         recoveries: &[],
         source_hashes: Some(&hashes),
+        audit: Some(report::AuditNote {
+            entries: 3,
+            ok: true,
+            head: "ab".repeat(32),
+        }),
     });
     assert!(!html.contains("<script>alert"), "HTML não escapado");
+    assert!(html.contains("Trilha de auditoria") && html.contains(&"ab".repeat(32)));
     assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;.txt"));
     assert!(html.contains("2026-001") && html.contains("Perita &lt;Ana&gt;"));
     assert!(html.contains(&hashes.sha256));

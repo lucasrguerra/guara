@@ -111,8 +111,8 @@ Summary of the [ROADMAP](ROADMAP.md):
 
 | | |
 |---|---|
-| **Done** | Metadata from 8 file systems, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, fragmented JPEG, MP4 without an index, SQLite reader, SMART |
-| **Next** | Audit log, signed and PDF report, APFS free map, tests on Windows and macOS |
+| **Done** | Metadata from 8 file systems, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, fragmented JPEG, MP4 without an index, SQLite reader, SMART, QCOW2/VMDK/VHD/VHDX/DMG, hash-chained audit trail, PDF report, APFS free map |
+| **Next** | Digitally signed report, tests on Windows and macOS |
 | **Later** | NSRL and hash lists, content search, unified timeline, browser interpretation, Windows registry and messaging apps, dictionary and brute-force attacks on encrypted volumes |
 | **No reference image** | ReFS and Storage Spaces: they only land with validation |
 | **Long term** | iOS and Android backups (iTunes, ADB), OCR, NIST CFTT validation, physical phone access through bootloader/chip exploits |

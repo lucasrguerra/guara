@@ -19,7 +19,7 @@ Reading a raw disk requires privileges: administrator on Windows, `sudo` on Linu
 | `hash <source>` | MD5, SHA-1 and SHA-256 of the device |
 | `search <source> <terms...>` | Text across the whole disk, UTF-8 and UTF-16 |
 | `export <session> <csv>` | Spreadsheet of the findings |
-| `report <session> <html>` | Printable HTML report |
+| `report <session> <file>` | Printable report, HTML or PDF (by the file extension) |
 | `audit` | Audit trail of every action (who, when, what); `--verify` checks the hash chain |
 | `sessions` | Automatically saved sessions |
 | `ui` | Interface in the browser (127.0.0.1, with token) |
@@ -136,4 +136,4 @@ Searches in UTF-8 and UTF-16 (`--no-utf16` turns it off), including free space a
 guara report s.json report.html --case 2026-001 --examiner "Name" --hash-source
 ```
 
-Includes case identification, source, partitions, summary, hashes and the list of files. `--hash-source` adds the hash of the whole source.
+Includes case identification, source, partitions, summary, hashes, the audit trail status and the list of files. `--hash-source` adds the hash of the whole source. The format follows the extension: `report.pdf` writes an A4 PDF (standard fonts, nothing external), anything else writes HTML.
