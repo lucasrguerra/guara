@@ -47,6 +47,7 @@ pub mod source;
 pub mod sqlite;
 pub mod thumb;
 pub mod types;
+pub mod vdisk;
 pub mod volume;
 
 pub use error::{Error, Result};

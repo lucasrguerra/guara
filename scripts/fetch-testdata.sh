@@ -13,7 +13,7 @@ for n in bitlk-images fvault2-images; do
   rm -rf "$tmp"
 done
 mkdir -p "$dest/dfvfs"
-for f in lvm.raw apfs.raw apfs_encrypted.dmg hfsplus.raw hfs.raw xfs.raw xfs-bigtime.raw ext4.raw ext2.raw fvdetest.qcow2 luks1.raw luks2.raw bdetogo.raw; do
+for f in lvm.raw apfs.raw apfs_encrypted.dmg hfsplus.raw hfs.raw xfs.raw xfs-bigtime.raw ext4.raw ext2.raw fvdetest.qcow2 ext2.vhd ext2.vhdx ext2.vmdk windows_volume.qcow2 apm.dmg ntfs-dynamic.vhd ntfs-fixed.vhd ntfs-dynamic.vhdx ntfs-fixed.vhdx ntfs-parent.vhd ntfs-differential.vhd ntfs-parent.vhdx ntfs-differential.vhdx fat-parent.vhd fat-differential.vhd fat-parent.vhdx fat-differential.vhdx luks1.raw luks2.raw bdetogo.raw; do
   [ -f "$dest/dfvfs/$f" ] || curl -fsSL "https://raw.githubusercontent.com/log2timeline/dfvfs/main/test_data/$f" -o "$dest/dfvfs/$f"
 done
 mkdir -p "$dest/aff4"

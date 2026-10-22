@@ -17,7 +17,7 @@ In a single scan, Guará does what tools like Recuva, PhotoRec, TestDisk and Dis
 - **Encrypted volumes:** opens BitLocker, LUKS and FileVault 2 with your password or key and scans inside.
 - **RAID and LVM:** reassembles arrays from loose disks (RAID 0, 1, 4, 5, 6, 10, LVM2), working out level, stripe size and order by itself when there is no metadata.
 - **Fragmented files:** reassembles JPEGs stored in pieces and rebuilds the index of MP4/MOV videos that lost their `moov`.
-- **Forensic images:** reads and writes raw images, **E01/Ex01** and **AFF4**.
+- **Forensic images:** reads and writes raw images, **E01/Ex01** and **AFF4**, and reads **QCOW2, VMDK, VHD, VHDX** and **DMG** virtual disks.
 - **Lost partitions:** reads MBR/GPT and searches for volumes by signature where the table failed.
 - **Merge without duplicates:** a file found by more than one method appears once, with the best evidence.
 - **Per-file confidence** (high, medium, low): intact structure, reused clusters, zeroed content (TRIM) or content that does not match the extension.

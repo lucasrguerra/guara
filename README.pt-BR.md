@@ -17,7 +17,7 @@ O Guará junta, numa única varredura, o que ferramentas como Recuva, PhotoRec, 
 - **Volumes cifrados:** abre BitLocker, LUKS e FileVault 2 com a sua senha ou chave e varre por dentro.
 - **RAID e LVM:** remonta arrays a partir de discos soltos (RAID 0, 1, 4, 5, 6, 10, LVM2), descobrindo nível, faixa e ordem sozinho quando não há metadados.
 - **Arquivos fragmentados:** remonta JPEG em pedaços e refaz o índice de vídeos MP4/MOV sem `moov`.
-- **Imagens forenses:** lê e grava imagem bruta, **E01/Ex01** e **AFF4**.
+- **Imagens forenses:** lê e grava imagem bruta, **E01/Ex01** e **AFF4**, e lê discos virtuais **QCOW2, VMDK, VHD, VHDX** e **DMG**.
 - **Partições perdidas:** lê MBR/GPT e procura volumes por assinatura onde a tabela falhou.
 - **Fusão sem duplicatas:** um arquivo achado por mais de um método aparece uma vez, com a melhor evidência.
 - **Confiança por arquivo** (alta, média, baixa): estrutura íntegra, clusters reutilizados, conteúdo zerado (TRIM) ou que não confere com a extensão.
