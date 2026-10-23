@@ -68,7 +68,8 @@ Hoje o Guará abre volumes quando você **já tem** a senha ou a chave. Recupera
 | E01 e Ex01: leitura, gravação e `guara verify` | ✅ |
 | AFF4: leitura e gravação | ✅ |
 | Contêineres de disco virtual: QCOW2, VMDK, VHD, VHDX e DMG (leitura) | ✅ |
-| QCOW2 com arquivo de apoio, snapshots de VMDK, DMG com LZFSE ou com senha | 🔜 |
+| QCOW2 com arquivo de apoio, snapshots de VMDK (por nome ou UUID do VirtualBox), DMG com LZFSE | ✅ |
+| DMG com senha, conferência da identidade do pai em VHD, VHDX e QCOW2 | 🔜 |
 | Imagem de dispositivo móvel (ver item 7) | 🔭 |
 
 ### 4. Montagem de discos soltos
