@@ -42,11 +42,16 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Cache dos pacotes das ferramentas de teste (.deb)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-cache-tools
+          key: apt-tools-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-${{ hashFiles('scripts/apt-install.sh') }}
       - name: Ferramentas para imagens de teste (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mtools dosfstools exfatprogs ntfs-3g e2fsprogs xfsprogs imagemagick zip
+        timeout-minutes: 25
+        run: scripts/apt-install.sh ~/apt-cache-tools mtools dosfstools exfatprogs ntfs-3g e2fsprogs xfsprogs imagemagick zip
       - name: Cache das imagens de referência
         uses: actions/cache@v6
         with:
@@ -89,10 +94,10 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/apt-cache
-          key: apt-tauri-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-${{ hashFiles('scripts/install-tauri-deps.sh') }}
+          key: apt-tauri-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-${{ hashFiles('scripts/apt-install.sh') }}
       - name: Dependências do Tauri
         timeout-minutes: 25
-        run: scripts/install-tauri-deps.sh
+        run: scripts/apt-install.sh ~/apt-cache libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - name: Gera os ícones
         run: npx --yes @tauri-apps/cli@2 icon apps/gui/src-tauri/icons/source.png -o apps/gui/src-tauri/icons
       - run: cargo check --manifest-path apps/gui/src-tauri/Cargo.toml
