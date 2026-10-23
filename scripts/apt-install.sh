@@ -11,6 +11,9 @@ set -euo pipefail
 cache="$1"; shift
 pkgs=("$@")
 mkdir -p "$cache/partial"
+# O apt roda como root e deixa arquivos (lock, .deb) que o usuário do runner não lê; sem devolver a
+# posse, o actions/cache falha ao empacotar a pasta ("tar failed with exit code 2") e nunca grava.
+trap 'sudo chown -R "$(id -u):$(id -g)" "$cache" 2>/dev/null || true; rm -f "$cache/lock"' EXIT
 opts=(-o "Dir::Cache::archives=$cache" -y)
 
 # 1) com .deb em cache: instala direto, sem nem atualizar o índice do apt
