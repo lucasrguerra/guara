@@ -129,7 +129,8 @@ O acesso físico é o diferencial de ferramentas comerciais como a Cellebrite. D
 | Relatório HTML com caso, examinador, origem, partições, resumo e hashes | ✅ |
 | Verificação de imagem E01/Ex01 contra o hash gravado | ✅ |
 | **Trilha de auditoria** de cada ação do perito (quem, quando, o quê), encadeada por hash, com `guara audit --verify` | ✅ |
-| **Relatórios assinados** digitalmente e manifesto com carimbo de tempo | 🔜 |
+| **Assinatura digital** (Ed25519) de manifestos, relatórios e qualquer arquivo; `guara sign recovery` confere uma pasta de recuperação inteira | ✅ |
+| Carimbo de tempo de terceiros (RFC 3161) nas assinaturas | 🔜 |
 | **Reprodutibilidade:** repetir o procedimento gravado e obter o mesmo resultado | 🔜 |
 | Relatório em PDF (A4, próprio) | ✅ |
 | **Validação externa:** testes do NIST CFTT (Computer Forensic Tool Testing) e publicação dos resultados | 🔭 |
@@ -165,7 +166,7 @@ A validação externa é o que faz um laudo ser aceito. Sem ela, o Guará serve 
 Sem datas, na ordem em que fazem mais sentido.
 
 **1.3: confiança e custódia**
-Manifesto assinado, validação de XFS e APFS com exclusões reais, testes com imagens reais no Windows e macOS.
+Carimbo de tempo, validação de XFS e APFS com exclusões reais, testes com imagens reais no Windows e macOS.
 
 **1.4: análise**
 NSRL e listas de hashes, busca em conteúdo de arquivos, linha do tempo unificada.

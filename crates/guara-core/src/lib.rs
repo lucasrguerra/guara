@@ -44,6 +44,7 @@ pub mod scan;
 pub mod search;
 pub mod service;
 pub mod settings;
+pub mod sign;
 pub mod signatures;
 pub mod source;
 pub mod sqlite;

@@ -91,7 +91,7 @@ App desktop (Tauri) no estilo de um gerenciador de arquivos, pensado para quando
 - **Sessões automáticas** e reconexão: o Guará reconhece o mesmo disco que volta com outro nome.
 - **Detecção de duplicadas** por assinatura de conteúdo.
 
-> **Atenção:** o Guará ainda **não foi validado externamente** (por exemplo, nos testes do NIST CFTT) e não tem registro de auditoria nem relatório assinado. Serve bem para recuperação e triagem; para uso em juízo, confira os resultados por outro meio. O caminho para isso está no [ROADMAP](ROADMAP.pt-BR.md).
+> **Atenção:** o Guará ainda **não foi validado externamente** (por exemplo, nos testes do NIST CFTT) e suas assinaturas não têm carimbo de tempo de terceiros (RFC 3161). Serve bem para recuperação e triagem; para uso em juízo, confira os resultados por outro meio. O caminho para isso está no [ROADMAP](ROADMAP.pt-BR.md).
 
 ## Limites conhecidos
 
@@ -111,8 +111,8 @@ Resumo do [ROADMAP](ROADMAP.pt-BR.md):
 
 | | |
 |---|---|
-| **Feito** | Metadados de 8 sistemas de arquivos, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, JPEG fragmentado, MP4 sem índice, leitor de SQLite, SMART, QCOW2/VMDK/VHD/VHDX/DMG, trilha de auditoria encadeada por hash, relatório em PDF, mapa livre do APFS |
-| **Próximo** | Relatório assinado digitalmente, testes em Windows e macOS |
+| **Feito** | Metadados de 8 sistemas de arquivos, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, JPEG fragmentado, MP4 sem índice, leitor de SQLite, SMART, QCOW2/VMDK/VHD/VHDX/DMG, trilha de auditoria encadeada por hash, relatório em PDF, assinaturas Ed25519, mapa livre do APFS |
+| **Próximo** | Carimbo de tempo de terceiros (RFC 3161), testes em Windows e macOS |
 | **Depois** | NSRL e listas de hashes, busca em conteúdo, linha do tempo unificada, interpretação de navegadores, registro do Windows e apps de mensagem, ataque de dicionário e força bruta a volumes cifrados |
 | **Sem imagem de referência** | ReFS e Storage Spaces: só entram com validação |
 | **Longo prazo** | Backups de iOS e Android (iTunes, ADB), OCR, validação NIST CFTT, acesso físico a celulares por exploit de bootloader/chip |

@@ -20,6 +20,7 @@ Reading a raw disk requires privileges: administrator on Windows, `sudo` on Linu
 | `search <source> <terms...>` | Text across the whole disk, UTF-8 and UTF-16 |
 | `export <session> <csv>` | Spreadsheet of the findings |
 | `report <session> <file>` | Printable report, HTML or PDF (by the file extension) |
+| `sign keygen\|file\|verify\|recovery` | Ed25519 signatures of manifests, reports and files; checks a whole recovery folder |
 | `audit` | Audit trail of every action (who, when, what); `--verify` checks the hash chain |
 | `sessions` | Automatically saved sessions |
 | `ui` | Interface in the browser (127.0.0.1, with token) |
@@ -99,6 +100,17 @@ guara verify /mnt/other-disk/sdb.E01
 ```
 
 For E01: `--segment-mib` (size of each segment, default 1500, 0 for a single file) and `--compression` (0 to 9, default 1).
+
+## Digital signatures
+
+```bash
+guara sign keygen                                # creates the key pair (never overwrites one)
+guara sign file report.pdf                       # writes report.pdf.assinatura.json
+guara sign verify report.pdf --trust 1a2b:3c4d:5e6f:7a8b:9c0d
+guara sign recovery /mnt/other-disk/Recovered    # manifest signature and the hash of every file
+```
+
+With a key configured, `recover` and `report` sign the manifest and the report on their own. The signature covers the SHA-256, size, name, time and signer; anyone can check it with Guará or with `openssl` (it is plain Ed25519 over the message documented in `crates/guara-core/src/sign.rs`). A valid signature proves the file did not change since it was signed **by whoever holds the key**; to know whose key it is, compare the fingerprint with the one the examiner published outside the machine (`--trust`). The private key lives in `assinatura.key` in the configuration folder (or where `GUARA_SIGNING_KEY` points), mode 0600; keep a copy and consider keeping it on an encrypted volume. The time is the signing machine's clock, not a third-party timestamp.
 
 ## Audit trail
 

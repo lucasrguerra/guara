@@ -706,6 +706,7 @@ impl Engine {
             crate::report::html(&input).into_bytes()
         };
         crate::owner::write_owned(Path::new(path), bytes)?;
+        crate::sign::sign_if_configured(Path::new(path));
         crate::audit::record(
             "export.report",
             json!({ "job": id, "source": j.target, "path": path, "case": case.case_id, "examiner": case.examiner }),
