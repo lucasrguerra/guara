@@ -46,7 +46,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y mtools dosfstools exfatprogs ntfs-3g e2fsprogs imagemagick zip
+          sudo apt-get install -y mtools dosfstools exfatprogs ntfs-3g e2fsprogs xfsprogs imagemagick zip
+      - name: Imagem XFS com exclusão feita pelo kernel (Linux)
+        if: runner.os == 'Linux'
+        run: sudo scripts/make-xfs-real-deletion.sh
       - name: Testes (com imagens reais FAT32/NTFS/ext4 no Linux)
         shell: bash
         run: |

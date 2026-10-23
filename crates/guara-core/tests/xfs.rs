@@ -268,3 +268,100 @@ fn reference_image_is_recognized() {
     let l = c.layout.unwrap();
     assert_eq!(l.partitions[0].fs, FsKind::Xfs);
 }
+
+/// Exclusão feita pelo kernel (scripts/make-xfs-real-deletion.sh, precisa de root): cada arquivo
+/// apagado precisa voltar pelo nome, na pasta certa, com o conteúdo original no começo; os que
+/// ficaram não podem aparecer como apagados. Pulado quando a imagem não foi gerada.
+#[test]
+fn real_kernel_deletion_is_recovered() {
+    let dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/testdata/xfs-real-delete");
+    let (img, tsv) = (dir.join("disk.img"), dir.join("expected.tsv"));
+    if !(img.exists() && tsv.exists()) {
+        assert!(
+            std::env::var("GUARA_REQUIRE_FIXTURES").is_err(),
+            "faltou a imagem: sudo scripts/make-xfs-real-deletion.sh"
+        );
+        eprintln!("SKIP: rode sudo scripts/make-xfs-real-deletion.sh");
+        return;
+    }
+    init();
+    let rows: Vec<(String, u64, String, bool)> = std::fs::read_to_string(&tsv)
+        .unwrap()
+        .lines()
+        .map(|l| {
+            let c: Vec<&str> = l.split('\t').collect();
+            (
+                c[0].to_string(),
+                c[1].parse().unwrap(),
+                c[2].to_string(),
+                c[3] == "deleted",
+            )
+        })
+        .collect();
+    let c = scan_path(
+        &img,
+        &ScanOptions {
+            mode: ScanMode::Deep,
+            ..Default::default()
+        },
+    );
+    let xfs: Vec<&Found> = c.found.iter().filter(|f| f.origin == Origin::Xfs).collect();
+    let listing = || {
+        xfs.iter()
+            .map(|f| {
+                format!(
+                    "{}/{} ({} bytes, {:?})",
+                    f.dir.as_deref().unwrap_or(""),
+                    f.name,
+                    f.size,
+                    f.confidence
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let out = tempfile::tempdir().unwrap();
+    for (rel, size, sha, deleted) in &rows {
+        let (dirname, name) = match rel.rsplit_once('/') {
+            Some((d, n)) => (format!("/{d}"), n),
+            None => (String::new(), rel.as_str()),
+        };
+        let hit = xfs
+            .iter()
+            .find(|f| f.name == name && f.dir.as_deref().unwrap_or("") == dirname);
+        if !*deleted {
+            assert!(
+                hit.is_none(),
+                "{rel} não foi apagado, mas apareceu como recuperável: {:?}",
+                listing()
+            );
+            continue;
+        }
+        let f = hit.unwrap_or_else(|| {
+            panic!(
+                "{rel} apagado pelo kernel não foi encontrado; achados: {:?}",
+                listing()
+            )
+        });
+        let rep = recover_all(&img, std::slice::from_ref(*f), &out.path().join(name));
+        assert!(rep.failed.is_empty(), "{rel}: {:?}", rep.failed);
+        let rp = PathBuf::from(&rep.recovered[0].path);
+        let got = std::fs::read(if rp.is_absolute() {
+            rp
+        } else {
+            out.path().join(name).join(rp)
+        })
+        .unwrap();
+        // o tamanho exato se perde na exclusão: o arquivo vem com os blocos inteiros
+        assert!(
+            got.len() as u64 >= *size,
+            "{rel}: veio menor ({} < {size})",
+            got.len()
+        );
+        assert_eq!(
+            sha256(&got[..*size as usize]),
+            *sha,
+            "{rel}: o conteúdo inicial difere do original"
+        );
+    }
+}
