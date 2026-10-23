@@ -18,9 +18,9 @@ mnt="$(mktemp -d)"
 cleanup() { mountpoint -q "$mnt" && umount "$mnt"; rmdir "$mnt" 2>/dev/null || true; }
 trap cleanup EXIT
 mount -o loop "$img" "$mnt"
-python3 - "$mnt" "$out/expected.tsv" <<'PY'
+python3 - "$mnt" "$out/expected.tsv" "$root/crates/guara-core/tests/data/exemplo.sqlite" <<'PY'
 import hashlib, os, sys
-mnt, tsv = sys.argv[1], sys.argv[2]
+mnt, tsv, sqlite = sys.argv[1], sys.argv[2], sys.argv[3]
 def data(seed, n):
     x, out = seed | 1, bytearray()
     for _ in range(n):
@@ -34,11 +34,14 @@ files = [  # (caminho, tamanho, semente, apagar?)
     ("fotos/foto2.bin", 40000, 8, False),
     ("raiz-apagada.txt", 20000, 9, True),
 ]
+# um arquivo com estrutura reconhecível (SQLite), para a recuperação por carving
+real = open(sqlite, "rb").read()
 rows = []
+files.append(("dados/exemplo.sqlite", len(real), 0, True))
 for rel, n, seed, gone in files:
     p = os.path.join(mnt, rel)
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    d = data(seed, n)
+    d = real if rel.endswith('.sqlite') else data(seed, n)
     with open(p, "wb") as f:
         f.write(d)
     rows.append((rel, n, hashlib.sha256(d).hexdigest(), "deleted" if gone else "live"))
