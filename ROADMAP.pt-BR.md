@@ -27,10 +27,11 @@ Legenda: ✅ feito · 🟡 parcial · 🔜 planejado · 🔭 ideia a longo prazo
 | 1.0.1 | 2026-10-20 | Documentação em inglês com tradução em português, interface completa em inglês, telas, imagem Docker do terminal |
 | 1.1.0 | 2026-10-20 | Mensagens do núcleo e datas em inglês, verificação automática da tradução, RustCrypto em digest 0.11, acesso a dispositivo no Docker e workspaces do Superset verificados |
 | 1.2.0 | 2026-10-22 | Discos virtuais QCOW2, VMDK, VHD, VHDX e DMG, trilha de auditoria encadeada por hash, relatório em PDF, mapa de espaço livre do APFS |
+| 1.3.0 | 2026-10-23 | Atualização pelo próprio app, assinaturas Ed25519, QCOW2/VMDK diferenciais e DMG com LZFSE, imagens de referência testadas em Linux, macOS e Windows, teste de exclusão real do XFS |
 
 Detalhes de cada versão no [CHANGELOG](CHANGELOG.pt-BR.md).
 
-## Situação atual (1.2.0) contra o que se espera de uma suíte forense
+## Situação atual (1.3.0) contra o que se espera de uma suíte forense
 
 ### 1. Sistemas de arquivos com metadados
 
@@ -158,7 +159,8 @@ A validação externa é o que faz um laudo ser aceito. Sem ela, o Guará serve 
 |---|---|
 | CLI e interface para Windows, Linux e macOS | ✅ |
 | CI em três sistemas, release automática por tag | ✅ |
-| Testes com imagens reais em Windows e macOS (hoje só Linux) | 🔜 |
+| Testes com imagens de referência reais em Linux, macOS e Windows | ✅ |
+| Atualização dentro do app desktop (pacotes assinados, um clique) | ✅ |
 | GUI: processo auxiliar privilegiado em vez de reiniciar o app inteiro como administrador | 🔜 |
 | Binários assinados e notarizados | 🔜 |
 | Pacotes em gerenciadores (winget, Homebrew, Flatpak) | 🔭 |
@@ -167,17 +169,17 @@ A validação externa é o que faz um laudo ser aceito. Sem ela, o Guará serve 
 
 Sem datas, na ordem em que fazem mais sentido.
 
-**1.3: confiança e custódia**
+**1.4: confiança e custódia**
 Carimbo de tempo de terceiros, leitura do diário do XFS, validação de APFS com exclusões reais.
 
-**1.4: análise**
+**1.5: análise**
 NSRL e listas de hashes, busca em conteúdo de arquivos, linha do tempo unificada.
 
-**1.5: artefatos**
+**1.6: artefatos**
 Registro do Windows, navegadores, EVTX e os apps de mensagem mais comuns, apoiados no leitor de SQLite.
 
-**1.6: mais estrutura**
-ReFS e Storage Spaces (quando houver imagem de referência), os casos de disco virtual ainda recusados (QCOW2 com arquivo de apoio, snapshots de VMDK, DMG com LZFSE ou senha), carving fragmentado ampliado.
+**1.7: mais estrutura**
+ReFS e Storage Spaces (quando houver imagem de referência), DMG com senha, conferência da identidade do pai em VHD, VHDX e QCOW2, carving fragmentado ampliado.
 
 **2.0: dispositivos móveis e validação**
 Backups do iTunes, ADB e backups do Android; submissão aos testes do NIST CFTT.

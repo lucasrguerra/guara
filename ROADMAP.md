@@ -27,10 +27,11 @@ Legend: ✅ done · 🟡 partial · 🔜 planned · 🔭 long-term idea · ⛔ o
 | 1.0.1 | 2026-10-20 | Documentation in English with Portuguese translations, complete English interface, screenshots, Docker image of the CLI |
 | 1.1.0 | 2026-10-20 | Core messages and dates in English, automated translation check, RustCrypto on digest 0.11, verified Docker device access and Superset workspaces |
 | 1.2.0 | 2026-10-22 | QCOW2, VMDK, VHD, VHDX and DMG virtual disks, hash-chained audit trail, PDF report, APFS free-space map |
+| 1.3.0 | 2026-10-23 | Update from inside the app, Ed25519 signatures, differencing QCOW2/VMDK and LZFSE DMG, reference images tested on Linux, macOS and Windows, XFS real-deletion test |
 
 Details of each version in the [CHANGELOG](CHANGELOG.md).
 
-## Current status (1.2.0) against what is expected from a forensic suite
+## Current status (1.3.0) against what is expected from a forensic suite
 
 ### 1. File systems with metadata
 
@@ -158,7 +159,8 @@ External validation is what makes a report accepted. Without it, Guará is good 
 |---|---|
 | CLI and interface for Windows, Linux and macOS | ✅ |
 | CI on three systems, automatic release by tag | ✅ |
-| Tests with real images on Windows and macOS (Linux only today) | 🔜 |
+| Tests with real reference images on Linux, macOS and Windows | ✅ |
+| Update from inside the desktop app (signed packages, one click) | ✅ |
 | GUI: privileged helper process instead of restarting the whole app as administrator | 🔜 |
 | Signed and notarized binaries | 🔜 |
 | Packages in package managers (winget, Homebrew, Flatpak) | 🔭 |
@@ -167,17 +169,17 @@ External validation is what makes a report accepted. Without it, Guará is good 
 
 No dates, in the order that makes the most sense.
 
-**1.3: trust and custody**
+**1.4: trust and custody**
 Trusted timestamps, XFS journal reading, APFS validation with real deletions.
 
-**1.4: analysis**
+**1.5: analysis**
 NSRL and hash lists, search in file content, unified timeline.
 
-**1.5: artifacts**
+**1.6: artifacts**
 Windows registry, browsers, EVTX and the most common messaging apps, built on the SQLite reader.
 
-**1.6: more structure**
-ReFS and Storage Spaces (once there is a reference image), the virtual-disk cases still refused (QCOW2 with a backing file, VMDK snapshots, DMG with LZFSE or a password), expanded fragmented carving.
+**1.7: more structure**
+ReFS and Storage Spaces (once there is a reference image), password-protected DMG, identity check of VHD, VHDX and QCOW2 parents, expanded fragmented carving.
 
 **2.0: mobile devices and validation**
 iTunes backups, ADB and Android backups; submission to the NIST CFTT tests.

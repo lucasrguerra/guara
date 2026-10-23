@@ -4,6 +4,26 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [1.3.0] - 2026-10-23
+
+### Adicionado
+- **Atualização dentro do app desktop.** Ao abrir, o app pede ao GitHub o `latest.json` da release; havendo versão nova, um cartão oferece **Atualizar agora**. Ele baixa o pacote, confere a assinatura minisign com a chave pública embutida no app, instala e reabre (o AppImage é substituído no lugar; Windows e macOS usam o instalador). Instalações por `.deb` ou `.rpm` só mostram o aviso. **Configurações** desliga a consulta ao abrir e tem o botão **Verificar agora**. A consulta é uma requisição HTTP e não envia nada seu.
+- **Assinatura digital (Ed25519):** `guara sign keygen | file | verify | recovery`. Com uma chave configurada, `recover` e `report` assinam sozinhos o manifesto e o relatório. `guara sign recovery` confere a assinatura do manifesto e o hash de cada arquivo recuperado (e recusa caminhos do manifesto que saem da pasta). É Ed25519 comum sobre uma mensagem documentada, então o `openssl` também confere. Comparar a impressão digital da chave (`--trust`) diz de quem ela é; a hora assinada é a do relógio local, não um carimbo de terceiros.
+- **Discos virtuais:** QCOW2 com arquivo de apoio, snapshots de VMDK (pai por nome ou, no VirtualBox, por UUID; o filho é recusado se o CID do pai mudou) e DMG com chunks LZFSE.
+- **CI com imagens de referência reais** em Linux, macOS e Windows (antes eram puladas) e uma imagem XFS apagada pelo kernel de verdade, gerada com `sudo` no runner Linux.
+- Pipeline de release: os pacotes de atualização são assinados com uma chave guardada no ambiente `release` do repositório (só tags `v*`), e o `latest.json` é montado de uma vez por `scripts/make-latest-json.py`.
+
+### Alterado
+- **O XFS passa a 🟡.** Num XFS real (v5, exclusão do kernel) o inode e a lista de extensões são zerados, então o caminho por metadados não acha nada; o conteúdo de arquivos com estrutura reconhecível volta por carving, sem nome nem pasta. O caminho anterior só funcionava na exclusão simulada. O teste de nome e pasta fica `ignore`d até o diário ser lido.
+- Os passos de `apt` do CI usam `.deb` em cache, tempo limite por tentativa e nova tentativa (levavam até 28 minutos num dia de espelho lento).
+- Dependências: `ctutils` 0.4.5 (RUSTSEC-2026-0385); novas `ed25519-compact`, `lzfse_rust` e `tauri-plugin-updater`.
+- O README e o ROADMAP passam a dizer que a verificação de atualização é o único uso da rede por padrão.
+
+### Notas
+- As versões anteriores à 1.3.0 não têm o atualizador: da 1.2.0, troque o AppImage à mão uma última vez. A primeira atualização dentro do app é da 1.3.0 para a próxima versão.
+- Ainda faltam: DMG com senha, conferência da identidade do pai em VHD, VHDX e QCOW2, carimbo de tempo de terceiros (RFC 3161), leitura do diário do XFS e validação de APFS com exclusão real (precisa de imagem de um Mac de verdade).
+- A saída da CLI continua em português.
+
 ## [1.2.0] - 2026-10-22
 
 ### Adicionado

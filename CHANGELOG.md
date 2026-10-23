@@ -4,6 +4,26 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [1.3.0] - 2026-10-23
+
+### Added
+- **Update from inside the desktop app.** On startup the app asks GitHub for the release's `latest.json`; if there is a newer version, a card offers **Update now**. It downloads the package, verifies its minisign signature against the public key built into the app, installs and reopens (the AppImage is replaced in place; Windows and macOS use the installer). Installs from `.deb` or `.rpm` only show the notice. **Settings** can turn the startup check off and has a **Check now** button. The check is one HTTP request and sends nothing of yours.
+- **Digital signatures (Ed25519):** `guara sign keygen | file | verify | recovery`. With a key configured, `recover` and `report` sign the manifest and the report by themselves. `guara sign recovery` checks the manifest signature and the hash of every recovered file (and refuses manifest paths that leave the folder). The signature is plain Ed25519 over a documented message, so `openssl` verifies it too. Comparing the key fingerprint (`--trust`) says whose key it is; the signed time is the local clock, not a third-party timestamp.
+- **Virtual disks:** QCOW2 with a backing file, VMDK snapshots (parent by name or, in VirtualBox, by UUID; the child is refused if the parent's CID changed) and DMG with LZFSE chunks.
+- **CI with real reference images** on Linux, macOS and Windows (they were skipped before), and an XFS image deleted by the real kernel generated with `sudo` on the Linux runner.
+- Release pipeline: update packages are signed with a key kept in the repository's `release` environment (tags `v*` only), and `latest.json` is built in one step by `scripts/make-latest-json.py`.
+
+### Changed
+- **XFS is now 🟡.** On a real XFS (v5, kernel deletion) the inode and extent list are wiped, so the metadata path finds nothing; the content of files with a recognizable structure comes back by carving, without name or folder. The earlier path only worked on simulated deletions. The name-and-folder test is kept `ignore`d until the journal is read.
+- CI `apt` steps use cached `.deb`s, a time limit per attempt and retries (they took up to 28 minutes on a slow mirror day).
+- Dependencies: `ctutils` 0.4.5 (RUSTSEC-2026-0385); new `ed25519-compact`, `lzfse_rust`, `tauri-plugin-updater`.
+- The README and ROADMAP now say the update check is the only network use by default.
+
+### Notes
+- Versions before 1.3.0 do not have the updater: from 1.2.0, replace the AppImage by hand one last time. The first update inside the app is 1.3.0 to the next release.
+- Still missing: password-protected DMG, an identity check for VHD, VHDX and QCOW2 parents, third-party timestamps (RFC 3161), XFS journal reading, and APFS validation with real deletion (needs an image from a real Mac).
+- CLI output remains in Portuguese.
+
 ## [1.2.0] - 2026-10-22
 
 ### Added
