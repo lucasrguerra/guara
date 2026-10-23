@@ -28,6 +28,8 @@ jobs:
           node-version: 22
       - name: Cobertura da tradução da interface
         run: node scripts/check-ui-i18n.mjs
+      - name: Script do latest.json do atualizador
+        run: python3 scripts/test_make_latest_json.py
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets
 

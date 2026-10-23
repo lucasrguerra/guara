@@ -15,6 +15,73 @@ async fn rpc(state: tauri::State<'_, State>, method: String, params: serde_json:
         .map_err(|e| e.to_string())?
 }
 
+/// Versão nova encontrada na release do GitHub.
+#[derive(serde::Serialize)]
+struct UpdateInfo {
+    current: String,
+    version: String,
+    notes: String,
+    /// O app consegue se atualizar sozinho (AppImage, Windows e macOS). Instalação por pacote
+    /// (.deb/.rpm) só avisa e leva à página da release.
+    auto: bool,
+    url: String,
+}
+
+fn self_update_possible() -> bool {
+    !cfg!(target_os = "linux") || std::env::var_os("APPIMAGE").is_some()
+}
+
+/// Procura uma versão mais nova. `None` = já está na última.
+#[tauri::command]
+async fn update_check(app: tauri::AppHandle) -> Result<Option<UpdateInfo>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let found = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
+    Ok(found.map(|u| UpdateInfo {
+        current: u.current_version.clone(),
+        notes: u.body.clone().unwrap_or_default(),
+        url: format!("https://github.com/lucasrguerra/guara/releases/tag/v{}", u.version),
+        version: u.version,
+        auto: self_update_possible(),
+    }))
+}
+
+/// Baixa, confere a assinatura (chave pública embutida no app), instala e reabre o app.
+/// O progresso sai no evento `update-progress`.
+#[tauri::command]
+async fn update_install(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Emitter;
+    use tauri_plugin_updater::UpdaterExt;
+    if !self_update_possible() {
+        return Err("Esta instalação não se atualiza sozinha (pacote do sistema). Baixe a versão nova na página da release.".into());
+    }
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("Já está na versão mais recente.")?;
+    let (a, b) = (app.clone(), app.clone());
+    let mut got = 0u64;
+    update
+        .download_and_install(
+            move |chunk, total| {
+                got += chunk as u64;
+                let _ = a.emit("update-progress", serde_json::json!({ "downloaded": got, "total": total }));
+            },
+            move || {
+                let _ = b.emit("update-progress", serde_json::json!({ "installing": true }));
+            },
+        )
+        .await
+        .map_err(|e| format!("Não foi possível atualizar: {e}"))?;
+    // Rodando como administrador, o arquivo novo nasce do root: devolve ao usuário que abriu o app.
+    if let Some(p) = std::env::var_os("APPIMAGE") {
+        guara_core::owner::give_to_user(std::path::Path::new(&p));
+    }
+    app.restart()
+}
+
 /// Reabre o app com privilégios de administrador (Linux/macOS). No Windows o
 /// manifesto já exige elevação. O app novo encerra este quando abre; se a
 /// autorização falhar, a janela continua aqui e a interface mostra o motivo.
@@ -155,6 +222,7 @@ fn main() {
     let for_protocol = engine.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(State(engine))
         .register_asynchronous_uri_scheme_protocol("guara", move |_ctx, request, responder| {
             let eng = for_protocol.clone();
@@ -176,7 +244,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![rpc, relaunch_elevated])
+        .invoke_handler(tauri::generate_handler![rpc, relaunch_elevated, update_check, update_install])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Guará");
 }

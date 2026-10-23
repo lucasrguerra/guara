@@ -298,6 +298,18 @@ fn configuracoes_de_tema_persistem() {
     init();
     let _ = std::fs::remove_file(settings::config_dir().join("settings.json"));
     assert_eq!(settings::load().theme, "auto");
+    assert!(
+        settings::load().updates,
+        "a verificação de atualização vem ligada"
+    );
+    // arquivo de uma versão anterior, sem o campo novo
+    std::fs::write(
+        settings::config_dir().join("settings.json"),
+        r#"{"theme":"dark"}"#,
+    )
+    .unwrap();
+    assert!(settings::load().updates);
+    let _ = std::fs::remove_file(settings::config_dir().join("settings.json"));
     settings::save(&settings::Settings {
         theme: "dark".into(),
         ..Default::default()
