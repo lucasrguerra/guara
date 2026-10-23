@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Antes de cada push: a verificação rápida. Ignore com `git push --no-verify` (use com parcimônia).
+exec "$(git rev-parse --show-toplevel)/scripts/verificar.sh"

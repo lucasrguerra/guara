@@ -11,10 +11,12 @@ Obrigado por ajudar! Regras de ouro:
 ## Fluxo
 
 ```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets
-cargo test --workspace
+scripts/instalar-hooks.sh        # uma vez: roda a verificação rápida antes de cada push
+scripts/verificar.sh             # rápido (segundos): fmt, clippy como no CI, tradução, scripts, workflows
+scripts/verificar.sh --completo  # inclui cargo test --workspace e cargo audit
 ```
+
+O CI leva de 5 a 30 minutos em três sistemas, então rode a verificação antes do push: quase tudo que faz o CI falhar aparece aqui em segundos. Mudanças só de documentação (`*.md`, `docs/`) pulam o CI.
 
 No Linux os testes geram imagens com `mtools`, `ntfs-3g`, `e2fsprogs`, `exfatprogs`, `imagemagick`, `zip` e `python3`. Sem essas ferramentas os testes com imagem são ignorados (defina `GUARA_REQUIRE_FIXTURES=1` para falhar).
 

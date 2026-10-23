@@ -1,9 +1,12 @@
 name: CI
 
 on:
+  # Mudança só de documentação não precisa de 6 jobs em 3 sistemas.
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE*', '.gitignore', '.githooks/**']
   pull_request:
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE*', '.gitignore', '.githooks/**']
 
 concurrency:
   group: ci-${{ github.ref }}
