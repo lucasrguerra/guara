@@ -55,7 +55,7 @@ jobs:
       - name: Imagens de referência (BitLocker, FileVault 2, dfvfs, AFF4)
         shell: bash
         run: scripts/fetch-testdata.sh
-      - name: Testes (com imagens reais FAT32/NTFS/ext4 no Linux)
+      - name: Testes (imagens de referência nos três sistemas; FAT32, NTFS e ext4 gerados no Linux)
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then export GUARA_REQUIRE_FIXTURES=1; fi
