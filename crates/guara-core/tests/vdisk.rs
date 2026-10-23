@@ -281,22 +281,82 @@ fn qcow2_with_zero_raw_and_compressed_clusters() {
 }
 
 #[test]
-fn qcow2_with_backing_file_or_encryption_is_refused() {
+fn qcow2_with_encryption_or_a_remote_backing_file_is_refused() {
     let dir = tempfile::tempdir().unwrap();
-    let mut img = build_qcow2(&raw());
-    let p = dir.path().join("b.qcow2");
-    be(&mut img, 8, 4096, 8);
-    be(&mut img, 16, 3, 4);
-    std::fs::write(&p, &img).unwrap();
-    let e = open_path(&p).err().expect("deveria recusar").to_string();
-    assert!(e.contains("arquivo de apoio"), "{e}");
-
     let mut img = build_qcow2(&raw());
     be(&mut img, 32, 2, 4);
     let p = dir.path().join("e.qcow2");
     std::fs::write(&p, &img).unwrap();
     let e = open_path(&p).err().expect("deveria recusar").to_string();
     assert!(e.contains("LUKS"), "{e}");
+
+    let mut img = build_qcow2(&raw());
+    let name = b"nbd://servidor/disco";
+    img[512..512 + name.len()].copy_from_slice(name);
+    be(&mut img, 8, 512, 8);
+    be(&mut img, 16, name.len() as u64, 4);
+    let p = dir.path().join("r.qcow2");
+    std::fs::write(&p, &img).unwrap();
+    let e = open_path(&p).err().expect("deveria recusar").to_string();
+    assert!(e.contains("não é um arquivo local"), "{e}");
+}
+
+/// Filho QCOW2 que só aloca o cluster 1 (dados), marca o 2 como zerado e deixa o resto para o pai.
+fn build_qcow2_child(backing: &str, fmt: Option<&str>, own: &[u8]) -> Vec<u8> {
+    const CS: usize = 1 << 16;
+    let mut img = vec![0u8; 3 * CS];
+    img[..4].copy_from_slice(b"QFI\xfb");
+    be(&mut img, 4, 3, 4);
+    be(&mut img, 16, backing.len() as u64, 4);
+    be(&mut img, 8, 1024, 8);
+    img[1024..1024 + backing.len()].copy_from_slice(backing.as_bytes());
+    be(&mut img, 20, 16, 4);
+    be(&mut img, 24, 16 * CS as u64, 8);
+    be(&mut img, 36, 1, 4);
+    be(&mut img, 40, CS as u64, 8);
+    be(&mut img, 100, 112, 4);
+    if let Some(f) = fmt {
+        // extensão 0xE2792ACA com o nome do formato do apoio, depois o fim das extensões
+        be(&mut img, 112, 0xE279_2ACA, 4);
+        be(&mut img, 116, f.len() as u64, 4);
+        img[120..120 + f.len()].copy_from_slice(f.as_bytes());
+    }
+    be(&mut img, CS, (2 * CS as u64) | (1 << 63), 8);
+    let host = img.len() as u64;
+    img.extend_from_slice(own);
+    img.resize(img.len().div_ceil(CS) * CS, 0);
+    be(&mut img, 2 * CS + 8, host | (1 << 63), 8); // cluster 1
+    be(&mut img, 2 * CS + 16, 1, 8); // cluster 2: zerado de propósito
+    img
+}
+
+#[test]
+fn qcow2_backing_file_supplies_what_the_child_did_not_allocate() {
+    const CS: usize = 1 << 16;
+    let base = raw();
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("base.raw"), &base).unwrap();
+    let own = vec![0x42u8; CS];
+    let mut expect = base.clone();
+    expect[CS..2 * CS].copy_from_slice(&own);
+    expect[2 * CS..3 * CS].fill(0);
+    for (name, fmt) in [("a.qcow2", Some("raw")), ("b.qcow2", None)] {
+        let p = dir.path().join(name);
+        std::fs::write(&p, build_qcow2_child("base.raw", fmt, &own)).unwrap();
+        check_content(&p, &expect);
+    }
+    // com o pai em outro formato: o filho aponta para um QCOW2
+    std::fs::write(dir.path().join("base.qcow2"), build_qcow2(&base)).unwrap();
+    let p = dir.path().join("c.qcow2");
+    std::fs::write(&p, build_qcow2_child("base.qcow2", Some("qcow2"), &own)).unwrap();
+    check_content(&p, &expect);
+    // sem o pai, a abertura diz o que falta
+    std::fs::remove_file(dir.path().join("base.raw")).unwrap();
+    let e = open_path(&dir.path().join("a.qcow2"))
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(e.contains("disco pai não encontrado"), "{e}");
 }
 
 // ---------- VMDK ----------
@@ -324,8 +384,114 @@ fn vmdk_descriptor_with_flat_and_zero_extents() {
     check_content(&p, &expect);
 }
 
+/// VMDK esparso feito à mão: 16 grãos de 64 KiB; `grains[i]` = `None` (não alocado, vem do pai),
+/// `Some(None)` (zerado de propósito) ou `Some(Some(dados))`.
+fn build_vmdk_sparse(descriptor: &str, grains: &[Option<Option<Vec<u8>>>]) -> Vec<u8> {
+    const GRAIN: usize = 128; // setores
+    let mut img = vec![0u8; 26 * 512];
+    img[..4].copy_from_slice(b"KDMV");
+    le(&mut img, 4, 1, 4);
+    le(&mut img, 8, 3, 4);
+    le(&mut img, 12, (grains.len() * GRAIN) as u64, 8);
+    le(&mut img, 20, GRAIN as u64, 8);
+    le(&mut img, 28, 1, 8);
+    le(&mut img, 36, 20, 8);
+    le(&mut img, 44, 512, 4);
+    le(&mut img, 56, 21, 8);
+    le(&mut img, 64, 26, 8);
+    img[512..512 + descriptor.len()].copy_from_slice(descriptor.as_bytes());
+    le(&mut img, 21 * 512, 22, 4); // diretório de grãos -> tabela no setor 22
+    for (i, g) in grains.iter().enumerate() {
+        let entry = match g {
+            None => 0,
+            Some(None) => 1,
+            Some(Some(d)) => {
+                let sector = (img.len() / 512) as u64;
+                let mut d = d.clone();
+                d.resize(GRAIN * 512, 0);
+                img.extend_from_slice(&d);
+                sector
+            }
+        };
+        le(&mut img, 22 * 512 + i * 4, entry, 4);
+    }
+    img
+}
+
 #[test]
-fn vmdk_with_a_parent_is_refused() {
+fn vmdk_child_reads_the_parent_for_unallocated_grains() {
+    let base = raw();
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("base.vmdk"), build_vmdk_sparse(
+        "# Disk DescriptorFile\nversion=1\nCID=11111111\nparentCID=ffffffff\ncreateType=\"monolithicSparse\"\n",
+        &(0..16)
+            .map(|i| Some(Some(base[i * 65536..(i + 1) * 65536].to_vec())))
+            .collect::<Vec<_>>(),
+    ))
+    .unwrap();
+    let own = vec![0x37u8; 65536];
+    let mut grains: Vec<Option<Option<Vec<u8>>>> = vec![None; 16];
+    grains[3] = Some(Some(own.clone()));
+    grains[5] = Some(None); // zerado de propósito: não consulta o pai
+    let child = build_vmdk_sparse(
+        "# Disk DescriptorFile\nversion=1\nCID=22222222\nparentCID=11111111\ncreateType=\"monolithicSparse\"\nparentFileNameHint=\"base.vmdk\"\n",
+        &grains,
+    );
+    let p = dir.path().join("child.vmdk");
+    std::fs::write(&p, child).unwrap();
+    let mut expect = base.clone();
+    expect[3 * 65536..4 * 65536].copy_from_slice(&own);
+    expect[5 * 65536..6 * 65536].fill(0);
+    check_content(&p, &expect);
+}
+
+/// Snapshot real do VirtualBox: o filho só diz o UUID do pai (`ddb.uuid.parent`), sem nome.
+#[test]
+fn virtualbox_snapshot_vmdk_finds_its_parent_by_uuid() {
+    let dir = tempfile::tempdir().unwrap();
+    let sub = dir.path().join("Snapshots");
+    std::fs::create_dir(&sub).unwrap();
+    // o pai fica na pasta de cima, como o VirtualBox organiza a máquina
+    std::fs::copy(fx("disk.vmdk"), dir.path().join("disco-base.vmdk")).unwrap();
+    std::fs::copy(fx("vbox-snapshot.vmdk"), sub.join("filho.vmdk")).unwrap();
+    check_content(&sub.join("filho.vmdk"), &raw());
+    // sem o pai por perto, a abertura explica
+    std::fs::remove_file(dir.path().join("disco-base.vmdk")).unwrap();
+    let e = open_path(&sub.join("filho.vmdk"))
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(e.contains("identificado só por UUID"), "{e}");
+}
+
+#[test]
+fn vmdk_child_is_refused_when_the_parent_changed() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("base.vmdk"),
+        build_vmdk_sparse(
+            "# Disk DescriptorFile\nversion=1\nCID=aaaaaaaa\nparentCID=ffffffff\ncreateType=\"monolithicSparse\"\n",
+            &vec![None; 16],
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("filho.vmdk"),
+        build_vmdk_sparse(
+            "# Disk DescriptorFile\nversion=1\nCID=bbbbbbbb\nparentCID=11111111\ncreateType=\"monolithicSparse\"\nparentFileNameHint=\"base.vmdk\"\n",
+            &vec![None; 16],
+        ),
+    )
+    .unwrap();
+    let e = open_path(&dir.path().join("filho.vmdk"))
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(e.contains("foi alterado depois do filho"), "{e}");
+}
+
+#[test]
+fn vmdk_with_a_parent_but_no_name_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("c.vmdk");
     std::fs::write(
@@ -334,7 +500,7 @@ fn vmdk_with_a_parent_is_refused() {
     )
     .unwrap();
     let e = open_path(&p).err().expect("deveria recusar").to_string();
-    assert!(e.contains("disco pai"), "{e}");
+    assert!(e.contains("não diz qual"), "{e}");
 }
 
 // ---------- VHD ----------
@@ -619,8 +785,36 @@ fn dmg_with_every_chunk_type() {
     check_content(&p, &expect);
 }
 
+/// Chunks `ULFO` com dados compactados pelo compressor de referência da Apple (`lzfse`):
+/// um bloco `bvx2` (FSE, 64 KiB) e um pequeno (`bvxn`/LZVN).
 #[test]
-fn dmg_lzfse_and_encrypted_are_refused_with_a_reason() {
+fn dmg_lzfse_chunks_from_the_reference_compressor() {
+    let big = std::fs::read(fx("lzfse-64k.bin")).unwrap();
+    let small = std::fs::read(fx("lzfse-small.bin")).unwrap();
+    let mut small_padded = small.clone();
+    small_padded.resize(small.len().div_ceil(512) * 512, 0);
+    let chunks = [
+        DmgChunk {
+            ty: 0x8000_0007,
+            sectors: (big.len() / 512) as u64,
+            payload: std::fs::read(fx("lzfse-64k.bin.lzfse")).unwrap(),
+        },
+        DmgChunk {
+            ty: 0x8000_0007,
+            sectors: (small_padded.len() / 512) as u64,
+            payload: std::fs::read(fx("lzfse-small.bin.lzfse")).unwrap(),
+        },
+    ];
+    let mut expect = big.clone();
+    expect.extend_from_slice(&small_padded);
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().join("l.dmg");
+    std::fs::write(&p, build_dmg(&chunks, expect.len() as u64 / 512)).unwrap();
+    check_content(&p, &expect);
+}
+
+#[test]
+fn dmg_with_a_corrupt_lzfse_chunk_and_encrypted_are_refused_with_a_reason() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("l.dmg");
     let chunks = [DmgChunk {

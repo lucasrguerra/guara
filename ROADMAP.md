@@ -68,7 +68,8 @@ Today Guará opens volumes when you **already have** the password or key. Passwo
 | E01 and Ex01: read, write and `guara verify` | ✅ |
 | AFF4: read and write | ✅ |
 | Virtual disk containers: QCOW2, VMDK, VHD, VHDX and DMG (read) | ✅ |
-| QCOW2 with a backing file, VMDK snapshots, DMG with LZFSE or a password | 🔜 |
+| QCOW2 with a backing file, VMDK snapshots (by name or VirtualBox UUID), DMG with LZFSE | ✅ |
+| Password-protected DMG, parent identity check for VHD, VHDX and QCOW2 | 🔜 |
 | Mobile device image (see item 7) | 🔭 |
 
 ### 4. Assembling loose disks

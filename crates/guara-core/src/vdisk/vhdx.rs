@@ -130,7 +130,7 @@ impl Vhdx {
                 }
             }
             let dir = path.parent().unwrap_or(Path::new("."));
-            Some(open_parent(&candidate_paths(dir, &names), depth)?)
+            Some(open_parent(&candidate_paths(dir, &names), depth, false)?)
         } else {
             None
         };
