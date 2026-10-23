@@ -29,6 +29,7 @@ hmac = "0.13"
 pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
 ripemd = "0.2"
 argon2 = "0.6"
+ed25519-compact = { version = "2", default-features = false, features = ["random", "std"] }
 lzfse_rust = "0.2.1"
 
 [target.'cfg(unix)'.dependencies]

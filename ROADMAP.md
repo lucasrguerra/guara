@@ -130,7 +130,8 @@ Physical access is the differentiator of commercial tools like Cellebrite. It de
 | HTML report with case, examiner, source, partitions, summary and hashes | ✅ |
 | Verification of an E01/Ex01 image against the stored hash | ✅ |
 | **Audit trail** of every examiner action (who, when, what), chained by hash, with `guara audit --verify` | ✅ |
-| **Digitally signed reports** and a timestamped manifest | 🔜 |
+| **Digital signatures** (Ed25519) of manifests, reports and any file; `guara sign recovery` checks a whole recovery folder | ✅ |
+| Trusted timestamp (RFC 3161) on signatures | 🔜 |
 | **Reproducibility:** replay the recorded procedure and get the same result | 🔜 |
 | PDF report (A4, built in) | ✅ |
 | **External validation:** NIST CFTT (Computer Forensic Tool Testing) tests and publication of the results | 🔭 |
@@ -166,7 +167,7 @@ External validation is what makes a report accepted. Without it, Guará is good 
 No dates, in the order that makes the most sense.
 
 **1.3: trust and custody**
-Signed manifest, XFS and APFS validation with real deletions, tests with real images on Windows and macOS.
+Trusted timestamps, XFS and APFS validation with real deletions, tests with real images on Windows and macOS.
 
 **1.4: analysis**
 NSRL and hash lists, search in file content, unified timeline.

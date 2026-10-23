@@ -20,6 +20,7 @@ Ler disco bruto exige privilégios: administrador no Windows, `sudo` no Linux e 
 | `search <origem> <termos...>` | Texto no disco inteiro, UTF-8 e UTF-16 |
 | `export <sessão> <csv>` | Planilha dos achados |
 | `report <sessão> <arquivo>` | Relatório imprimível, HTML ou PDF (pela extensão do arquivo) |
+| `sign keygen\|file\|verify\|recovery` | Assinaturas Ed25519 de manifestos, relatórios e arquivos; confere uma pasta de recuperação inteira |
 | `audit` | Trilha de auditoria de cada ação (quem, quando, o quê); `--verify` confere o encadeamento por hash |
 | `sessions` | Sessões salvas automaticamente |
 | `ui` | Interface no navegador (127.0.0.1, com token) |
@@ -99,6 +100,17 @@ guara verify /mnt/outro-disco/sdb.E01
 ```
 
 Para E01: `--segment-mib` (tamanho de cada segmento, padrão 1500, 0 para um arquivo só) e `--compression` (0 a 9, padrão 1).
+
+## Assinatura digital
+
+```bash
+guara sign keygen                                # cria o par de chaves (nunca sobrescreve uma existente)
+guara sign file relatorio.pdf                    # grava relatorio.pdf.assinatura.json
+guara sign verify relatorio.pdf --trust 1a2b:3c4d:5e6f:7a8b:9c0d
+guara sign recovery /mnt/outro-disco/Recuperados # assinatura do manifesto e o hash de cada arquivo
+```
+
+Com uma chave configurada, `recover` e `report` assinam sozinhos o manifesto e o relatório. A assinatura cobre o SHA-256, o tamanho, o nome, a hora e o assinante; qualquer pessoa confere com o Guará ou com o `openssl` (é Ed25519 comum sobre a mensagem documentada em `crates/guara-core/src/sign.rs`). Uma assinatura válida prova que o arquivo não mudou desde que foi assinado **por quem tem a chave**; para saber de quem é a chave, compare a impressão digital com a que o perito publicou fora da máquina (`--trust`). A chave privada fica em `assinatura.key` na pasta de configuração (ou onde `GUARA_SIGNING_KEY` apontar), com permissão 0600; guarde uma cópia e considere mantê-la num volume cifrado. A hora é a do relógio da máquina que assinou, não um carimbo de tempo de terceiros.
 
 ## Trilha de auditoria
 

@@ -91,7 +91,7 @@ A desktop app (Tauri) in the style of a file manager, designed for when Guará f
 - **Automatic sessions** and reconnection: Guará recognizes the same disk coming back under another name.
 - **Duplicate detection** by content signature.
 
-> **Warning:** Guará has **not been externally validated** yet (for example, in the NIST CFTT tests) and has no audit log or signed report. It is well suited to recovery and triage; for use in court, check the results by other means. The path to get there is in the [ROADMAP](ROADMAP.md).
+> **Warning:** Guará has **not been externally validated** yet (for example, in the NIST CFTT tests) and has no trusted timestamp (RFC 3161) on its signatures. It is well suited to recovery and triage; for use in court, check the results by other means. The path to get there is in the [ROADMAP](ROADMAP.md).
 
 ## Known limits
 
@@ -111,8 +111,8 @@ Summary of the [ROADMAP](ROADMAP.md):
 
 | | |
 |---|---|
-| **Done** | Metadata from 8 file systems, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, fragmented JPEG, MP4 without an index, SQLite reader, SMART, QCOW2/VMDK/VHD/VHDX/DMG, hash-chained audit trail, PDF report, APFS free map |
-| **Next** | Digitally signed report, tests on Windows and macOS |
+| **Done** | Metadata from 8 file systems, BitLocker, LUKS, FileVault 2, RAID, LVM, E01, Ex01, AFF4, fragmented JPEG, MP4 without an index, SQLite reader, SMART, QCOW2/VMDK/VHD/VHDX/DMG, hash-chained audit trail, PDF report, Ed25519 signatures, APFS free map |
+| **Next** | Trusted timestamps (RFC 3161), tests on Windows and macOS |
 | **Later** | NSRL and hash lists, content search, unified timeline, browser interpretation, Windows registry and messaging apps, dictionary and brute-force attacks on encrypted volumes |
 | **No reference image** | ReFS and Storage Spaces: they only land with validation |
 | **Long term** | iOS and Android backups (iTunes, ADB), OCR, NIST CFTT validation, physical phone access through bootloader/chip exploits |

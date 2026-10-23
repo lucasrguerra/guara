@@ -19,6 +19,45 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+enum SignCmd {
+    /// Cria o par de chaves de assinatura (recusa sobrescrever uma chave existente)
+    Keygen {
+        /// Onde gravar a chave privada (padrão: assinatura.key na pasta de configuração ou GUARA_SIGNING_KEY)
+        #[arg(long)]
+        key: Option<String>,
+    },
+    /// Assina um arquivo e grava <arquivo>.assinatura.json
+    File {
+        path: String,
+        #[arg(long)]
+        key: Option<String>,
+        /// Nome de quem assina (padrão: GUARA_EXAMINER)
+        #[arg(long)]
+        signer: Option<String>,
+    },
+    /// Confere a assinatura de um arquivo
+    Verify {
+        path: String,
+        /// Arquivo de assinatura (padrão: <arquivo>.assinatura.json)
+        #[arg(long)]
+        sig: Option<String>,
+        /// Impressão digital esperada da chave, publicada pelo perito
+        #[arg(long)]
+        trust: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Confere uma pasta de recuperação: assinatura do manifesto e hash de cada arquivo
+    Recovery {
+        dir: String,
+        #[arg(long)]
+        trust: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum Cmd {
     /// Lista discos e pendrives detectados
     Devices {
@@ -88,6 +127,9 @@ enum Cmd {
     },
     /// Confere uma imagem E01/Ex01: recalcula o MD5 e compara com o gravado na própria imagem
     Verify { path: String },
+    /// Assina e confere arquivos (manifestos, relatórios) e pastas de recuperação com Ed25519
+    #[command(subcommand)]
+    Sign(SignCmd),
     /// Mostra a trilha de auditoria (quem fez o quê e quando) ou confere o encadeamento por hash
     Audit {
         /// Arquivo da trilha (padrão: auditoria.jsonl na pasta de configuração ou GUARA_AUDIT_LOG)
@@ -455,6 +497,7 @@ fn run(cli: Cli) -> Result<(), String> {
             tail,
             json,
         } => audit(log, verify, tail, json),
+        Cmd::Sign(c) => sign_cmd(c),
         Cmd::Image {
             path,
             dest,
@@ -879,6 +922,116 @@ fn audit(log: Option<String>, verify: bool, tail: Option<usize>, json: bool) -> 
         );
     }
     Ok(())
+}
+
+/// `guara sign`: chaves, assinatura e conferência.
+fn sign_cmd(c: SignCmd) -> Result<(), String> {
+    use guara_core::sign;
+    use std::path::{Path, PathBuf};
+    let key_path = |k: Option<String>| k.map(PathBuf::from).unwrap_or_else(sign::default_key_path);
+    match c {
+        SignCmd::Keygen { key } => {
+            let p = key_path(key);
+            let k = sign::SigningKey::generate();
+            k.save(&p).map_err(s)?;
+            guara_core::audit::record("sign.keygen", json!({ "fingerprint": k.fingerprint() }));
+            println!(
+                "Chave privada: {} (guarde uma cópia segura; quem a tem assina em seu nome)",
+                p.display()
+            );
+            println!("Chave pública: {}", p.with_extension("pub").display());
+            println!("Impressão digital: {}", k.fingerprint());
+            println!("Publique a impressão digital fora desta máquina para que outros confiram as assinaturas.");
+            Ok(())
+        }
+        SignCmd::File { path, key, signer } => {
+            let p = key_path(key);
+            let k = sign::SigningKey::load(&p).map_err(s)?;
+            let who = signer.or_else(|| std::env::var("GUARA_EXAMINER").ok());
+            let out = sign::sign_file(&k, Path::new(&path), who.as_deref()).map_err(s)?;
+            guara_core::audit::record(
+                "sign",
+                json!({ "path": path, "signature": out.to_string_lossy() }),
+            );
+            println!("Assinatura gravada em {}", out.display());
+            println!("Impressão digital da chave: {}", k.fingerprint());
+            Ok(())
+        }
+        SignCmd::Verify {
+            path,
+            sig,
+            trust,
+            json,
+        } => {
+            let c = sign::verify_file(
+                Path::new(&path),
+                sig.as_deref().map(Path::new),
+                trust.as_deref(),
+            )
+            .map_err(s)?;
+            guara_core::audit::record("sign.verify", json!({ "path": path, "valid": c.valid }));
+            if json {
+                println!("{}", serde_json::to_string_pretty(&c).unwrap());
+            } else if c.valid {
+                println!("Assinatura válida: o arquivo não mudou desde que foi assinado.");
+                println!(
+                    "Chave: {}  ·  assinado em {}{}",
+                    c.fingerprint,
+                    c.signed_at,
+                    c.signer
+                        .as_ref()
+                        .map(|s| format!(" por {s}"))
+                        .unwrap_or_default()
+                );
+                if c.trusted.is_none() {
+                    println!(
+                        "Confira a impressão digital acima com a que o perito publicou (--trust)."
+                    );
+                }
+            }
+            if c.valid {
+                Ok(())
+            } else {
+                Err(c.problems.join("; "))
+            }
+        }
+        SignCmd::Recovery { dir, trust, json } => {
+            let c = sign::verify_recovery(Path::new(&dir), trust.as_deref()).map_err(s)?;
+            guara_core::audit::record(
+                "sign.verify_recovery",
+                json!({ "dir": dir, "valid": c.valid, "files": c.files }),
+            );
+            if json {
+                println!("{}", serde_json::to_string_pretty(&c).unwrap());
+            } else {
+                println!(
+                    "{} de {} arquivo(s) conferem com o manifesto.",
+                    c.ok, c.files
+                );
+                for f in &c.missing {
+                    println!("  ausente: {f}");
+                }
+                for f in &c.changed {
+                    println!("  alterado: {f}");
+                }
+                match &c.manifest_signature {
+                    Some(m) if m.valid => {
+                        println!("Manifesto assinado e íntegro. Chave: {}", m.fingerprint)
+                    }
+                    Some(m) => println!(
+                        "Assinatura do manifesto com problema: {}",
+                        m.problems.join("; ")
+                    ),
+                    None => println!("Manifesto sem assinatura (assine com guara sign file)."),
+                }
+            }
+            if c.valid {
+                Ok(())
+            } else {
+                Err("a recuperação não confere".into())
+            }
+        }
+    }
 }
 
 fn wait(eng: &Engine, job: &str, session: Option<&str>) -> Result<Value, String> {
