@@ -28,10 +28,11 @@ Legenda: ✅ feito · 🟡 parcial · 🔜 planejado · 🔭 ideia a longo prazo
 | 1.1.0 | 2026-10-20 | Mensagens do núcleo e datas em inglês, verificação automática da tradução, RustCrypto em digest 0.11, acesso a dispositivo no Docker e workspaces do Superset verificados |
 | 1.2.0 | 2026-10-22 | Discos virtuais QCOW2, VMDK, VHD, VHDX e DMG, trilha de auditoria encadeada por hash, relatório em PDF, mapa de espaço livre do APFS |
 | 1.3.0 | 2026-10-23 | Atualização pelo próprio app, assinaturas Ed25519, QCOW2/VMDK diferenciais e DMG com LZFSE, imagens de referência testadas em Linux, macOS e Windows, teste de exclusão real do XFS |
+| 1.3.1 | 2026-10-23 | Nova logo oficial |
 
 Detalhes de cada versão no [CHANGELOG](CHANGELOG.pt-BR.md).
 
-## Situação atual (1.3.0) contra o que se espera de uma suíte forense
+## Situação atual (1.3.1) contra o que se espera de uma suíte forense
 
 ### 1. Sistemas de arquivos com metadados
 

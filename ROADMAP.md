@@ -28,10 +28,11 @@ Legend: ✅ done · 🟡 partial · 🔜 planned · 🔭 long-term idea · ⛔ o
 | 1.1.0 | 2026-10-20 | Core messages and dates in English, automated translation check, RustCrypto on digest 0.11, verified Docker device access and Superset workspaces |
 | 1.2.0 | 2026-10-22 | QCOW2, VMDK, VHD, VHDX and DMG virtual disks, hash-chained audit trail, PDF report, APFS free-space map |
 | 1.3.0 | 2026-10-23 | Update from inside the app, Ed25519 signatures, differencing QCOW2/VMDK and LZFSE DMG, reference images tested on Linux, macOS and Windows, XFS real-deletion test |
+| 1.3.1 | 2026-10-23 | New official logo |
 
 Details of each version in the [CHANGELOG](CHANGELOG.md).
 
-## Current status (1.3.0) against what is expected from a forensic suite
+## Current status (1.3.1) against what is expected from a forensic suite
 
 ### 1. File systems with metadata
 
