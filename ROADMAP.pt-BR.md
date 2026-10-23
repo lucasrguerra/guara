@@ -164,17 +164,17 @@ A validação externa é o que faz um laudo ser aceito. Sem ela, o Guará serve 
 
 Sem datas, na ordem em que fazem mais sentido.
 
-**1.1: confiança e custódia**
+**1.3: confiança e custódia**
 Manifesto assinado, validação de XFS e APFS com exclusões reais, testes com imagens reais no Windows e macOS.
 
-**1.2: análise**
+**1.4: análise**
 NSRL e listas de hashes, busca em conteúdo de arquivos, linha do tempo unificada.
 
-**1.3: artefatos**
+**1.5: artefatos**
 Registro do Windows, navegadores, EVTX e os apps de mensagem mais comuns, apoiados no leitor de SQLite.
 
-**1.4: mais estrutura**
-ReFS e Storage Spaces (quando houver imagem de referência), outros contêineres de imagem (VMDK, VHD, QCOW2), carving fragmentado ampliado.
+**1.6: mais estrutura**
+ReFS e Storage Spaces (quando houver imagem de referência), os casos de disco virtual ainda recusados (QCOW2 com arquivo de apoio, snapshots de VMDK, DMG com LZFSE ou senha), carving fragmentado ampliado.
 
 **2.0: dispositivos móveis e validação**
 Backups do iTunes, ADB e backups do Android; submissão aos testes do NIST CFTT.
