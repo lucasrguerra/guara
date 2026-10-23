@@ -12,7 +12,7 @@
 
 In a single scan, Guará does what tools like Recuva, PhotoRec, TestDisk and Disk Drill do separately:
 
-- **File system metadata:** finds deleted files **with name, folder and date** on NTFS, FAT12/16/32, exFAT, ext2/3/4, HFS+, Btrfs, XFS and APFS.
+- **File system metadata:** finds deleted files **with name, folder and date** on NTFS, FAT12/16/32, exFAT, ext2/3/4, HFS+, Btrfs and APFS (on XFS only the content comes back, by carving, see below).
 - **Structure-aware carving** in free space, damaged partitions and unpartitioned space. The detectors read the real structure of dozens of formats to learn the **exact size** and a **confidence** level.
 - **Encrypted volumes:** opens BitLocker, LUKS and FileVault 2 with your password or key and scans inside.
 - **RAID and LVM:** reassembles arrays from loose disks (RAID 0, 1, 4, 5, 6, 10, LVM2), working out level, stripe size and order by itself when there is no metadata.
@@ -98,7 +98,7 @@ A desktop app (Tauri) in the style of a file manager, designed for when Guará f
 - **Overwritten data does not come back.** On an SSD with TRIM the disk may zero deleted blocks; Guará warns you, but it cannot work miracles.
 - **Fragments:** only JPEG (up to three pieces) and MP4 without an index are reassembled. Other formats, if fragmented, come out truncated with low confidence.
 - **ReFS and Storage Spaces** are not supported (ReFS is only detected).
-- **APFS:** no free-space map. **XFS and APFS:** deletion recovery tested only in simulation.
+- **XFS:** on a real XFS (v5, kernel deletion) the inode and its extent list are wiped, so Guará recovers the **content** of files with a recognizable structure by carving, but not their name or folder; reading names needs the file system journal, which is not implemented. The old inode-based path only works on simulated deletions. **APFS:** deletion recovery tested only in simulation.
 - **NTFS:** compressed files, EFS and heavily fragmented records are skipped or marked as incomplete.
 - **exFAT:** validated with a synthetic image; real media are still missing.
 - **Phones:** Guará works with storage media and does **not** unlock devices or bypass passwords.

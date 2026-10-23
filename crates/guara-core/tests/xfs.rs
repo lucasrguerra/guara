@@ -268,3 +268,166 @@ fn reference_image_is_recognized() {
     let l = c.layout.unwrap();
     assert_eq!(l.partitions[0].fs, FsKind::Xfs);
 }
+
+/// Meta: exclusão feita pelo kernel (scripts/make-xfs-real-deletion.sh, precisa de root): cada
+/// arquivo apagado volta pelo nome, na pasta certa, com o conteúdo original no começo, e os que
+/// ficaram não aparecem como apagados.
+///
+/// HOJE FALHA, e é por isso que está `ignore`: num XFS v5 real o kernel zera o inode e a lista de
+/// extensões ao apagar, então só a simulação (teste acima) deixa a metadados para ler. Recuperar
+/// nome e conteúdo de um XFS real exige ler o diário (log) do sistema de arquivos. Rodar com
+/// `cargo test -p guara-core --test xfs -- --ignored` para ver o estado.
+#[test]
+#[ignore = "XFS real: o kernel apaga os metadados; falta ler o diário (ver ROADMAP)"]
+fn real_kernel_deletion_names_are_recovered() {
+    let dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/testdata/xfs-real-delete");
+    let (img, tsv) = (dir.join("disk.img"), dir.join("expected.tsv"));
+    if !(img.exists() && tsv.exists()) {
+        assert!(
+            std::env::var("GUARA_REQUIRE_FIXTURES").is_err(),
+            "faltou a imagem: sudo scripts/make-xfs-real-deletion.sh"
+        );
+        eprintln!("SKIP: rode sudo scripts/make-xfs-real-deletion.sh");
+        return;
+    }
+    init();
+    let rows: Vec<(String, u64, String, bool)> = std::fs::read_to_string(&tsv)
+        .unwrap()
+        .lines()
+        .map(|l| {
+            let c: Vec<&str> = l.split('\t').collect();
+            (
+                c[0].to_string(),
+                c[1].parse().unwrap(),
+                c[2].to_string(),
+                c[3] == "deleted",
+            )
+        })
+        .collect();
+    let c = scan_path(
+        &img,
+        &ScanOptions {
+            mode: ScanMode::Deep,
+            ..Default::default()
+        },
+    );
+    let xfs: Vec<&Found> = c.found.iter().filter(|f| f.origin == Origin::Xfs).collect();
+    let listing = || {
+        xfs.iter()
+            .map(|f| {
+                format!(
+                    "{}/{} ({} bytes, {:?})",
+                    f.dir.as_deref().unwrap_or(""),
+                    f.name,
+                    f.size,
+                    f.confidence
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let out = tempfile::tempdir().unwrap();
+    for (rel, size, sha, deleted) in &rows {
+        let (dirname, name) = match rel.rsplit_once('/') {
+            Some((d, n)) => (format!("/{d}"), n),
+            None => (String::new(), rel.as_str()),
+        };
+        let hit = xfs
+            .iter()
+            .find(|f| f.name == name && f.dir.as_deref().unwrap_or("") == dirname);
+        if !*deleted {
+            assert!(
+                hit.is_none(),
+                "{rel} não foi apagado, mas apareceu como recuperável: {:?}",
+                listing()
+            );
+            continue;
+        }
+        let f = hit.unwrap_or_else(|| {
+            panic!(
+                "{rel} apagado pelo kernel não foi encontrado; achados: {:?}",
+                listing()
+            )
+        });
+        let rep = recover_all(&img, std::slice::from_ref(*f), &out.path().join(name));
+        assert!(rep.failed.is_empty(), "{rel}: {:?}", rep.failed);
+        let rp = PathBuf::from(&rep.recovered[0].path);
+        let got = std::fs::read(if rp.is_absolute() {
+            rp
+        } else {
+            out.path().join(name).join(rp)
+        })
+        .unwrap();
+        // o tamanho exato se perde na exclusão: o arquivo vem com os blocos inteiros
+        assert!(
+            got.len() as u64 >= *size,
+            "{rel}: veio menor ({} < {size})",
+            got.len()
+        );
+        assert_eq!(
+            sha256(&got[..*size as usize]),
+            *sha,
+            "{rel}: o conteúdo inicial difere do original"
+        );
+    }
+}
+
+/// O que funciona hoje num XFS apagado de verdade: o conteúdo dos blocos livres continua lá e a
+/// varredura profunda recupera, por carving, o arquivo com estrutura reconhecível (SQLite), com
+/// o conteúdo idêntico ao original. O nome e a pasta se perdem.
+#[test]
+fn real_kernel_deletion_content_is_recovered_by_carving() {
+    let dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/testdata/xfs-real-delete");
+    let (img, tsv) = (dir.join("disk.img"), dir.join("expected.tsv"));
+    if !(img.exists() && tsv.exists()) {
+        assert!(
+            std::env::var("GUARA_REQUIRE_FIXTURES").is_err(),
+            "faltou a imagem: sudo scripts/make-xfs-real-deletion.sh"
+        );
+        eprintln!("SKIP: rode sudo scripts/make-xfs-real-deletion.sh");
+        return;
+    }
+    init();
+    let want = std::fs::read_to_string(&tsv)
+        .unwrap()
+        .lines()
+        .map(|l| l.split('\t').collect::<Vec<_>>())
+        .find(|c| c[0].ends_with(".sqlite"))
+        .map(|c| (c[1].parse::<usize>().unwrap(), c[2].to_string()))
+        .expect("o SQLite apagado consta do expected.tsv");
+    let c = scan_path(
+        &img,
+        &ScanOptions {
+            mode: ScanMode::Deep,
+            ..Default::default()
+        },
+    );
+    let out = tempfile::tempdir().unwrap();
+    let mut seen = vec![];
+    for (i, f) in c.found.iter().enumerate() {
+        if f.size as usize != want.0 {
+            continue;
+        }
+        let rep = recover_all(
+            &img,
+            std::slice::from_ref(f),
+            &out.path().join(i.to_string()),
+        );
+        let rp = PathBuf::from(&rep.recovered[0].path);
+        let p = if rp.is_absolute() {
+            rp
+        } else {
+            out.path().join(i.to_string()).join(rp)
+        };
+        seen.push(sha256_file(&p));
+    }
+    assert!(
+        seen.contains(&want.1),
+        "o SQLite apagado não voltou idêntico; achados do mesmo tamanho: {seen:?}; todos: {:?}",
+        c.found
+            .iter()
+            .map(|f| (&f.name, f.size, f.origin))
+            .collect::<Vec<_>>()
+    );
+}

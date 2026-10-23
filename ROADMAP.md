@@ -40,12 +40,13 @@ Details of each version in the [CHANGELOG](CHANGELOG.md).
 | ext2/3/4 | ✅ | Deleted inodes and old copies in the journal |
 | HFS+ | ✅ | Tree node leftovers and journal |
 | Btrfs | ✅ | Old versions of the trees; zlib, zstd and lzo extents |
-| XFS | ✅ | Freed inodes and names of freed entries. Tested only with simulated deletion |
+| XFS | 🟡 | Freed inodes and names of freed entries work on simulated deletion only. With real kernel deletion (tested in CI) the metadata is wiped: content comes back by carving, names do not. **Journal reading is missing** |
 | APFS | 🟡 | Container, object map, free-space map (spaceman and bitmaps), snapshots and old nodes. Deletion tested only in simulation; containers with chunk-info address blocks (large ones) fall back to scanning the whole volume |
 | ReFS | 🔜 | Only detected today; recovery depends on carving. Reference image missing |
 | Storage Spaces | 🔜 | Not done. Reference image missing |
 | NTFS: compressed attributes, EFS, attribute list | 🔜 | Marked as incomplete today |
-| XFS and APFS validation with real deletion | 🔜 | Replace the simulation with images from real devices |
+| XFS: names and folders after real deletion (read the journal) | 🔜 | The CI test exists and is ignored until this lands |
+| APFS validation with real deletion | 🔜 | Needs an image from a real Mac |
 
 ### 2. Encrypted volumes
 
@@ -167,7 +168,7 @@ External validation is what makes a report accepted. Without it, Guará is good 
 No dates, in the order that makes the most sense.
 
 **1.3: trust and custody**
-Trusted timestamps, XFS and APFS validation with real deletions, tests with real images on Windows and macOS.
+Trusted timestamps, XFS journal reading, APFS validation with real deletions.
 
 **1.4: analysis**
 NSRL and hash lists, search in file content, unified timeline.

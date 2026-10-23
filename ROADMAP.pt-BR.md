@@ -40,12 +40,13 @@ Detalhes de cada versão no [CHANGELOG](CHANGELOG.pt-BR.md).
 | ext2/3/4 | ✅ | Inodes apagados e cópias antigas no diário |
 | HFS+ | ✅ | Sobras de nós da árvore e diário |
 | Btrfs | ✅ | Versões antigas das árvores; extensões zlib, zstd e lzo |
-| XFS | ✅ | Inodes liberados e nomes de entradas liberadas. Testado só com exclusão simulada |
+| XFS | 🟡 | Inodes liberados e nomes de entradas liberadas só funcionam na exclusão simulada. Com exclusão real do kernel (testada no CI) os metadados são zerados: o conteúdo volta por carving, o nome não. **Falta ler o diário** |
 | APFS | 🟡 | Contêiner, mapa de objetos, mapa de espaço livre (spaceman e bitmaps), instantâneos e nós antigos. Exclusão testada só em simulação; contêineres com blocos de endereço de chunk-info (grandes) voltam a varrer o volume inteiro |
 | ReFS | 🔜 | Hoje só é detectado; a recuperação depende do carving. Falta imagem de referência |
 | Storage Spaces | 🔜 | Não feito. Falta imagem de referência |
 | NTFS: atributos comprimidos, EFS, lista de atributos | 🔜 | Hoje marcados como incompletos |
-| Validação de XFS e APFS com exclusão real | 🔜 | Trocar a simulação por imagens de dispositivos reais |
+| XFS: nomes e pastas após exclusão real (ler o diário) | 🔜 | O teste no CI existe e fica ignorado até isso entrar |
+| Validação de APFS com exclusão real | 🔜 | Precisa de imagem de um Mac de verdade |
 
 ### 2. Volumes cifrados
 
@@ -167,7 +168,7 @@ A validação externa é o que faz um laudo ser aceito. Sem ela, o Guará serve 
 Sem datas, na ordem em que fazem mais sentido.
 
 **1.3: confiança e custódia**
-Carimbo de tempo, validação de XFS e APFS com exclusões reais, testes com imagens reais no Windows e macOS.
+Carimbo de tempo de terceiros, leitura do diário do XFS, validação de APFS com exclusões reais.
 
 **1.4: análise**
 NSRL e listas de hashes, busca em conteúdo de arquivos, linha do tempo unificada.

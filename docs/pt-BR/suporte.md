@@ -20,7 +20,7 @@ MBR e GPT. Quando a tabela falha, o Guará procura volumes por assinatura (NTFS,
 | ext2/3/4 | ✅ | Inodes apagados, cópias antigas no diário (ext4), mapa de blocos livres | |
 | HFS+ | ✅ | Sobras de nós da árvore de catálogo, diário | |
 | Btrfs | ✅ | Versões antigas das árvores; extensões zlib, zstd e lzo | |
-| XFS | ✅ | Inodes liberados, nomes de entradas liberadas, espaço livre por grupo | Exclusão testada só em simulação |
+| XFS | 🟡 | Inodes liberados, nomes de entradas liberadas e espaço livre por grupo (funciona na exclusão simulada); conteúdo por carving | Testado no CI com exclusão real do kernel: o kernel zera o inode e as extensões, então nome e pasta se perdem e só o carving recupera o conteúdo. Falta ler o diário |
 | APFS | 🟡 | Contêiner, mapa de objetos, árvore de arquivos, instantâneos, nós antigos | Sem mapa de espaço livre; exclusão testada só em simulação |
 | ReFS | ❌ | Apenas detectado | Recuperação por carving |
 | Storage Spaces | ❌ | Não suportado | |

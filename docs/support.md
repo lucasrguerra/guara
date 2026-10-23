@@ -20,7 +20,7 @@ MBR and GPT. When the table fails, Guará searches for volumes by signature (NTF
 | ext2/3/4 | ✅ | Deleted inodes, old copies in the journal (ext4), free block map | |
 | HFS+ | ✅ | Leftovers of catalog tree nodes, journal | |
 | Btrfs | ✅ | Old versions of the trees; zlib, zstd and lzo extents | |
-| XFS | ✅ | Freed inodes, names of freed entries, free space per group | Deletion tested only in simulation |
+| XFS | 🟡 | Freed inodes, names of freed entries and free space per group (works on simulated deletion); content by carving | Tested with real kernel deletion in CI: the kernel wipes the inode and extents, so names and folders are lost and only carving recovers content. Journal reading is missing |
 | APFS | 🟡 | Container, object map, file tree, snapshots, old nodes | No free-space map; deletion tested only in simulation |
 | ReFS | ❌ | Only detected | Recovery through carving |
 | Storage Spaces | ❌ | Not supported | |
