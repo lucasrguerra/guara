@@ -1,4 +1,4 @@
-<p align="center"><img src="apps/gui/ui/guara-logo.svg" width="360" alt="Guará"></p>
+<p align="center"><img src="apps/gui/ui/guara.png" width="300" alt="Guará"></p>
 <h1 align="center">Guará</h1>
 <p align="center">Recuperação de arquivos livre e gratuita para HD, SSD e pendrive.<br>Terminal e interface gráfica · Windows, Linux e macOS · somente leitura na origem.</p>
 

@@ -12,9 +12,9 @@ const JS: &str = include_str!("../../../apps/gui/ui/app.js");
 const PREVIEW_JS: &str = include_str!("../../../apps/gui/ui/preview.js");
 const I18N_JS: &str = include_str!("../../../apps/gui/ui/i18n.js");
 const I18N_EN_JS: &str = include_str!("../../../apps/gui/ui/i18n-en.js");
-const LOGO: &str = include_str!("../../../apps/gui/ui/guara-logo.svg");
 const EXPLORER_JS: &str = include_str!("../../../apps/gui/ui/explorer.js");
-const ICON: &str = include_str!("../../../apps/gui/ui/guara.svg");
+const LOGO: &[u8] = include_bytes!("../../../apps/gui/ui/guara.png");
+const LOGO_S: &[u8] = include_bytes!("../../../apps/gui/ui/guara-s.png");
 const PDF_JS: &str = include_str!("../../../apps/gui/ui/vendor/pdf.min.mjs");
 const PDF_WORKER: &str = include_str!("../../../apps/gui/ui/vendor/pdf.worker.min.mjs");
 
@@ -98,17 +98,17 @@ fn handle(req: Request, eng: &Engine, token: &str, hosts: &[String]) {
                 Response::from_string(I18N_EN_JS).with_header(ct("text/javascript; charset=utf-8")),
             );
         }
-        (Method::Get, "/guara-logo.svg") => {
-            let _ = req.respond(Response::from_string(LOGO).with_header(ct("image/svg+xml")));
+        (Method::Get, "/guara.png") => {
+            let _ = req.respond(Response::from_data(LOGO).with_header(ct("image/png")));
+        }
+        (Method::Get, "/guara-s.png") => {
+            let _ = req.respond(Response::from_data(LOGO_S).with_header(ct("image/png")));
         }
         (Method::Get, "/explorer.js") => {
             let _ = req.respond(
                 Response::from_string(EXPLORER_JS)
                     .with_header(ct("text/javascript; charset=utf-8")),
             );
-        }
-        (Method::Get, "/guara.svg") => {
-            let _ = req.respond(Response::from_string(ICON).with_header(ct("image/svg+xml")));
         }
         (Method::Get, "/vendor/pdf.min.mjs") => {
             let _ = req.respond(

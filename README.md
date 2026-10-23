@@ -1,4 +1,4 @@
-<p align="center"><img src="apps/gui/ui/guara-logo.svg" width="360" alt="Guará"></p>
+<p align="center"><img src="apps/gui/ui/guara.png" width="300" alt="Guará"></p>
 <h1 align="center">Guará</h1>
 <p align="center">Free file recovery for hard drives, SSDs and USB sticks.<br>Terminal and graphical interface · Windows, Linux and macOS · read-only on the source.</p>
 
