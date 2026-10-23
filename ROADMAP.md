@@ -164,17 +164,17 @@ External validation is what makes a report accepted. Without it, Guará is good 
 
 No dates, in the order that makes the most sense.
 
-**1.1: trust and custody**
+**1.3: trust and custody**
 Signed manifest, XFS and APFS validation with real deletions, tests with real images on Windows and macOS.
 
-**1.2: analysis**
+**1.4: analysis**
 NSRL and hash lists, search in file content, unified timeline.
 
-**1.3: artifacts**
+**1.5: artifacts**
 Windows registry, browsers, EVTX and the most common messaging apps, built on the SQLite reader.
 
-**1.4: more structure**
-ReFS and Storage Spaces (once there is a reference image), other image containers (VMDK, VHD, QCOW2), expanded fragmented carving.
+**1.6: more structure**
+ReFS and Storage Spaces (once there is a reference image), the virtual-disk cases still refused (QCOW2 with a backing file, VMDK snapshots, DMG with LZFSE or a password), expanded fragmented carving.
 
 **2.0: mobile devices and validation**
 iTunes backups, ADB and Android backups; submission to the NIST CFTT tests.
