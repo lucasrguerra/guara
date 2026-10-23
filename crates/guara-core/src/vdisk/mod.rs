@@ -2,9 +2,9 @@
 //!
 //! Cada formato é aberto como o disco que contém, somente para leitura, e entra na cadeia
 //! normal (partições, sistemas de arquivos, cifras) por meio de [`Source`]. Discos
-//! diferenciais (VHD e VHDX com pai) seguem a cadeia até o disco base; QCOW2 e VMDK com
-//! arquivo de apoio são recusados com mensagem clara, porque ler só a camada filha
-//! devolveria dados errados.
+//! diferenciais (VHD e VHDX com pai, QCOW2 com arquivo de apoio, VMDK com pai) seguem a
+//! cadeia até o disco base. A identidade do pai (UUID, CID, data) não é conferida: se o pai foi
+//! alterado depois do filho, os dados lidos refletem o pai atual.
 
 mod dmg;
 mod qcow2;
@@ -130,8 +130,8 @@ pub(crate) fn open_depth(path: &Path, depth: u32) -> Result<Option<VDisk>> {
     };
     let name = format!("{format} {}", path.display());
     let inner: Box<dyn Backend> = match format {
-        "QCOW2" => Box::new(qcow2::Qcow2::open(file).map_err(|e| io_err(e, &name))?),
-        "VMDK" => Box::new(vmdk::Vmdk::open(file, path).map_err(|e| io_err(e, &name))?),
+        "QCOW2" => Box::new(qcow2::Qcow2::open(file, path, depth).map_err(|e| io_err(e, &name))?),
+        "VMDK" => Box::new(vmdk::Vmdk::open(file, path, depth).map_err(|e| io_err(e, &name))?),
         "VHD" => Box::new(vhd::Vhd::open(file, path, depth).map_err(|e| io_err(e, &name))?),
         "VHDX" => Box::new(vhdx::Vhdx::open(file, path, depth).map_err(|e| io_err(e, &name))?),
         _ => Box::new(dmg::Dmg::open(file).map_err(|e| io_err(e, &name))?),
@@ -139,17 +139,23 @@ pub(crate) fn open_depth(path: &Path, depth: u32) -> Result<Option<VDisk>> {
     Ok(Some(VDisk { inner, format }))
 }
 
-/// Abre o disco pai de um VHD/VHDX diferencial.
+/// Abre o disco pai (VHD/VHDX diferencial, QCOW2 com apoio, VMDK com pai). Com `raw`, o
+/// arquivo é tratado como disco bruto sem tentar reconhecer o formato.
 pub(crate) fn open_parent(
     candidates: &[std::path::PathBuf],
     depth: u32,
+    raw: bool,
 ) -> io::Result<Box<dyn Source>> {
     for p in candidates {
         if !p.is_file() {
             continue;
         }
-        if let Some(v) = open_depth(p, depth + 1).map_err(|e| bad(e.to_string()))? {
-            return Ok(Box::new(v));
+        if !raw {
+            if let Some(v) = open_depth(p, depth + 1).map_err(|e| bad(e.to_string()))? {
+                return Ok(Box::new(v));
+            }
+        } else if depth > MAX_DEPTH {
+            return Err(bad("cadeia de discos pai longa demais ou circular"));
         }
         let f = FileSource::open(p)?;
         return Ok(Box::new(f));

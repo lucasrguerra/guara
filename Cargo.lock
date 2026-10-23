@@ -430,6 +430,7 @@ dependencies = [
  "jpeg-encoder",
  "libc",
  "lz4_flex",
+ "lzfse_rust",
  "md-5",
  "mp4",
  "pbkdf2",
@@ -581,6 +582,12 @@ name = "lz4_flex"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
+
+[[package]]
+name = "lzfse_rust"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5edeac3ec657925dececc672bdd58fa2212291886ddcb3e08aa46924c78340c6"
 
 [[package]]
 name = "md-5"

@@ -112,7 +112,7 @@ impl Vhd {
                 }
             }
             names.push(utf16(&dh[64..64 + 512], true));
-            Some(open_parent(&candidate_paths(dir, &names), depth)?)
+            Some(open_parent(&candidate_paths(dir, &names), depth, false)?)
         } else {
             None
         };

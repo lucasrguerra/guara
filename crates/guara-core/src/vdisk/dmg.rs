@@ -1,6 +1,6 @@
 //! DMG (Apple UDIF): rodapé `koly`, tabelas `mish` do plist e chunks zerados, brutos, ADC,
-//! zlib e bzip2. Imagens cifradas (`encrcdsa`) e chunks LZFSE (`ULFO`) são recusados com
-//! mensagem clara.
+//! zlib, bzip2 e LZFSE (`ULFO`). Imagens cifradas (`encrcdsa`) são recusadas com mensagem
+//! clara.
 
 use super::{bad, be32, be64, read_exact, read_vec, Backend};
 use crate::source::{FileSource, Source};
@@ -187,7 +187,8 @@ impl Dmg {
                 bzip2::read::BzDecoder::new(&raw[..]).read_to_end(&mut out)?;
             }
             0x8000_0007 => {
-                return Err(bad("chunk LZFSE (formato ULFO) ainda não é suportado"));
+                lzfse_rust::decode_bytes(&raw, &mut out)
+                    .map_err(|e| bad(format!("chunk LZFSE inválido: {e}")))?;
             }
             t => return Err(bad(format!("tipo de chunk DMG 0x{t:08x} desconhecido"))),
         }
