@@ -142,12 +142,19 @@ fn configuracoes_antigas_ganham_os_valores_padrao_novos() {
         ui_lang: Some("en".into()),
         notify: false,
         maps: true,
+        updates: false,
     })
     .unwrap();
     let s = settings::load();
     assert_eq!(
-        (s.theme.as_str(), s.lang.as_str(), s.notify, s.maps),
-        ("light", "en", false, true)
+        (
+            s.theme.as_str(),
+            s.lang.as_str(),
+            s.notify,
+            s.maps,
+            s.updates
+        ),
+        ("light", "en", false, true, false)
     );
 }
 
