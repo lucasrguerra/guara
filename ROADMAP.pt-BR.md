@@ -11,7 +11,7 @@ Legenda: ✅ feito · 🟡 parcial · 🔜 planejado · 🔭 ideia a longo prazo
 1. **A origem é somente leitura.** Nada no núcleo escreve no dispositivo recuperado.
 2. **Não entregar sem validar.** Um recurso só entra com teste contra imagem real ou de referência. Por isso ReFS e Storage Spaces ainda não existem: não há imagem de referência para conferir.
 3. **Confiança honesta.** Se o conteúdo não pôde ser conferido, a confiança é baixa ou média, nunca alta.
-4. **Livre e auditável.** Código aberto (MIT ou Apache-2.0), sem telemetria, e cada resultado pode ser reproduzido.
+4. **Livre e auditável.** Código aberto (MIT ou Apache-2.0), sem telemetria (a única coisa que usa a rede por padrão é a verificação de atualização, uma requisição só que você pode desligar), e cada resultado pode ser reproduzido.
 
 ## Histórico
 

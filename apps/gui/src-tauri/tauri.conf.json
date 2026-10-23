@@ -34,6 +34,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhENzRCRUU5NEI3QTAxQzgKUldUSUFYcEw2YjUwamFzMnpXM3ZKTEZPN1JIeXdLL3Q5SEF1M1FxQ284WFM0UWNsdlAyNUloWTEK",
+      "endpoints": [
+        "https://github.com/lucasrguerra/guara/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

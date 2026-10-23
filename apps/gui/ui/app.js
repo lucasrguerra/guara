@@ -53,7 +53,7 @@ document.querySelectorAll('[data-theme-pick]').forEach((b) => (b.onclick = async
 
 // ------------------------------------------------------------------ configurações
 // (declarado antes do uso: `S` é definido mais abaixo, por isso o objeto fica aqui)
-const SETTINGS = { theme: 'auto', lang: 'auto', ui_lang: null, notify: true, maps: false };
+const SETTINGS = { theme: 'auto', lang: 'auto', ui_lang: null, notify: true, maps: false, updates: true };
 async function saveSettings(patch) {
   Object.assign(SETTINGS, patch);
   try { await rpc('settings_set', SETTINGS); } catch { /* segue só com o armazenamento local */ }
@@ -745,11 +745,14 @@ $('#settingsBtn')?.addEventListener('click', () => {
     <label class="fld"><span>Idioma</span><select class="select" name="lang"><option value="auto">Auto</option><option value="pt">Português</option><option value="en">English</option></select></label>
     <label class="check"><input type="checkbox" name="notify" ${SETTINGS.notify ? 'checked' : ''}><span><b>Notificações</b><br><span class="sub">Avisar quando uma tarefa longa terminar</span></span></label>
     <label class="check"><input type="checkbox" name="maps" ${SETTINGS.maps ? 'checked' : ''}><span><b>Mapas online</b><br><span class="sub">Mostrar mapas das fotos com GPS (usa a internet: baixa blocos do OpenStreetMap)</span></span></label>
+    ${tauri?.core?.invoke ? `<label class="check"><input type="checkbox" name="updates" ${SETTINGS.updates ? 'checked' : ''}><span><b>Atualizações automáticas</b><br><span class="sub">Ao abrir, consulta o GitHub para ver se há versão nova (uma consulta, sem enviar dados seus)</span><br><button type="button" class="btn sm" id="updNow">Verificar agora</button></span></label>` : ''}
     <menu><button class="btn" value="cancel">Cancelar</button><button class="btn primary" value="ok">Salvar</button></menu></form>`;
   d.querySelector('[name=lang]').value = SETTINGS.lang;
+  d.querySelector('#updNow')?.addEventListener('click', (e) => { e.preventDefault(); checkUpdate(true); });
   d.onclose = () => {
     if (d.returnValue !== 'ok') return;
     const patch = { lang: d.querySelector('[name=lang]').value, notify: d.querySelector('[name=notify]').checked, maps: d.querySelector('[name=maps]').checked };
+    if (d.querySelector('[name=updates]')) patch.updates = d.querySelector('[name=updates]').checked;
     setLang(patch.lang);
     patch.ui_lang = currentLang();
     saveSettings(patch);
@@ -758,6 +761,64 @@ $('#settingsBtn')?.addEventListener('click', () => {
   };
   d.showModal();
 });
+
+// ------------------------------------------------------------------ atualização do app
+// O núcleo do app (Tauri) consulta o `latest.json` da release no GitHub, confere a assinatura do
+// pacote com a chave pública embutida, instala e reabre. No navegador (`guara ui`) não há nada a fazer.
+let UPD = null;
+
+async function checkUpdate(manual) {
+  if (!tauri?.core?.invoke) return;
+  try {
+    UPD = await tauri.core.invoke('update_check');
+    renderUpdateCard();
+    if (manual) toast(UPD ? `Nova versão ${UPD.version} disponível` : 'Você já está na versão mais recente');
+  } catch (e) {
+    if (manual) toast(`Não foi possível verificar atualizações: ${e}`);
+  }
+}
+
+function renderUpdateCard(state) {
+  let el = $('#updateCard');
+  if (!UPD) { el?.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'updateCard'; el.className = 'update-card'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+  if (state === 'busy') return;
+  el.innerHTML = `<div class="upd-head"><b>Nova versão do Guará disponível</b><span class="mono upd-ver">v${esc(UPD.current)} → v${esc(UPD.version)}</span></div>
+    ${UPD.auto ? '' : '<p class="sub">Esta instalação vem de um pacote do sistema e não se atualiza sozinha. Baixe a versão nova na página da release:</p><p class="mono upd-url">' + esc(UPD.url) + '</p>'}
+    <div class="upd-actions">
+      ${UPD.auto ? '<button class="btn primary sm" id="updGo">Atualizar agora</button>' : ''}
+      ${UPD.notes ? '<button class="btn sm" id="updNotes">Novidades</button>' : ''}
+      <button class="btn sm" id="updLater">Depois</button>
+    </div>`;
+  $('#updGo')?.addEventListener('click', installUpdate);
+  $('#updLater')?.addEventListener('click', () => { UPD = null; el.remove(); });
+  $('#updNotes')?.addEventListener('click', () => info({ title: `Guará ${UPD.version}`, html: `<pre class="upd-notes">${esc(UPD.notes)}</pre>` }));
+}
+
+async function installUpdate() {
+  const el = $('#updateCard');
+  el.innerHTML = `<div class="upd-head"><b>Atualizando o Guará…</b></div>
+    <div class="bar indet" id="updBar"><i style="width:0"></i></div><p class="sub" id="updMsg">Baixando a atualização…</p>`;
+  renderUpdateCard('busy');
+  try {
+    await tauri.core.invoke('update_install');
+  } catch (e) {
+    toast(String(e));
+    renderUpdateCard();
+  }
+}
+
+function updateProgress(p) {
+  const bar = $('#updBar'); const msg = $('#updMsg');
+  if (!bar || !msg) return;
+  if (p.installing) { bar.classList.add('indet'); msg.textContent = 'Instalando… o Guará vai reabrir sozinho.'; return; }
+  if (p.total) {
+    const pct = Math.min(100, Math.round((p.downloaded / p.total) * 100));
+    bar.classList.remove('indet');
+    bar.firstElementChild.style.width = `${pct}%`;
+    msg.textContent = `Baixando… ${pct}%`;
+  }
+}
 
 // ------------------------------------------------------------------ fechar com varredura em andamento
 function askClose() {
@@ -807,6 +868,8 @@ function watchClose() {
     setLang(SETTINGS.lang);
     if (SETTINGS.ui_lang !== currentLang()) saveSettings({ ui_lang: currentLang() });
     watchClose();
+    tauri?.event?.listen?.('update-progress', (e) => updateProgress(e.payload));
+    if (SETTINGS.updates !== false) checkUpdate(false);
     tauri?.event?.listen?.('elevate-failed', (e) => { toast(String(e.payload || 'Não foi possível reiniciar como administrador')); });
   } catch (e) {
     main.innerHTML = `<div class="page"><div class="notice bad">${warnSvg}<div>Não foi possível falar com o núcleo do Guará: ${esc(e.message)}. Se abriu esta página manualmente, use o endereço completo exibido pelo comando <code>guara ui</code> (ele inclui o token).</div></div></div>`;

@@ -44,6 +44,8 @@ Download the package for your system from **[Releases](../../releases)**:
 
 Every file has a `.sha256` next to it. To build from source: `cargo build --release -p guara-cli` (Rust 1.80+).
 
+**Updates:** the desktop app (AppImage, Windows and macOS) checks GitHub for a newer version when it opens; if there is one, a card offers **Update now**: it downloads, verifies the package signature, installs and reopens, so you no longer swap the AppImage by hand. The check is a single request for the release's `latest.json` and nothing of yours is sent; turn it off in **Settings**. Installs from `.deb`/`.rpm` only show the notice, because the package manager owns those files.
+
 > The binaries are **not signed yet**: Windows SmartScreen and macOS Gatekeeper will warn you. Check the SHA-256.
 
 Reading raw disks requires privileges: **administrator** (Windows), `sudo` (Linux and macOS). Even as root, Guará writes sessions, reports and recovered files with the owner and permissions of the user who launched it.

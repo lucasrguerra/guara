@@ -20,6 +20,8 @@ No Linux os testes geram imagens com `mtools`, `ntfs-3g`, `e2fsprogs`, `exfatpro
 
 Para as imagens de referência externas (BitLocker, FileVault 2, dfvfs, AFF4), rode `scripts/fetch-testdata.sh`; sem elas esses testes são pulados. O teste de BitLocker leva cerca de 75 s.
 
+O app desktop assina os pacotes de atualização: o `tauri.conf.json` tem `createUpdaterArtifacts` ligado, então um `tauri build` local precisa de `TAURI_SIGNING_PRIVATE_KEY` (qualquer chave feita com `tauri signer generate`; a chave da release fica só nos segredos do repositório). Para um pacote local rápido, passe `--config '{"bundle":{"createUpdaterArtifacts":false}}'`.
+
 ## Onde mexer
 
 Mapa dos módulos em [docs/pt-BR/arquitetura.md](docs/pt-BR/arquitetura.md). O que falta e o que é bem-vindo está no [ROADMAP](ROADMAP.pt-BR.md).

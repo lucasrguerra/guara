@@ -44,6 +44,8 @@ Baixe o pacote do seu sistema em **[Releases](../../releases)**:
 
 Cada arquivo tem um `.sha256` ao lado. Compilar do código: `cargo build --release -p guara-cli` (Rust 1.80+).
 
+**Atualizações:** o app desktop (AppImage, Windows e macOS) consulta o GitHub ao abrir; havendo versão nova, um cartão oferece **Atualizar agora**: ele baixa, confere a assinatura do pacote, instala e reabre, e você deixa de trocar o AppImage na mão. A consulta é uma única requisição ao `latest.json` da release e nada seu é enviado; desligue em **Configurações**. Instalações por `.deb`/`.rpm` só mostram o aviso, porque quem manda nesses arquivos é o gerenciador de pacotes.
+
 > Os binários ainda **não são assinados**: o Windows SmartScreen e o Gatekeeper do macOS vão avisar. Confira o SHA-256.
 
 Ler discos brutos exige privilégios: **administrador** (Windows), `sudo` (Linux e macOS). Mesmo como root, o Guará grava sessões, relatórios e arquivos recuperados com o dono e as permissões do usuário que o abriu.

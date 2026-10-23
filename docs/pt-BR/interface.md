@@ -25,7 +25,11 @@ O seletor no fim da barra lateral oferece **Auto** (acompanha o sistema), **Clar
 
 ## Idioma
 
-Em **Configurações** (a engrenagem no fim da barra lateral) há o seletor **Idioma**: **Auto** acompanha o idioma do sistema, ou você escolhe **Português** ou **English**. A troca vale na hora. A mesma janela controla as notificações de tarefas longas e os mapas online das fotos com GPS (desligados por padrão, porque baixam blocos do OpenStreetMap).
+Em **Configurações** (a engrenagem no fim da barra lateral) há o seletor **Idioma**: **Auto** acompanha o idioma do sistema, ou você escolhe **Português** ou **English**. A troca vale na hora. A mesma janela controla as atualizações automáticas (abaixo), as notificações de tarefas longas e os mapas online das fotos com GPS (desligados por padrão, porque baixam blocos do OpenStreetMap).
+
+## Atualizações
+
+Ao abrir, o app desktop pede ao GitHub o `latest.json` da release. Havendo versão mais nova, aparece um cartão no canto inferior direito com as versões, **Novidades** (as notas do CHANGELOG) e **Atualizar agora**. O app baixa o pacote, confere a assinatura com a chave pública embutida nele, instala e reabre sozinho. No Linux isso vale para o AppImage (o arquivo é substituído no lugar); instalações por `.deb` ou `.rpm` só mostram o aviso com o endereço da release. **Configurações > Atualizações automáticas** desliga a verificação ao abrir e tem o botão **Verificar agora**. A consulta não envia nada além do que qualquer navegador envia ao GitHub. O `guara ui` no navegador não se atualiza sozinho.
 
 <p align="center"><img src="../img/settings-language-pt.png" width="420" alt="A janela de Configurações com o seletor de Idioma"></p>
 

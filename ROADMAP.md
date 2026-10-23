@@ -11,7 +11,7 @@ Legend: ✅ done · 🟡 partial · 🔜 planned · 🔭 long-term idea · ⛔ o
 1. **The source is read-only.** Nothing in the core writes to the device being recovered.
 2. **Do not ship without validating.** A feature only lands with a test against a real or reference image. That is why ReFS and Storage Spaces do not exist yet: there is no reference image to check against.
 3. **Honest confidence.** If the content could not be checked, confidence is low or medium, never high.
-4. **Free and auditable.** Open source (MIT or Apache-2.0), no telemetry, and every result can be reproduced.
+4. **Free and auditable.** Open source (MIT or Apache-2.0), no telemetry (the only thing that touches the network by default is the update check, a single request you can turn off), and every result can be reproduced.
 
 ## History
 

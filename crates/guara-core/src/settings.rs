@@ -23,6 +23,10 @@ pub struct Settings {
     /// Mostrar mapas das fotos com GPS (baixa blocos do OpenStreetMap pela internet).
     #[serde(default)]
     pub maps: bool,
+    /// Procurar versão nova no GitHub ao abrir o app (uma consulta ao `latest.json` da release,
+    /// sem enviar nada além do que qualquer navegador envia).
+    #[serde(default = "yes")]
+    pub updates: bool,
 }
 
 fn auto() -> String {
@@ -41,6 +45,7 @@ impl Default for Settings {
             ui_lang: None,
             notify: true,
             maps: false,
+            updates: true,
         }
     }
 }

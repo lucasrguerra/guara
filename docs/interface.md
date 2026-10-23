@@ -25,7 +25,11 @@ The switch at the bottom of the sidebar offers **Auto** (follows the system), **
 
 ## Language
 
-**Settings** (the gear at the bottom of the sidebar) has a **Language** selector: **Auto** follows the system language, or you can pick **Português** or **English**. The change applies right away. The same dialog controls notifications for long tasks and online maps for photos with GPS (off by default, because it downloads OpenStreetMap tiles).
+**Settings** (the gear at the bottom of the sidebar) has a **Language** selector: **Auto** follows the system language, or you can pick **Português** or **English**. The change applies right away. The same dialog controls automatic updates (below), notifications for long tasks and online maps for photos with GPS (off by default, because it downloads OpenStreetMap tiles).
+
+## Updates
+
+When the desktop app opens it asks GitHub for the release's `latest.json`. If a newer version exists, a card appears at the bottom right with the versions, **What's new** (the CHANGELOG notes) and **Update now**. The app downloads the package, verifies its signature against the public key built into the app, installs and reopens by itself. On Linux this works for the AppImage (the file is replaced in place); installs from `.deb` or `.rpm` only show the notice with the release address. **Settings > Automatic updates** turns the startup check off and has a **Check now** button. The check sends nothing besides what any browser sends to GitHub. `guara ui` in the browser does not update itself.
 
 <p align="center"><img src="img/settings-language-en.png" width="420" alt="The Settings dialog with the Language selector set to English"></p>
 
