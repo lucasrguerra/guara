@@ -4,6 +4,7 @@
 # Estado de ferramentas locais
 .wolf/
 .claude/
+.superset/
 CLAUDE.md
 
 # Variáveis de ambiente locais (o setup do Superset copia da raiz)
