@@ -286,10 +286,9 @@ pub fn recover_resumable(
         "algoritmos_hash": ["MD5", "SHA-1", "SHA-256"],
         "relatorio": &report,
     });
-    crate::owner::write_owned(
-        &dest.join("guara-manifesto.json"),
-        serde_json::to_vec_pretty(&manifest)?,
-    )?;
+    let manifest_path = dest.join("guara-manifesto.json");
+    crate::owner::write_owned(&manifest_path, serde_json::to_vec_pretty(&manifest)?)?;
+    crate::sign::sign_if_configured(&manifest_path);
     Ok(report)
 }
 

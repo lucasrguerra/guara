@@ -55,12 +55,12 @@ As senhas **nunca** vão para o arquivo de sessão. Com `--remember-keys` a sess
 | Bruta (dd, `.img`) | ✅ | ✅ com mapa de erros de setores ruins |
 | E01 e Ex01 (Expert Witness) | ✅ | ✅ com metadados do caso e segmentação |
 | AFF4 | ✅ | ✅ |
-| QCOW2 (QEMU), versões 2 e 3 | ✅ inclusive clusters comprimidos (deflate, zstd) | ❌ |
-| VMDK (VMware, VirtualBox) | ✅ esparso, `streamOptimized` e descritores com extensões flat/zero | ❌ |
+| QCOW2 (QEMU), versões 2 e 3 | ✅ inclusive clusters comprimidos (deflate, zstd) e arquivo de apoio | ❌ |
+| VMDK (VMware, VirtualBox) | ✅ esparso, `streamOptimized`, descritores com extensões flat/zero e snapshots (pai por nome ou, no VirtualBox, por UUID) | ❌ |
 | VHD e VHDX (Hyper-V) | ✅ fixo, dinâmico e diferencial (segue a cadeia de pais) | ❌ |
-| DMG (Apple UDIF) | ✅ chunks zerados, brutos, ADC, zlib e bzip2 | ❌ |
+| DMG (Apple UDIF) | ✅ chunks zerados, brutos, ADC, zlib, bzip2 e LZFSE | ❌ |
 
-Os contêineres de disco virtual são abertos como o disco que contêm, sem conversão. Imagens que não podem ser lidas corretamente são recusadas com o motivo: QCOW2 com arquivo de apoio ou cifrado, VMDK com pai (snapshot) ou em SEsparse, DMG protegido por senha e DMG com chunks LZFSE. O log de transações do VHDX não é reproduzido (nada é gravado na imagem).
+Os contêineres de disco virtual são abertos como o disco que contêm, sem conversão. Imagens que não podem ser lidas corretamente são recusadas com o motivo: QCOW2 cifrado, QCOW2 cujo apoio não é um arquivo local, VMDK em SEsparse e DMG protegido por senha. Discos diferenciais (VHD, VHDX, QCOW2 com apoio, snapshot de VMDK) leem o pai no que o filho não gravou; o pai é procurado ao lado do filho (VMDK: por nome ou UUID) e, no VMDK, o CID dele precisa bater, senão a imagem é recusada porque o pai mudou. A identidade dos pais de VHD, VHDX e QCOW2 não é conferida. O log de transações do VHDX não é reproduzido (nada é gravado na imagem).
 
 `guara verify` recalcula o MD5 de uma imagem E01 ou Ex01 e compara com o gravado nela.
 

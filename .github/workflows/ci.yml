@@ -47,10 +47,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mtools dosfstools exfatprogs ntfs-3g e2fsprogs xfsprogs imagemagick zip
+      - name: Cache das imagens de referência
+        uses: actions/cache@v6
+        with:
+          path: target/testdata
+          key: testdata-${{ runner.os }}-${{ hashFiles('scripts/fetch-testdata.sh') }}
+      - name: Imagens de referência (BitLocker, FileVault 2, dfvfs, AFF4)
+        shell: bash
+        run: scripts/fetch-testdata.sh
       - name: Imagem XFS com exclusão feita pelo kernel (Linux)
         if: runner.os == 'Linux'
         run: sudo scripts/make-xfs-real-deletion.sh
-      - name: Testes (com imagens reais FAT32/NTFS/ext4 no Linux)
+      - name: Testes (imagens de referência nos três sistemas; FAT32, NTFS e ext4 gerados no Linux)
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then export GUARA_REQUIRE_FIXTURES=1; fi

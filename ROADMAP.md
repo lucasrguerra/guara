@@ -69,7 +69,8 @@ Today Guará opens volumes when you **already have** the password or key. Passwo
 | E01 and Ex01: read, write and `guara verify` | ✅ |
 | AFF4: read and write | ✅ |
 | Virtual disk containers: QCOW2, VMDK, VHD, VHDX and DMG (read) | ✅ |
-| QCOW2 with a backing file, VMDK snapshots, DMG with LZFSE or a password | 🔜 |
+| QCOW2 with a backing file, VMDK snapshots (by name or VirtualBox UUID), DMG with LZFSE | ✅ |
+| Password-protected DMG, parent identity check for VHD, VHDX and QCOW2 | 🔜 |
 | Mobile device image (see item 7) | 🔭 |
 
 ### 4. Assembling loose disks
@@ -130,7 +131,8 @@ Physical access is the differentiator of commercial tools like Cellebrite. It de
 | HTML report with case, examiner, source, partitions, summary and hashes | ✅ |
 | Verification of an E01/Ex01 image against the stored hash | ✅ |
 | **Audit trail** of every examiner action (who, when, what), chained by hash, with `guara audit --verify` | ✅ |
-| **Digitally signed reports** and a timestamped manifest | 🔜 |
+| **Digital signatures** (Ed25519) of manifests, reports and any file; `guara sign recovery` checks a whole recovery folder | ✅ |
+| Trusted timestamp (RFC 3161) on signatures | 🔜 |
 | **Reproducibility:** replay the recorded procedure and get the same result | 🔜 |
 | PDF report (A4, built in) | ✅ |
 | **External validation:** NIST CFTT (Computer Forensic Tool Testing) tests and publication of the results | 🔭 |
@@ -166,7 +168,7 @@ External validation is what makes a report accepted. Without it, Guará is good 
 No dates, in the order that makes the most sense.
 
 **1.3: trust and custody**
-Signed manifest, XFS journal reading, APFS validation with real deletions, tests with real images on Windows and macOS.
+Trusted timestamps, XFS journal reading, APFS validation with real deletions.
 
 **1.4: analysis**
 NSRL and hash lists, search in file content, unified timeline.

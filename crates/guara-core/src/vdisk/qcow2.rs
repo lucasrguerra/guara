@@ -1,10 +1,15 @@
-//! QCOW2 (QEMU), versões 2 e 3: tabelas L1/L2, clusters comprimidos (deflate e zstd) e
-//! clusters zerados. Imagens cifradas, com arquivo de apoio, com arquivo de dados externo ou
-//! com L2 estendido são recusadas.
+//! QCOW2 (QEMU), versões 2 e 3: tabelas L1/L2, clusters comprimidos (deflate e zstd),
+//! clusters zerados e arquivo de apoio (backing file): o que o filho não alocou vem do pai.
+//! Imagens cifradas, com arquivo de dados externo, com L2 estendido ou com apoio que não é um
+//! arquivo local (`json:`, `nbd:`, URLs) são recusadas.
 
-use super::{bad, be32, be64, check_table, read_exact, read_vec, Backend};
+use super::{
+    bad, be32, be64, candidate_paths, check_table, open_parent, read_exact, read_parent, read_vec,
+    Backend,
+};
 use crate::source::{FileSource, Source};
 use std::io::{self, Read};
+use std::path::Path;
 use std::sync::Mutex;
 
 const OFFSET_MASK: u64 = 0x00ff_ffff_ffff_fe00;
@@ -16,12 +21,13 @@ pub(super) struct Qcow2 {
     cluster_bits: u32,
     l1: Vec<u64>,
     zstd: bool,
+    parent: Option<Box<dyn Source>>,
     /// Último cluster comprimido decodificado: (deslocamento do cluster virtual, dados).
     cache: Mutex<Option<(u64, Vec<u8>)>>,
 }
 
 impl Qcow2 {
-    pub(super) fn open(file: FileSource) -> io::Result<Self> {
+    pub(super) fn open(file: FileSource, path: &Path, depth: u32) -> io::Result<Self> {
         let h = read_vec(&file, 0, 112.min(file.size() as usize))?;
         if h.len() < 72 {
             return Err(bad("cabeçalho QCOW2 truncado"));
@@ -29,11 +35,6 @@ impl Qcow2 {
         let version = be32(&h, 4);
         if version != 2 && version != 3 {
             return Err(bad(format!("versão QCOW {version} não suportada")));
-        }
-        if be64(&h, 8) != 0 {
-            return Err(bad(
-                "a imagem QCOW2 usa arquivo de apoio (backing file); abrir só a camada filha daria dados errados",
-            ));
         }
         let cluster_bits = be32(&h, 20);
         if !(9..=21).contains(&cluster_bits) {
@@ -63,6 +64,11 @@ impl Qcow2 {
                 }
             }
         }
+        let parent = if be64(&h, 8) != 0 {
+            Some(Self::open_backing(&file, &h, version, path, depth)?)
+        } else {
+            None
+        };
         let l1_size = be32(&h, 36) as u64;
         let l1_off = be64(&h, 40);
         let n = check_table(l1_size, 8, "tabela L1")?;
@@ -74,8 +80,63 @@ impl Qcow2 {
             cluster_bits,
             l1,
             zstd,
+            parent,
             cache: Mutex::new(None),
         })
+    }
+
+    /// Abre o arquivo de apoio. O formato vem da extensão de cabeçalho `0xE2792ACA`; `raw`
+    /// (ou ausente em v2) é lido sem reconhecer formato, como o QEMU faz.
+    fn open_backing(
+        file: &FileSource,
+        h: &[u8],
+        version: u32,
+        path: &Path,
+        depth: u32,
+    ) -> io::Result<Box<dyn Source>> {
+        let (off, len) = (be64(h, 8), be32(h, 16) as usize);
+        if len == 0 || len > 1023 {
+            return Err(bad("nome do arquivo de apoio QCOW2 inválido"));
+        }
+        let name = String::from_utf8_lossy(&read_vec(file, off, len)?).into_owned();
+        if name.starts_with("json:")
+            || name.contains("://")
+            || name.split(':').next().is_some_and(|p| {
+                matches!(p, "nbd" | "ssh" | "rbd" | "sheepdog" | "gluster" | "iscsi")
+            })
+        {
+            return Err(bad(format!(
+                "o arquivo de apoio {name} não é um arquivo local; só caminhos de arquivo são suportados"
+            )));
+        }
+        // extensões de cabeçalho: depois do cabeçalho, alinhadas a 8 bytes
+        let hlen = if version == 3 && h.len() >= 104 {
+            be32(h, 100) as u64
+        } else {
+            72
+        };
+        let mut raw = false;
+        let mut pos = hlen.div_ceil(8) * 8;
+        for _ in 0..64 {
+            let mut eh = [0u8; 8];
+            if read_exact(file, pos, &mut eh).is_err() {
+                break;
+            }
+            let (kind, elen) = (be32(&eh, 0), be32(&eh, 4) as u64);
+            if kind == 0 || elen > 1 << 20 {
+                break;
+            }
+            if kind == 0xE279_2ACA {
+                let fmt = read_vec(file, pos + 8, elen as usize)?;
+                raw = fmt == b"raw";
+            }
+            pos += 8 + elen.div_ceil(8) * 8;
+        }
+        if version == 2 {
+            raw = false;
+        }
+        let dir = path.parent().unwrap_or(Path::new("."));
+        open_parent(&candidate_paths(dir, &[name]), depth, raw)
     }
 
     fn cluster_size(&self) -> u64 {
@@ -139,8 +200,10 @@ impl Backend for Qcow2 {
             return Ok(n);
         }
         let off = entry & OFFSET_MASK;
-        if off == 0 || entry & 1 != 0 {
-            buf[..n].fill(0);
+        if entry & 1 != 0 {
+            buf[..n].fill(0); // zerado de propósito: não consulta o pai
+        } else if off == 0 {
+            read_parent(&self.parent, voff, &mut buf[..n])?;
         } else {
             read_exact(&self.file, off + within, &mut buf[..n])?;
         }
