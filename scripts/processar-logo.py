@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Tira o fundo das logos do Guará e gera as variantes usadas no app, no README e nos ícones.
+"""Tira o fundo da logo do Guará e gera os arquivos usados no app, no README e nos ícones.
 
-Entrada (arte original, fundo sólido): assets/logo/guara-dark-fonte.png e guara-light-fonte.png.
-Saída: apps/gui/ui/guara-dark.png e guara-light.png (768 px, fundo transparente, recortadas e
-quadradas), guara-dark-s.png e guara-light-s.png (128 px, para barra lateral e favicon) e
-apps/gui/src-tauri/icons/source.png (ícone do app, sobre o fundo escuro da arte; o CI gera o
-resto com `tauri icon`).
+Entrada (arte original, fundo sólido escuro): assets/logo/guara-fonte.png.
+Saída: apps/gui/ui/guara.png (768 px, fundo transparente, recortada e quadrada), guara-s.png
+(128 px, para a barra lateral e o favicon) e apps/gui/src-tauri/icons/source.png (ícone do app,
+sobre o fundo escuro da arte; o CI gera o resto com `tauri icon`). Uma logo só serve aos temas
+claro e escuro: o laranja lê bem nos dois.
 
 O fundo é uma cor sólida: sai o que é parecido com ela e está ligado à borda da imagem (sombras
 escuras dentro do desenho ficam). Na faixa de 3 px ao redor, a cor do desenho é estimada pelos
@@ -20,11 +20,9 @@ from PIL import Image
 RAIZ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 UI = os.path.join(RAIZ, "apps/gui/ui")
 ICONES = os.path.join(RAIZ, "apps/gui/src-tauri/icons")
-# (arquivo de origem, cor do fundo, distância que ainda conta como fundo certo, não usado)
-VARIANTES = {
-    "dark": ("assets/logo/guara-dark-fonte.png", (10, 16, 28), 9.0, None),
-    "light": ("assets/logo/guara-light-fonte.png", (254, 249, 240), 7.0, None),
-}
+FONTE = "assets/logo/guara-fonte.png"
+FUNDO = (10, 16, 28)  # cor do fundo sólido da arte original
+LIMIAR = 9.0  # distância que ainda conta como fundo certo
 
 
 def tirar_fundo(path, bg, d0, _d1=None):
@@ -161,22 +159,18 @@ def recortar_quadrado(im, margem=0.04, lado=1024):
 
 
 def main():
-    feitas = {}
-    for nome, (src, bg, d0, _) in VARIANTES.items():
-        im = recortar_quadrado(tirar_fundo(os.path.join(RAIZ, src), bg, d0))
-        feitas[nome] = im
-        for sufixo, lado in (("", 768), ("-s", 128)):
-            im.resize((lado, lado), Image.LANCZOS).save(
-                os.path.join(UI, f"guara-{nome}{sufixo}.png"), optimize=True
-            )
-        print(f"guara-{nome}.png e guara-{nome}-s.png")
-    # ícone do app: a arte escura sobre o fundo escuro da própria arte, com cantos arredondados
+    logo = recortar_quadrado(tirar_fundo(os.path.join(RAIZ, FONTE), FUNDO, LIMIAR))
+    for sufixo, lado in (("", 768), ("-s", 128)):
+        logo.resize((lado, lado), Image.LANCZOS).save(os.path.join(UI, f"guara{sufixo}.png"), optimize=True)
+    print("guara.png e guara-s.png")
+    # ícone do app: a arte sobre o fundo escuro da própria arte, com cantos arredondados
+    from PIL import ImageDraw
+
     lado = 1024
-    fundo = Image.new("RGBA", (lado, lado), VARIANTES["dark"][1] + (255,))
-    arte = feitas["dark"].resize((round(lado * 0.82),) * 2, Image.LANCZOS)
+    fundo = Image.new("RGBA", (lado, lado), FUNDO + (255,))
+    arte = logo.resize((round(lado * 0.82),) * 2, Image.LANCZOS)
     fundo.paste(arte, ((lado - arte.width) // 2, (lado - arte.height) // 2), arte)
     mascara = Image.new("L", (lado, lado), 0)
-    from PIL import ImageDraw
     ImageDraw.Draw(mascara).rounded_rectangle((0, 0, lado - 1, lado - 1), radius=round(lado * 0.2237), fill=255)
     icone = Image.new("RGBA", (lado, lado), (0, 0, 0, 0))
     icone.paste(fundo, (0, 0), mascara)

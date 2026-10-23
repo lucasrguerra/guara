@@ -265,7 +265,7 @@ function renderHome() {
   S.device = null; S.job = null;
   renderSide();
   main.innerHTML = `<div class="page">
-    <section class="hero"><img class="logo-img hero-logo dark" src="guara-dark.png" alt="Guará"><img class="logo-img hero-logo light" src="guara-light.png" alt="Guará"><h1>Encontre o que você achou que tinha perdido.</h1>
+    <section class="hero"><img class="logo-img hero-logo" src="guara.png" alt="Guará"><h1>Encontre o que você achou que tinha perdido.</h1>
     <p>Escolha um disco, SSD ou pendrive ao lado. O Guará lê tudo: arquivos apagados, partições perdidas e espaço não particionado, sem escrever nada no disco de origem.</p></section>
     <div class="cards">
       <div class="card"><h3>Uma varredura, tudo junto</h3><p>Metadados do sistema de arquivos e busca por assinatura na mesma passada, sem duplicatas.</p></div>
