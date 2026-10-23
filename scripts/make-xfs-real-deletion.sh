@@ -12,7 +12,7 @@ out="${1:-$root/target/testdata/xfs-real-delete}"
 mkdir -p "$out"
 img="$out/disk.img"
 rm -f "$img"
-truncate -s 64M "$img"
+truncate -s 320M "$img"   # o mkfs.xfs recente recusa menos de 300 MiB
 mkfs.xfs -q -f "$img"
 mnt="$(mktemp -d)"
 cleanup() { mountpoint -q "$mnt" && umount "$mnt"; rmdir "$mnt" 2>/dev/null || true; }
