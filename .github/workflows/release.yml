@@ -111,11 +111,11 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/apt-cache
-          key: apt-tauri-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-${{ hashFiles('scripts/install-tauri-deps.sh') }}
+          key: apt-tauri-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-${{ hashFiles('scripts/apt-install.sh') }}
       - name: Dependências do Tauri (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 25
-        run: scripts/install-tauri-deps.sh
+        run: scripts/apt-install.sh ~/apt-cache libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - name: Gera os ícones
         run: npx --yes @tauri-apps/cli@2 icon apps/gui/src-tauri/icons/source.png -o apps/gui/src-tauri/icons
       - uses: tauri-apps/tauri-action@v1
