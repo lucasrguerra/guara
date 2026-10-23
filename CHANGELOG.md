@@ -4,6 +4,17 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [1.3.1] - 2026-10-23
+
+### Changed
+- **New official logo:** the maned wolf (guará) inside the orange ring, drawn by the project's author, with a transparent background so the same art works in the light and dark themes. It replaces the old track-disc logo in the app (sidebar, top bar and home screen), the favicon, the desktop app icons and the README.
+- `guara ui` serves the new `guara.png` and `guara-s.png`; `scripts/gerar-logo.py` derives the small logo and the app icon from the official art.
+- Development: `scripts/verificar.sh` runs locally what the CI runs, with an optional pre-push hook (`scripts/instalar-hooks.sh`), and the CI no longer runs on documentation-only changes.
+
+### Notes
+- No change to scanning, recovery, signing or any other behavior. This is the first release after the in-app updater: an app on 1.3.0 should offer **Update now**.
+- The screenshots in `docs/img/` still show the old logo and will be redone.
+
 ## [1.3.0] - 2026-10-23
 
 ### Added

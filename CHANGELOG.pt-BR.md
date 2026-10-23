@@ -4,6 +4,17 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem SemVer.
 
+## [1.3.1] - 2026-10-23
+
+### Alterado
+- **Logo oficial nova:** o guará dentro do anel laranja, desenhado pelo autor do projeto, com fundo transparente para a mesma arte servir aos temas claro e escuro. Ela substitui a logo antiga das trilhas de disco no app (barra lateral, topo e tela inicial), no favicon, nos ícones do app desktop e no README.
+- O `guara ui` serve os novos `guara.png` e `guara-s.png`; o `scripts/gerar-logo.py` deriva a logo pequena e o ícone do app da arte oficial.
+- Desenvolvimento: o `scripts/verificar.sh` roda localmente o que o CI roda, com um hook opcional de pre-push (`scripts/instalar-hooks.sh`), e o CI deixa de rodar em mudanças só de documentação.
+
+### Notas
+- Nenhuma mudança na varredura, na recuperação, na assinatura ou em qualquer outro comportamento. É a primeira versão depois do atualizador do app: um app na 1.3.0 deve oferecer **Atualizar agora**.
+- Os screenshots em `docs/img/` ainda mostram a logo antiga e serão refeitos.
+
 ## [1.3.0] - 2026-10-23
 
 ### Adicionado
